@@ -12,7 +12,7 @@
  function clearViewer(){loadVersion++;viewerPortal=null;$('secure-frame').srcdoc='';$('secure-viewer').hidden=true;document.body.classList.remove('viewing-manual');}
  function showLogin(message=''){
   member=null;clearViewer();$('login-form').hidden=false;$('profile-toggle').hidden=false;$('portal-selection').hidden=true;
-  document.querySelector('.login-subtitle').textContent='Selecione seu perfil e entre com seu e-mail';$('login-error').textContent=message;
+  document.querySelector('.login-subtitle').textContent='Entre com seu e-mail ou CNPJ e sua senha';$('login-error').textContent=message;
  }
  function canOpen(profile){return member?.active&&(member.profiles.includes('adm')||member.profiles.includes(profile));}
  async function readMember(){
@@ -23,9 +23,10 @@
   return data;
  }
  function showPortals(){
+  if(!member?.active||!profiles.some(canOpen)){showLogin('Sua conta não possui portais liberados. Solicite a liberação ao escritório.');return;}
   $('login-form').hidden=true;$('profile-toggle').hidden=true;$('portal-selection').hidden=false;
   for(const p of profiles)$('link-'+p).hidden=!canOpen(p);
-  document.querySelector('.login-subtitle').textContent='Selecione o portal que deseja acessar';$('user-password').value='';
+  document.querySelector('.login-subtitle').textContent='Selecione um dos portais liberados para sua conta';$('user-password').value='';
  }
  window.setLoginType=type=>{
   if(!profiles.includes(type))return;selected=type;document.querySelector('.login-card').dataset.profile=type;
@@ -48,15 +49,26 @@
    $('secure-frame').srcdoc=data.map(row=>row.html).join('');$('viewer-status').textContent='';
   }catch(e){if(version!==loadVersion)return;clearViewer();if(member)showPortals();else showLogin();$('login-error').textContent=e.message;}
  }
+ $('secure-frame').addEventListener('load',()=>{if(viewerPortal)$('viewer-status').textContent='';});
  $('login-form').addEventListener('submit',async event=>{
   event.preventDefault();const button=event.currentTarget.querySelector('button[type=submit]');
   button.disabled=true;button.textContent='Entrando…';$('login-error').textContent='';
   try{
-   const {error}=await client.auth.signInWithPassword({email:$('user-login').value.trim().toLowerCase(),password:$('user-password').value});
-   $('user-password').value='';if(error)throw new Error('E-mail ou senha inválidos, ou conta ainda não confirmada.');
+   const identifier=$('user-login').value.trim();const password=$('user-password').value;let error;
+   if(identifier.includes('@')){
+    ({error}=await client.auth.signInWithPassword({email:identifier.toLowerCase(),password}));
+   }else{
+    const cnpj=identifier.replace(/\D/g,'');
+    if(!/^[0-9.\/\s-]+$/.test(identifier)||cnpj.length!==14)throw new Error('Informe um e-mail ou CNPJ com 14 dígitos.');
+    const response=await fetch(URL+'/functions/v1/manual-portal-login',{method:'POST',headers:{apikey:KEY,'Content-Type':'application/json'},body:JSON.stringify({cnpj,password}),cache:'no-store'});
+    const result=await response.json();
+    if(!response.ok)throw new Error(result.error||'Não foi possível entrar com este CNPJ.');
+    ({error}=await client.auth.setSession({access_token:result.access_token,refresh_token:result.refresh_token}));
+   }
+   $('user-password').value='';if(error)throw new Error('Login ou senha inválidos, ou conta ainda não confirmada.');
    member=await readMember();
-   if(!canOpen(selected)){await client.auth.signOut({scope:'local'});throw new Error('Sua conta não tem autorização para este perfil. Solicite a liberação ao escritório.');}
-   showPortals();if(profiles.includes(desired)&&canOpen(desired))await openPortal(desired);
+   if(!member?.active||!profiles.some(canOpen)){await client.auth.signOut({scope:'local'});throw new Error('Sua conta não possui portais liberados. Solicite a liberação ao escritório.');}
+   showPortals();
   }catch(e){showLogin(e.message||'Não foi possível entrar. Tente novamente.');}
   finally{button.disabled=false;button.textContent='Entrar no Portal';}
  });
@@ -70,5 +82,5 @@
  async function checkAccess(){if(!member||checking)return;checking=true;try{const fresh=await readMember();if(!fresh||!fresh.active||(viewerPortal&&!fresh.profiles.includes('adm')&&!fresh.profiles.includes(viewerPortal))){await logout();$('login-error').textContent='Acesso encerrado. Entre novamente ou solicite a liberação ao escritório.';}else{member=fresh;showPortals()}}catch{showLogin('Não foi possível validar sua sessão. Entre novamente.')}finally{checking=false}}
  document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkAccess()});setInterval(checkAccess,60000);
  setLoginType(profiles.includes(desired)?desired:'adm');
- (async()=>{try{member=await readMember();if(member?.active){showPortals();if(profiles.includes(desired)&&canOpen(desired))await openPortal(desired);}else showLogin();}catch{showLogin('Não foi possível conectar ao serviço de acesso. Tente novamente.')}})();
+ (async()=>{try{member=await readMember();if(member?.active&&profiles.some(canOpen)){showPortals();}else showLogin();}catch{showLogin('Não foi possível conectar ao serviço de acesso. Tente novamente.')}})();
 })();
