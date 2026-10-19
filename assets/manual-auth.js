@@ -12,7 +12,7 @@
  function clearViewer(){loadVersion++;viewerPortal=null;$('secure-frame').srcdoc='';$('secure-viewer').hidden=true;document.body.classList.remove('viewing-manual');}
  function showLogin(message=''){
   member=null;clearViewer();$('login-form').hidden=false;$('profile-toggle').hidden=false;$('portal-selection').hidden=true;
-  document.querySelector('.login-subtitle').textContent='Entre com seu e-mail ou CNPJ e sua senha';$('login-error').textContent=message;
+  document.querySelector('.login-subtitle').textContent='Entre com a sigla da loja ou seu e-mail';$('login-error').textContent=message;
  }
  function canOpen(profile){return member?.active&&(member.profiles.includes('adm')||member.profiles.includes(profile));}
  async function readMember(){
@@ -58,11 +58,11 @@
    if(identifier.includes('@')){
     ({error}=await client.auth.signInWithPassword({email:identifier.toLowerCase(),password}));
    }else{
-    const cnpj=identifier.replace(/\D/g,'');
-    if(!/^[0-9.\/\s-]+$/.test(identifier)||cnpj.length!==14)throw new Error('Informe um e-mail ou CNPJ com 14 dígitos.');
-    const response=await fetch(URL+'/functions/v1/manual-portal-login',{method:'POST',headers:{apikey:KEY,'Content-Type':'application/json'},body:JSON.stringify({cnpj,password}),cache:'no-store'});
+    const sigla=identifier.toUpperCase();
+    if(!/^[A-Z]{4}$/.test(sigla))throw new Error('Informe a sigla da loja com 4 letras ou seu e-mail.');
+    const response=await fetch(URL+'/functions/v1/manual-portal-login',{method:'POST',headers:{apikey:KEY,'Content-Type':'application/json'},body:JSON.stringify({login:sigla,password}),cache:'no-store'});
     const result=await response.json();
-    if(!response.ok)throw new Error(result.error||'Não foi possível entrar com este CNPJ.');
+    if(!response.ok)throw new Error(result.error||'Não foi possível entrar com esta sigla.');
     ({error}=await client.auth.setSession({access_token:result.access_token,refresh_token:result.refresh_token}));
    }
    $('user-password').value='';if(error)throw new Error('Login ou senha inválidos, ou conta ainda não confirmada.');

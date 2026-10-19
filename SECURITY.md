@@ -12,10 +12,12 @@ A página pública contém apenas a interface de login e a chave publicável do 
 
 O histórico Git anterior à migração contém versões antigas dos HTMLs, manuais e credenciais compartilhadas. Substituir os arquivos na branch atual não remove esse histórico. Para encerrar a exposição dessas cópias, é necessário restringir o repositório e avaliar a hospedagem compatível, ou executar uma limpeza de histórico coordenada. Cópias já obtidas por terceiros não podem ser revogadas.
 
-Não use novamente as credenciais compartilhadas presentes na versão antiga. Os novos acessos são contas individuais no Supabase, com autorização específica para o Portal de Manuais.
+Os acessos são validados no Supabase, com autorização específica por perfil. O uso do CNPJ como senha das lojas foi restaurado por solicitação explícita do responsável e continua previsível por ser informação pública.
 
-## Login por CNPJ
+## Login das lojas
 
-O campo aceita e-mail ou CNPJ com 14 dígitos. O CNPJ é apenas um identificador; a senha continua obrigatória e é verificada pelo Supabase Auth. A função `manual-portal-login` resolve o vínculo em `manual_portal_login_aliases`, sem expor a relação entre CNPJs e contas na interface pública. As tentativas por CNPJ são limitadas no servidor. Não existe cadastro automático de CNPJ nem reaproveitamento de credenciais compartilhadas antigas.
+Por solicitação do responsável, as contas das lojas utilizam SIGLA e CNPJ sem pontuação como senha. O CNPJ é informação pública: esse padrão é previsível e não deve ser confundido com uma senha confidencial. A validação ocorre no Supabase Auth; a lista de senhas não é publicada no frontend.
 
-Após autenticar, a seleção de portais deriva da permissão da conta, independentemente da aba escolhida antes de entrar. Novos vínculos e permissões devem ser aprovados pelo escritório e cadastrados por administração confiável.
+Cada loja tem identidade técnica própria no Supabase, com o e-mail do responsável registrado no vínculo privado. Isso mantém as permissões independentes das contas administrativas. O perfil administrativo continua com e-mail e senha pessoal.
+
+A seleção após o login respeita somente as permissões cadastradas no servidor. As contas habilitadas para Franqueado também mantêm o acesso anterior ao portal da Loja. As tabelas de identificação e permissões não podem ser alteradas pelo cliente.
