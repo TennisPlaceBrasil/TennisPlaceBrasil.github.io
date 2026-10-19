@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Estoque x Vendas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        tpYellow: '#FFCC00',
+                        tpYellowHover: '#E6B800',
+                        tpDark: '#0F172A',
+                        tpCard: '#1E293B',
+                        tpBorder: '#334155'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #090D16; color: #F8FAFC; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #0F172A; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #FFCC00; }
+        .modal-backdrop { background-color: rgba(0, 0, 0, 0.75); backdrop-filter: blur(4px); }
+    
+.tp-filters{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0}.tp-filters input,.tp-filters select{background:#161c28;color:white;border:1px solid #465063;padding:10px;border-radius:9px;max-width:100%}.tp-filters input{min-width:280px;flex:1}.tp-total{padding:15px;background:#202638;border-left:3px solid #ffcc00;margin:12px 0;font-size:13px}.tp-scroll{overflow:auto;max-height:550px;border:1px solid #334155;border-radius:12px}.tp-table{width:100%;font-size:12px;border-collapse:collapse}.tp-table th,.tp-table td{padding:11px;text-align:left;border-bottom:1px solid #334155;white-space:nowrap}.tp-table thead{position:sticky;top:0;background:#101722;z-index:1}.tp-table tfoot{font-weight:bold;background:#242d3a}.tp-table td:first-child{white-space:normal;min-width:240px}
+.period-choice{display:inline-flex;align-items:center;justify-content:center;width:78px;height:36px;box-sizing:border-box;padding:0;border:1px solid #526071;border-radius:9px;background:#202938;color:white;font:700 12px system-ui;white-space:nowrap;cursor:pointer}.period-choice.active{background:#ffcc00;color:#000;border-color:#ffcc00}
+.compact-cell{padding:12px 14px;border-bottom:1px solid #334155;vertical-align:top}.compact-number{text-align:right!important;white-space:nowrap;font-variant-numeric:tabular-nums}.compact-product{min-width:210px;max-width:420px;white-space:normal;line-height:1.5}.item-disclosure{margin-top:5px;font-size:11px}.item-disclosure summary{color:#ffcc00;cursor:pointer;width:fit-content}.item-disclosure dl{margin-top:8px;padding:10px;background:#111827;border:1px solid #334155;border-radius:8px;min-width:230px;max-width:360px}.item-disclosure dl>div{display:flex;gap:12px;justify-content:space-between;margin-bottom:5px}.item-disclosure dt{color:#94a3b8}.item-disclosure dd{text-align:right;margin:0;color:#f8fafc}#headers7 th,#modalTableBody+thead th{white-space:nowrap}
+</style>
+<style id="sevenModulesStyle">
+html{scroll-behavior:smooth}.module-nav{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}.module-nav a{border:1px solid #3b414a;border-radius:9px;background:#171b22;padding:9px 12px;font-size:11px;color:#eceef1;text-decoration:none}.module-nav a:hover,.module-nav a:focus-visible{border-color:#ffcc00;color:#ffcc00}.analysis-reading-key{font-size:12px;color:#aeb5c1;line-height:1.7;margin:0 0 26px}.analysis-reading-key strong{color:#ffcc00;margin-right:10px}
+.analysis-group{margin:38px 0 18px;padding:0 0 12px;border-bottom:1px solid #3a3e44}.analysis-group>span{font-size:10px;font-weight:800;letter-spacing:.15em;color:#ffcc00}.analysis-group>h2{font-size:19px;font-weight:750;color:#fff;margin:4px 0}.analysis-group>p{font-size:12px;color:#9da5b3}
+.analysis-module{display:grid;grid-template-columns:184px minmax(0,1fr);gap:20px;align-items:start;scroll-margin-top:20px;margin:0 0 30px}.module-guide{position:sticky;top:18px;border:1px solid #47402b;background:linear-gradient(145deg,#242118,#15181d);border-radius:13px;padding:16px 14px;font-size:11px;line-height:1.55}.guide-category{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.07em;color:#ffcc00;border-bottom:2px solid #ffcc00;padding-bottom:7px;margin-bottom:9px}.module-guide dl{margin:0}.module-guide dt{color:#e7e9ed;font-weight:750;margin:11px 0 3px}.module-guide dd{color:#acb3bf;margin:0}.module-content{min-width:0;padding:22px;border:1px solid #343a45;border-radius:16px;background:#10151e;overflow:hidden}.module-heading{display:flex;gap:12px;align-items:flex-start;margin-bottom:22px}.module-index{display:flex;align-items:center;justify-content:center;background:#ffcc00;color:#131313;font-weight:900;font-size:15px;min-width:36px;height:36px;border-radius:10px}.module-heading h2{font-size:20px;font-weight:750;color:white;line-height:1.25;margin:0 0 6px}.module-heading p{font-size:12px;color:#a8b1bf;line-height:1.6;margin:0}.module-subpanel{min-width:0;margin-top:24px;padding-top:22px;border-top:1px solid #303642}.module-heading+.module-subpanel{margin-top:0;padding-top:0;border-top:0}.module-subtitle{font-size:14px;font-weight:750;color:#fafafa;line-height:1.5;margin:0 0 10px}.module-basis{font-size:11px;color:#aeb6c3;line-height:1.65;margin:0 0 14px}.module-scope{display:inline-block;color:#ffcc00;font-size:11px;font-weight:500;margin-left:8px}.module-content .tp-filters input{min-width:min(240px,100%)}.module-content .tp-filters label{font-size:12px}.module-content .tp-filters label input{display:block;margin-top:7px;width:100%}.module-content .tp-total{border-radius:8px}.module-content table{width:100%}.module-content .module-subpanel:has(#qualityTable){margin-top:18px}.validation-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.validation-metrics>div{padding:13px;border:1px solid #3a414c;border-radius:10px;background:#171e29}.validation-metrics span{display:block;font-size:10px;color:#afb8c7;margin-bottom:6px}.validation-metrics strong{font-size:22px;color:#fff}.validation-state{font-size:12px;line-height:1.6;color:#cbd1da;margin-top:15px}.validation-state[data-state="pending"]{color:#facc15}.validation-state[data-state="ready"]{color:#92d5ad}#qualityTable td{white-space:normal}#qualityTable th:first-child{width:85px}.module-content [class*="text-blue"]{color:#e9d47a}.module-content .bg-blue-500{background:#b59a36}
+@media(min-width:1200px){.module-content .lg\:grid-cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}.module-content .compact-product{min-width:190px}}
+@media(max-width:900px){.analysis-module{grid-template-columns:150px minmax(0,1fr);gap:12px}.module-content{padding:16px}.module-guide{padding:12px 10px}.validation-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:680px){.analysis-module{display:flex;flex-direction:column;gap:10px}.module-guide{position:static;width:100%}.module-guide dl{display:grid;grid-template-columns:96px minmax(0,1fr);gap:5px 10px}.module-guide dt{margin:0}.module-guide dd{margin:0}.module-content{width:100%;padding:14px}.module-heading h2{font-size:18px}.module-nav a{font-size:10px;padding:8px}.analysis-reading-key{font-size:11px}.tp-filters input{min-width:0!important}.module-subpanel .grid{grid-template-columns:1fr!important}}
+@media print{.module-nav{display:none}.module-guide{position:static;background:#fafafa;color:#111;border:1px solid #ccc}.module-guide dt,.module-guide dd{color:#111}.analysis-module{grid-template-columns:150px minmax(0,1fr)}.module-content{overflow:visible}.analysis-group{break-after:avoid}.module-heading{break-after:avoid}}
+</style>
+<style>
+.module-fold>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;list-style:none}.module-fold>summary::-webkit-details-marker{display:none}.module-fold>summary::after{content:'Ver detalhes +';font:600 10px system-ui;white-space:nowrap;color:#ffcc00;padding:7px 9px;border:1px solid #544b29;border-radius:7px}.module-fold[open]>summary::after{content:'Recolher −'}.module-fold>summary h3{margin:0}.module-fold[open]>summary{margin-bottom:14px}.module-fold>summary:focus-visible{outline:2px solid #ffcc00;outline-offset:5px}
+</style>
+</head>
+<body class="p-4 md:p-8 relative min-h-screen">
+
+    <!-- HEADER -->
+    <header class="flex flex-col md:flex-row justify-between items-center bg-tpCard p-6 rounded-2xl border border-tpBorder shadow-2xl mb-8 gap-4">
+        <div class="flex items-center gap-5">
+            <div class="shrink-0 rounded-xl overflow-hidden shadow-md" style="width:88px;height:88px;flex-shrink:0">
+                <img src="data:image/png;base64,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" alt="Logo oficial da Tennis Place" width="88" height="88" style="display:block;width:100%;height:100%;object-fit:contain">
+            </div>
+            <div>
+                <h1 class="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+                    Dashboard de Estoque x Vendas
+                </h1>
+                <p class="text-xs text-slate-400 mt-1" id="headerSubtext">
+                    <i class="fa-solid fa-store text-tpYellow mr-1"></i> Lojas Apuradas: <strong id="storeNamesText">CIDA, CONT, ESBH, FLAM, GRUU, OUTB, PASS</strong>
+                </p>
+            </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+            <!-- BOTÃO CARREGAR EXCEL -->
+            <input type="file" id="excelFileInput" accept=".xlsx, .xls" class="hidden" onchange="readExcelFile(event)">
+            <button onclick="document.getElementById('excelFileInput').click()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 py-2 rounded-xl transition flex items-center gap-2 shadow-lg cursor-pointer">
+                <i class="fa-solid fa-file-excel"></i> <span id="excelBtnText">Atualizar Planilha Excel</span>
+            </button>
+
+            <button id="downloadTemplateBtn" onclick="downloadBaseTemplate()" title="Baixar a nova planilha base vazia com os campos de estoque, vendas e instruções" class="bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs px-4 py-2 rounded-xl transition flex items-center gap-2 shadow-lg cursor-pointer">
+                <i class="fa-solid fa-download"></i> <span>Baixar Planilha Base</span>
+            </button>
+
+            <button id="exportHealthBtn" onclick="exportHealthExcel()" disabled title="Exporte todos os registros da loja selecionada, conforme o modelo Saúde das Lojas Rede" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs px-4 py-2 rounded-xl transition flex items-center gap-2 shadow-lg cursor-pointer">
+                <i class="fa-solid fa-file-export"></i> <span>Exportar Saúde das Lojas (.xlsx)</span>
+            </button>
+            <span id="exportHealthMessage" role="status" aria-live="polite" class="text-xs text-slate-400"></span>
+
+            <div class="flex flex-col gap-2 items-stretch">
+<span id="importNotice" role="status" class="text-xs text-tpYellow"></span>
+            <!-- FILTRO POR LOJA -->
+            <div class="flex items-center gap-2 bg-slate-900 px-3 py-2 rounded-xl border border-tpYellow/50 shadow-inner">
+                <label for="storeSelect" class="text-xs font-bold text-tpYellow uppercase tracking-wider flex items-center gap-1">
+                    <i class="fa-solid fa-filter"></i> Loja:
+                </label>
+                <select id="storeSelect" onchange="updateDashboard()" class="bg-slate-800 text-white font-bold text-xs px-3 py-1.5 rounded-lg border border-slate-600 focus:outline-none focus:border-tpYellow cursor-pointer">
+                    <option value="Geral">Geral (7 Lojas)</option>
+                    <option value="CIDA">CIDA</option>
+                    <option value="CONT">CONT</option>
+                    <option value="ESBH">ESBH</option>
+                    <option value="FLAM">FLAM</option>
+                    <option value="GRUU">GRUU</option>
+                    <option value="OUTB">OUTB</option>
+                    <option value="PASS">PASS</option>
+                </select>
+            </div>
+            <!-- TIPO DE APURAÇÃO -->
+            <div class="flex items-center justify-between gap-2 bg-slate-900 px-3 py-2 rounded-xl border border-tpYellow/50 shadow-inner">
+                <span class="text-xs font-bold text-tpYellow uppercase tracking-wider flex items-center gap-1">
+                    <i class="fa-solid fa-calendar-days"></i> Tipo de Apuração:
+                </span>
+                <div class="flex gap-1" role="group" aria-label="Tipo de apuração">
+                    <button type="button" id="periodBtn30" onclick="setPeriodo(30)" aria-pressed="false">30 DIAS</button>
+                    <button type="button" id="periodBtn60" onclick="setPeriodo(60)" aria-pressed="false">60 DIAS</button>
+<button type="button" id="periodBtn90" onclick="setPeriodo(90)" aria-pressed="true">90 DIAS</button>
+                </div>
+            </div>
+            </div>
+            
+            <span class="bg-emerald-500/10 text-emerald-400 text-xs px-3 py-2 rounded-xl font-medium border border-emerald-500/20 flex items-center gap-1">
+                <i class="fa-solid fa-circle-check text-[10px]"></i> <span id="auditBadge">7 Lojas na Base</span>
+            </span>
+            <button onclick="window.print()" class="bg-tpYellow hover:bg-tpYellowHover text-black font-bold text-xs px-4 py-2 rounded-xl transition flex items-center gap-2 shadow-lg cursor-pointer">
+                <i class="fa-solid fa-print"></i> Imprimir
+            </button>
+        </div>
+    </header>
+
+    <!-- SEÇÃO 1: KPIs GERAIS -->
+    <nav class="module-nav" aria-label="Navegação dos módulos"><a href="#modulo-validacao">Validar importação</a><a href="#modulo-1">1 Visão geral</a><a href="#modulo-2">2 Saúde e produtos</a><a href="#modulo-3">3 Lojas e variações</a><a href="#modulo-4">4 Vendas e ABC</a><a href="#modulo-5">5 Preços e margens</a><a href="#modulo-6">6 Remanejamento</a><a href="#modulo-7">7 Compras</a></nav><p class="analysis-reading-key"><strong>Guia dos valores</strong> Peças = unidades físicas · PDV = preço de venda unitário atual · Custo = valor de compra unitário · Vendas em R$ = estimativa pelo PDV atual. Fora do módulo 1, o estoque em R$ é sempre avaliado a custo de compra.</p><section class="analysis-module" id="modulo-validacao" aria-labelledby="title-validacao"><aside class="module-guide" aria-label="Como ler este módulo"><span class="guide-category">IMPORTAÇÃO</span><dl><dt>Base da análise</dt><dd>Cadastro, estoque, vendas e preços informados.</dd><dt>Como ler</dt><dd>Pendência não é zero. Corrija a planilha e importe novamente.</dd><dt>Recorte</dt><dd>Loja selecionada no topo.</dd><dt>Referência</dt><dd>Validação de preenchimento; não concilia saldo com o ERP.</dd></dl></aside><div class="module-content"><header class="module-heading"><span class="module-index">✓</span><div><h2 id="title-validacao">Validação da importação</h2><p>Confira a base antes de interpretar os resultados.</p></div></header><div class="validation-metrics" aria-live="polite"><div><span>Linhas da base</span><strong id="validationRows">0</strong></div><div><span>Na análise</span><strong id="validationAnalyzed">0</strong></div><div><span>Aptas às sugestões</span><strong id="validationReady">0</strong></div><div><span>Com pendências</span><strong id="validationIssues">0</strong></div></div><p id="validationState" class="validation-state">Comece em Atualizar Planilha Excel. Depois confira aqui se há pendências.</p><div class="module-subpanel"><h3 class="module-subtitle">Pendências encontradas</h3><p class="tp-total" id="qualityTotal">Importe uma planilha para validar os registros.</p><div class="tp-scroll"><table class="tp-table" id="qualityTable"></table></div></div></div></section><div class="analysis-group"><span>01 — 03</span><h2>Análise de estoque</h2><p>Saldo cobertura saúde e distribuição da grade.</p></div><section class="analysis-module" id="modulo-1" aria-labelledby="title-1"><aside class="module-guide" aria-label="Como ler este módulo"><span class="guide-category">ESTOQUE</span><dl><dt>Base da análise</dt><dd>Saldo em peças, PDV e custo unitário.</dd><dt>Como ler</dt><dd>PDV indica o valor de tabela; custo indica o valor de aquisição informado.</dd><dt>Recorte</dt><dd>Loja e período do topo.</dd><dt>Referência</dt><dd>Cobertura = estoque ÷ venda média mensal.</dd></dl></aside><div class="module-content"><header class="module-heading"><span class="module-index">01</span><div><h2 id="title-1">Visão geral do estoque</h2><p>Quanto há em estoque e por quanto tempo esse saldo atende à média de vendas.</p></div></header><div class="module-subpanel">
+        <h3 class="module-subtitle">Indicadores do saldo e da demanda <span class="module-scope">Loja <span class="selectedStoreText">Geral</span></span></h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="bg-tpCard p-5 rounded-xl border border-tpBorder relative overflow-hidden">
+                <div class="absolute top-0 right-0 w-2 h-full bg-tpYellow"></div>
+                <p class="text-xs uppercase font-semibold text-slate-400">Estoque Atual Total</p>
+                <h3 class="text-2xl font-black text-white mt-1"><span id="kpiEstoquePcs">0</span> <span class="text-xs text-slate-400 font-normal">pçs</span></h3>
+                <p class="text-[11px] text-slate-400 mt-2">Estoque × PDV: <span class="text-tpYellow font-bold" id="kpiEstoqueValor">R$ 0,00</span></p>
+            </div>
+            <div class="bg-tpCard p-5 rounded-xl border border-tpBorder relative overflow-hidden">
+                <div class="absolute top-0 right-0 w-2 h-full bg-blue-500"></div>
+                <p class="text-xs uppercase font-semibold text-slate-400">Venda média mensal</p>
+                <h3 class="text-2xl font-black text-white mt-1"><span id="kpiVmmPcs">0</span> <span class="text-xs text-slate-400 font-normal">pçs/mês</span></h3>
+                <p class="text-[11px] text-slate-400 mt-2">Venda estimada a PDV: <span class="text-blue-400 font-bold" id="kpiVmmValor">R$ 0,00/mês</span></p>
+            </div>
+            <div class="bg-tpCard p-5 rounded-xl border border-tpBorder relative overflow-hidden">
+                <div class="absolute top-0 right-0 w-2 h-full bg-emerald-500"></div>
+                <p class="text-xs uppercase font-semibold text-slate-400">Cobertura do estoque</p>
+                <h3 class="text-2xl font-black text-emerald-400 mt-1"><span id="kpiCoberturaMeses">0.00</span> <span class="text-xs text-slate-400 font-normal">meses (~<span id="kpiCoberturaDias">0</span> dias)</span></h3>
+                <p class="text-[11px] text-slate-400 mt-2"><span class="lblGiro">Giro Trimestral</span>: <span class="text-white font-bold" id="kpiGiro">0,00x</span></p>
+            </div>
+            <div class="bg-tpCard p-5 rounded-xl border border-tpBorder relative overflow-hidden">
+                <div class="absolute top-0 right-0 w-2 h-full bg-rose-500"></div>
+                <p class="text-xs uppercase font-semibold text-slate-400">Taxa de Ruptura</p>
+                <h3 class="text-2xl font-black text-rose-500 mt-1"><span id="kpiRupturaTaxa">0.00%</span> <span class="text-xs text-slate-400 font-normal">dos SKUs (<span id="kpiRupturaSkus">0</span>)</span></h3>
+                <p class="text-[11px] text-slate-400 mt-2"><span class="lblVendaPerdida">Venda histórica em ruptura 3M</span>: <span class="text-rose-400 font-bold" id="kpiVendaPerdida">R$ 0,00</span></p>
+            </div>
+        </div>
+        <div class="mt-4 p-4 bg-slate-900/90 rounded-xl border-l-4 border-tpYellow text-xs text-slate-300 shadow-md">
+            <p class="font-bold text-tpYellow mb-1 flex items-center gap-2">
+                <i class="fa-solid fa-magnifying-glass-chart"></i> Diagnóstico Operacional:
+            </p>
+            <p id="diagKpi">Carregando indicadores...</p>
+        </div>
+    </div><div class="bg-tpCard p-5 rounded-xl border border-tpBorder mb-4"><strong>Estoque valorizado a custo unitário: <span id="stockCost">—</span></strong><p id="costNote" class="text-xs text-slate-400 mt-2"></p></div></div></section><section class="analysis-module" id="modulo-2" aria-labelledby="title-2"><aside class="module-guide" aria-label="Como ler este módulo"><span class="guide-category">ESTOQUE</span><dl><dt>Base da análise</dt><dd>Estoque atual e vendas em peças. Valores em R$ usam o custo unitário de compra.</dd><dt>Como ler</dt><dd>O gráfico mostra capital a custo; as listas mostram todas as variações do recorte.</dd><dt>Recorte</dt><dd>Loja e período do topo. A pesquisa afeta somente a relação de produtos.</dd><dt>Referência</dt><dd>Saudável: 1 a 3 meses. Excesso: acima de 3 meses.</dd></dl></aside><div class="module-content"><header class="module-heading"><span class="module-index">02</span><div><h2 id="title-2">Saúde do estoque e produtos</h2><p>Localize ruptura, saldo saudável, excesso e estoque sem venda em um único lugar.</p></div></header><div class="module-subpanel">
+        <h3 class="module-subtitle">Distribuição por saúde <span class="module-scope"><span id="sec2TotalSkus">0</span> SKUs</span></h3><p class="module-basis">Gráfico em R$ de estoque a custo: saldo atual × custo unitário de compra. Clique no status para ver os produtos.</p>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="bg-tpCard p-5 rounded-xl border border-tpBorder flex flex-col justify-between">
+                <h3 class="text-sm font-bold text-slate-200 mb-4">Estoque a custo (R$) por categoria de saúde</h3>
+                <div class="h-64 relative flex items-center justify-center">
+                    <canvas id="healthChart"></canvas>
+                </div>
+            </div>
+            <div class="bg-tpCard p-5 rounded-xl border border-tpBorder">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-sm font-bold text-slate-200">Detalhamento por Status de Estoque</h3>
+                    <span class="text-[10px] text-tpYellow bg-tpYellow/10 px-2 py-0.5 rounded border border-tpYellow/30"><i class="fa-solid fa-hand-pointer mr-1"></i>Clique no status para ver todos os produtos</span>
+                </div>
+                <p id="stockCostCoverage" class="module-basis" role="status"></p><ul class="space-y-2.5 text-xs" id="healthStatusList">
+                    <!-- Gerado via JS -->
+                </ul>
+            </div>
+        </div>
+        <div class="mt-4 p-4 bg-slate-900/90 rounded-xl border-l-4 border-tpYellow text-xs text-slate-300 shadow-md">
+            <p class="font-bold text-tpYellow mb-1 flex items-center gap-2">
+                <i class="fa-solid fa-magnifying-glass-chart"></i> Diagnóstico Operacional:
+            </p>
+            <p id="diagHealth">Carregando...</p>
+        </div>
+    </div><div class="module-subpanel">
+        <h3 class="module-subtitle">Giro e valor imobilizado</h3><p class="module-basis">Cobertura em meses × valor do estoque a custo. Não é faturamento.</p>
+        <p id="matrixMethod" class="text-xs text-slate-400 mb-3">Giro estimado pelas vendas em relação ao estoque.</p>
+        <div class="bg-tpCard p-5 rounded-xl border border-tpBorder overflow-x-auto shadow-xl">
+             <table class="w-full text-xs text-left mb-2">
+                <thead>
+                    <tr class="border-b border-tpBorder text-slate-400 bg-slate-900/60">
+                        <th class="p-3">Quadrante</th>
+                        <th class="p-3 text-center">Itens</th>
+                        <th class="p-3 text-right">Estoque (pçs)</th>
+                        <th class="p-3 text-right">Estoque a custo</th>
+                        <th class="p-3 text-center">Ação</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-tpBorder/50 font-medium" id="quadrantTableBody">
+                    <!-- Gerado JS -->
+                </tbody>
+            </table>
+        </div>
+    </div><div class="module-subpanel">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
+            <h3 class="module-subtitle">Relação completa de produtos <span class="module-scope"><span id="sec7Count">0</span> itens</span></h3><p class="module-basis">Vendas e estoque em peças; cobertura em meses; valor do estoque a custo. O subtotal acompanha os filtros abaixo.</p>
+            <div class="flex items-center gap-2 w-full sm:w-auto">
+                <i class="fa-solid fa-magnifying-glass text-slate-400"></i>
+                <input type="text" id="tableSearch" oninput="filterAlertTable()" placeholder="Buscar produto, cor, marca, agrupador..." class="bg-slate-900 text-xs text-white px-3 py-1.5 rounded-lg border border-slate-700 focus:outline-none focus:border-tpYellow w-full sm:w-64">
+            </div>
+        </div>
+        <div class="tp-filters" id="filters7"></div><p class="text-xs text-slate-400">Tabela resumida. Cadastro, data de entrada e preços unitários ficam em Detalhes de cada produto.</p><p id="subtotal7" class="tp-total"></p>
+        <div class="bg-tpCard p-5 rounded-xl border border-tpBorder shadow-xl">
+            <div class="overflow-x-auto max-h-[500px]">
+                <table class="w-full text-xs text-left" id="dataTable">
+<thead id="headers7"></thead>
+                    <tbody class="divide-y divide-tpBorder/40" id="tableBody">
+                        <!-- Gerado JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div></div></section><section class="analysis-module" id="modulo-3" aria-labelledby="title-3"><aside class="module-guide" aria-label="Como ler este módulo"><span class="guide-category">ESTOQUE</span><dl><dt>Base da análise</dt><dd>Comparativo: peças e meses. Gráfico financeiro: estoque a custo e custo estimado das unidades vendidas.</dd><dt>Como ler</dt><dd>Um modelo pode ter saldo no total e faltar em uma variação.</dd><dt>Recorte</dt><dd>O quadro por agrupador usa toda a rede; os demais respeitam a loja do topo.</dd><dt>Referência</dt><dd>O saldo é o estoque atual; as vendas não são subtraídas novamente.</dd></dl></aside><div class="module-content"><header class="module-heading"><span class="module-index">03</span><div><h2 id="title-3">Comparativo de lojas e variações</h2><p>Compare o saldo da rede e identifique falta ou excesso por modelo cor e tamanho.</p></div></header><div class="module-subpanel">
+        <h3 class="module-subtitle">Valor do estoque por loja</h3><p class="module-basis">R$ de estoque a custo comparado ao custo médio mensal das unidades vendidas. Respeita a loja do topo.</p>
+        <div class="bg-tpCard p-5 rounded-xl border border-tpBorder">
+            <div class="h-80">
+                <canvas id="storePerformanceChart"></canvas>
+            </div>
+        </div>
+        <div class="mt-4 p-4 bg-slate-900/90 rounded-xl border-l-4 border-tpYellow text-xs text-slate-300 shadow-md">
+            <p class="font-bold text-tpYellow mb-1 flex items-center gap-2">
+                <i class="fa-solid fa-magnifying-glass-chart"></i> Diagnóstico Operacional:
+            </p>
+            <p id="diagStore">Capital em estoque a custo e custo estimado das unidades vendidas por mês. Não representa faturamento.</p>
+        </div>
+    </div><div class="module-subpanel"><h3 class="module-subtitle">Comparativo da rede por agrupador</h3><p class="module-basis">Peças e cobertura em meses. Este quadro consulta todas as lojas, mesmo com uma loja selecionada no topo.</p>
+<p class="text-xs text-slate-400 mb-3">Todas as lojas, independentemente do filtro do topo. Compara estoque atual, vendas do período selecionado e cobertura em meses. O estoque é o saldo atual informado: não se subtraem novamente as vendas. Lojas sem estoque e sem vendas registradas para o produto não entram na análise.</p>
+<div class="tp-filters"><label for="group9">Agrupador</label><select id="group9" onchange="renderComparison()"></select></div><div class="tp-scroll"><table class="tp-table" id="table9"></table></div></div><div class="module-subpanel"><h3 class="module-subtitle">Modelo cor e tamanho</h3><p class="module-basis">Saldo e demanda em peças. Abra o total do modelo e suas variações sem somá-los duas vezes.</p><div class="tp-filters"><input id="modelSearch" oninput="renderModelView()" placeholder="Buscar modelo, cor, tamanho ou marca"></div><p class="text-xs text-slate-400">O total do modelo não elimina rupturas nas variações. Totais com histórico incompleto são parciais.</p><div class="tp-scroll"><table class="tp-table" id="modelTable"></table></div></div></div></section><div class="analysis-group"><span>04</span><h2>Análise de vendas</h2><p>Relevância dos produtos e volumes vendidos.</p></div><section class="analysis-module" id="modulo-4" aria-labelledby="title-4"><aside class="module-guide" aria-label="Como ler este módulo"><span class="guide-category">VENDAS</span><dl><dt>Base da análise</dt><dd>ABC em R$ estimados a PDV. Marcas em peças.</dd><dt>Como ler</dt><dd>Classe A mostra relevância nas vendas; não significa estoque saudável ou lucro.</dd><dt>Recorte</dt><dd>Loja e período do topo.</dd><dt>Referência</dt><dd>Venda estimada = peças vendidas × PDV atual.</dd></dl></aside><div class="module-content"><header class="module-heading"><span class="module-index">04</span><div><h2 id="title-4">Vendas e curva ABC</h2><p>Identifique os produtos relevantes para as vendas e compare o volume por marca.</p></div></header><div class="module-subpanel">
+        <h3 class="module-subtitle">Curva ABC das vendas estimadas</h3><p class="module-basis">Base em R$: quantidade vendida no período × PDV atual. Acumulado é a soma das participações dos produtos na ordem do maior para o menor.</p>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="bg-tpCard p-5 rounded-xl border border-tpBorder flex flex-col justify-between">
+                <div class="flex justify-between items-center mb-3">
+                    <span class="text-xs text-slate-400"><i class="fa-solid fa-hand-pointer text-tpYellow mr-1"></i>Clique na classe para ver todos os itens</span>
+                </div>
+                <div class="space-y-3 my-auto">
+                    <div onclick="openTop10Modal('abc', 'CLASSE A')" class="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl cursor-pointer hover:bg-emerald-500/20 transition group">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-xs font-bold text-emerald-400 group-hover:underline">CLASSE A <i class="fa-solid fa-arrow-up-right-from-square text-[10px] ml-1"></i></span>
+                            <span class="text-xs font-black text-white" id="abcA_pct">80% da Receita</span>
+                        </div>
+                        <p class="text-[11px] text-slate-300" id="abcA_desc">Carregando...</p>
+                    </div>
+                    <div onclick="openTop10Modal('abc', 'CLASSE B')" class="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl cursor-pointer hover:bg-amber-500/20 transition group">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-xs font-bold text-amber-400 group-hover:underline">CLASSE B <i class="fa-solid fa-arrow-up-right-from-square text-[10px] ml-1"></i></span>
+                            <span class="text-xs font-black text-white" id="abcB_pct">15% da Receita</span>
+                        </div>
+                        <p class="text-[11px] text-slate-300" id="abcB_desc">Carregando...</p>
+                    </div>
+                    <div onclick="openTop10Modal('abc', 'CLASSE C')" class="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-xl cursor-pointer hover:bg-rose-500/20 transition group">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-xs font-bold text-rose-400 group-hover:underline">CLASSE C <i class="fa-solid fa-arrow-up-right-from-square text-[10px] ml-1"></i></span>
+                            <span class="text-xs font-black text-white" id="abcC_pct">5% da Receita</span>
+                        </div>
+                        <p class="text-[11px] text-slate-300" id="abcC_desc">Carregando...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-tpCard p-5 rounded-xl border border-tpBorder lg:col-span-2">
+                <div class="h-72">
+                    <canvas id="paretoChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div><div class="module-subpanel">
+        <h3 class="module-subtitle">Vendas e estoque por marca em peças</h3><p class="module-basis">Quantidades absolutas, sem porcentagem: compara unidades vendidas no período e saldo atual. Exibe até 15 marcas.</p>
+        <div class="bg-tpCard p-5 rounded-xl border border-tpBorder">
+            <div class="flex justify-between items-center mb-3">
+                <span class="text-xs text-slate-400"><i class="fa-solid fa-circle-info text-tpYellow mr-1"></i> Unidades físicas: vendas do período e estoque atual. Não são valores em reais nem percentuais.</span>
+            </div>
+            <div class="h-80">
+                <canvas id="brandShareChart"></canvas>
+            </div>
+        </div>
+        <div class="mt-4 p-4 bg-slate-900/90 rounded-xl border-l-4 border-tpYellow text-xs text-slate-300 shadow-md">
+            <p class="font-bold text-tpYellow mb-1 flex items-center gap-2">
+                <i class="fa-solid fa-magnifying-glass-chart"></i> Diagnóstico Operacional:
+            </p>
+            <p id="diagBrand">Compare demanda e saldo por marca; confirme a cobertura dos modelos antes de decidir a reposição.</p>
+        </div>
+    </div></div></section><div class="analysis-group"><span>05</span><h2>Análise de preços e custos</h2><p>Preços unitários markup e resultado teórico.</p></div><section class="analysis-module" id="modulo-5" aria-labelledby="title-5"><aside class="module-guide" aria-label="Como ler este módulo"><span class="guide-category">PDV E CUSTO</span><dl><dt>Base da análise</dt><dd>Preço de venda e custo unitários atuais.</dd><dt>Como ler</dt><dd>Markup é multiplicador. Margem é percentual sobre a venda; não é lucro líquido.</dd><dt>Recorte</dt><dd>Loja do topo; pesquisas e filtros próprios de cada quadro.</dd><dt>Referência</dt><dd>Markup = PDV ÷ custo. Não considera descontos impostos ou despesas.</dd></dl></aside><div class="module-content"><header class="module-heading"><span class="module-index">05</span><div><h2 id="title-5">Preços markup e rentabilidade</h2><p>Reúna a condição de preço e o resultado bruto estimado para os itens pesquisados.</p></div></header><div class="module-subpanel"><h3 class="module-subtitle">Markup dos preços atuais</h3><p class="module-basis">Compara o PDV unitário ao custo unitário. Os filtros alteram apenas este quadro.</p>
+<p class="text-xs text-slate-400 mb-3">Markup = preço de venda ÷ custo unitário. O consolidado é ponderado pelo estoque dos itens com custo válido. Respeita a loja selecionada no topo.</p>
+<div class="tp-filters"><input id="search8" oninput="renderMarkup()" placeholder="Produto, cor, marca, agrupador ou outro campo" aria-label="Pesquisar markup"><select id="brand8" aria-label="Marca" onchange="renderMarkup()"></select><select id="sub8" aria-label="Subgrupo" onchange="renderMarkup()"></select></div>
+<p id="subtotal8" class="tp-total"></p><div class="tp-scroll"><table class="tp-table"><thead><tr><th>Produto</th><th>Loja</th><th>Marca</th><th>Agrupador</th><th>Subgrupo</th><th>Custo unitário</th><th>PDV</th><th>Estoque</th><th>Markup</th></tr></thead><tbody id="body8"></tbody></table></div></div><div class="module-subpanel"><h3 class="module-subtitle">Rentabilidade teórica das vendas</h3><p class="module-basis">Estimativa com os preços e custos atuais. A pesquisa abaixo altera apenas esta tabela e seu total.</p><div class="tp-filters"><input id="profitSearch" oninput="renderProfitView()" placeholder="Buscar produto, marca ou agrupador"></div><p class="tp-total" id="profitTotal"></p><div class="tp-scroll"><table class="tp-table" id="profitTable"></table></div></div></div></section><div class="analysis-group"><span>06 — 07</span><h2>Planejamento do abastecimento</h2><p>Remanejar primeiro e avaliar a necessidade de compra.</p></div><section class="analysis-module" id="modulo-6" aria-labelledby="title-6"><aside class="module-guide" aria-label="Como ler este módulo"><span class="guide-category">ABASTECIMENTO</span><dl><dt>Base da análise</dt><dd>Quantidades em peças por código e variação.</dd><dt>Como ler</dt><dd>Proposta de movimentação; não altera o estoque nem executa transferência.</dd><dt>Recorte</dt><dd>Plano calculado para a rede; o topo mostra movimentos da loja.</dd><dt>Referência</dt><dd>Preserva a reserva definida nos parâmetros do módulo 7.</dd></dl></aside><div class="module-content"><header class="module-heading"><span class="module-index">06</span><div><h2 id="title-6">Remanejamento entre lojas</h2><p>Avalie se o excesso em uma loja pode atender à necessidade de outra.</p></div></header><div class="module-subpanel"><h3 class="module-subtitle">Transferências propostas</h3><p class="module-basis">Confirme a disponibilidade na origem e o prazo de envio. A compra do módulo 7 já desconta estas propostas.</p><p class="text-xs text-slate-400">Relaciona somente código, marca, agrupador, cor e tamanho coincidentes. Distribui o excesso entre destinos sem usar duas vezes o mesmo estoque. A prioridade é a menor cobertura. Considera toda a rede; o filtro do topo mostra movimentos da loja.</p><p class="tp-total" id="transferTotal"></p><div class="tp-scroll"><table class="tp-table" id="transferTable"></table></div></div></div></section><section class="analysis-module" id="modulo-7" aria-labelledby="title-7"><aside class="module-guide" aria-label="Como ler este módulo"><span class="guide-category">ABASTECIMENTO</span><dl><dt>Base da análise</dt><dd>Necessidade em peças e investimento a custo unitário.</dd><dt>Como ler</dt><dd>O valor em R$ é compra estimada, não preço de venda nem faturamento.</dd><dt>Recorte</dt><dd>Loja e período do topo; pesquisa marca e ação filtram o plano.</dd><dt>Referência</dt><dd>Pedidos em aberto não são descontados. Confirme antes de aprovar.</dd></dl></aside><div class="module-content"><header class="module-heading"><span class="module-index">07</span><div><h2 id="title-7">Sugestões de compra</h2><p>Revise o que ainda precisa comprar após o remanejamento proposto.</p></div></header><div class="module-subpanel" id="parametros-compra"><h3 class="module-subtitle">Parâmetros das sugestões</h3><p class="module-basis">Configuração global da meta de cobertura e do prazo de reposição. A observação de entrada também afeta a saúde do estoque.</p><div class="tp-filters">
+<label>Meta de cobertura (meses)<input id="targetMonths" type="number" min="1" step="0.5" value="3" onchange="updateDashboard()"></label>
+<label>Prazo de reposição (dias; ajuste por fornecedor)<input id="leadDays" type="number" min="0" value="15" onchange="updateDashboard()"></label>
+<label>Observação após última entrada (dias)<input id="minDays" type="number" min="1" value="14" onchange="updateDashboard()"></label>
+<input id="agingDays" type="hidden" value="90"></div>
+<p class="text-xs text-slate-400">Saúde: crítico abaixo de 1 mês; saudável entre 1 e 3; excesso entre 3 e 6; excesso elevado acima de 6. A meta ajustável controla as sugestões. 30/60/90 dias usam M1 / M1+M2 / M1+M2+M3. A venda média mensal é a soma das vendas dividida pelos meses selecionados. A tendência de volume é um sinal, não altera automaticamente a compra.</p></div><div class="module-subpanel"><h3 class="module-subtitle">Plano de compras por variação</h3><p class="module-basis">Quantidade em peças; investimento em R$ de custo: compra sugerida × custo unitário. Pesquisa e filtros atualizam o subtotal e a exportação.</p><div class="tp-filters"><input id="buySearch" oninput="renderBuyingViews()" placeholder="Buscar produto, modelo, marca ou cor"><select id="buyBrand" onchange="renderBuyingViews()"></select><select id="buyAction" onchange="renderBuyingViews()"></select><button class="bg-tpYellow text-black px-4 py-2 rounded-lg" onclick="exportBuying()">Exportar sugestões</button></div><p class="text-xs text-slate-400">Ideal = venda média mensal × maior valor entre meta e prazo de reposição em meses. Compra = ideal − estoque − remanejamento proposto, limitada a zero. Quantidades são propostas por variação; não incluem caixa mínima, grade obrigatória ou orçamento do fornecedor. Pedidos em aberto não são descontados; confira-os antes de aprovar novas compras. Risco no prazo indica possível falta mesmo com o plano.</p><p class="tp-total" id="buyTotal"></p><div class="tp-scroll"><table class="tp-table" id="buyTable"></table></div></div></div></section>
+    <!-- MODAL POPUP PARA Produtos -->
+    <div id="top10Modal" class="fixed inset-0 modal-backdrop hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-tpCard border border-tpBorder rounded-2xl max-w-[96vw] w-full p-6 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center pb-4 border-b border-tpBorder">
+                <div>
+                    <h3 class="text-base font-bold text-white flex items-center gap-2" id="modalTitle">
+                        <i class="fa-solid fa-trophy text-tpYellow"></i> Produtos Produtos
+                    </h3>
+                    <p class="text-xs text-slate-400 mt-0.5" id="modalSub">Contexto da Categoria</p>
+                </div>
+                <button onclick="closeTop10Modal()" class="text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 p-2 rounded-xl transition cursor-pointer">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="overflow-y-auto my-4 flex-1">
+                <table class="w-full text-xs text-left">
+                    <thead class="bg-slate-900/80 text-slate-400 sticky top-0">
+                        <tr class="border-b border-tpBorder">
+                            <th class="p-2.5 text-center">#</th>
+                            <th class="p-2.5">Descrição Produto</th>
+                            <th class="p-2.5">Marca</th>
+                            <th class="p-2.5">Loja</th>
+                            <th class="p-2.5 text-right">PDV (R$)</th>
+                            <th class="p-2.5 text-right"><span class="lblVda">Vda 3M</span></th>
+                            <th class="p-2.5 text-right">Estoque</th>
+                            <th class="p-2.5 text-right">Valor Est. (R$)</th>
+                            <th class="p-2.5 text-center">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-tpBorder/40" id="modalTableBody">
+                        <!-- Conteúdo dinâmico modal -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="pt-3 border-t border-tpBorder flex justify-between items-center text-xs text-slate-400">
+                <span>Todos os itens. Abra Detalhes para consultar cadastro, gênero e valores unitários.</span>
+                <button onclick="closeTop10Modal()" class="bg-slate-800 hover:bg-slate-700 text-white font-bold px-4 py-1.5 rounded-xl transition cursor-pointer">
+                    Fechar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- FOOTER -->
+    <footer class="mt-12 pt-6 border-t border-tpBorder text-center text-xs text-slate-500 flex flex-col md:flex-row justify-between items-center gap-4">
+        <div><span class="font-bold text-slate-400">Tennis Place - Gestão de Estoque & Vendas</span> &copy; 2026. Todos os direitos reservados.</div>
+        <div><span class="text-tpYellow"><i class="fa-solid fa-database mr-1"></i> Dashboard Auto-Carregável</span></div>
+    </footer>
+
+    <!-- SCRIPT DE PROCESSAMENTO E INTERAÇÃO -->
+    <script>
+        let rawData = [];
+
+        // Tipo de apuração: define quantos meses a coluna "Venda" representa (os dados importados não são alterados).
+        const PERIODOS = {
+            30: { meses: 1, longo: '30 Dias', curto: '30D', extenso: '30 dias' },
+            90: { meses: 3, longo: '90 Dias', curto: '90D', extenso: '90 dias' }
+        };
+        let periodo = 90;
+
+        function applyPeriodLabels() {
+            const P = PERIODOS[periodo];
+            const setAll = (cls, txt) => document.querySelectorAll('.' + cls).forEach(el => el.textContent = txt);
+            setAll('lblGiro', `Giro ${P.longo}`);
+            setAll('lblVendaPerdida', `Venda histórica em ruptura ${P.curto}`);
+            setAll('lblVendas', `Vendas ${P.curto}`);
+            setAll('lblVda', `Vda ${P.curto}`);
+            [30, 60, 90].forEach(v => {
+                const b = document.getElementById('periodBtn' + v);
+                if (!b) return;
+                const on = v === periodo;
+                b.setAttribute('aria-pressed', on ? 'true' : 'false');
+                b.className = 'text-xs font-bold px-3 py-1.5 rounded-lg border transition cursor-pointer ' +
+                    (on ? 'bg-tpYellow text-black border-tpYellow' : 'bg-slate-800 text-white border-slate-600 hover:border-tpYellow');
+            });
+        }
+
+        function setPeriodo(p) {
+            if (!PERIODOS[p]) return;
+            periodo = p;
+            applyPeriodLabels();
+            updateDashboard();
+        }
+        let chartHealth, chartStore, chartBrand, chartPareto;
+
+        const formatC = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+        const formatN = (val) => new Intl.NumberFormat('pt-BR').format(val);
+
+        window.onload = () => {
+            applyPeriodLabels();
+            const saved = localStorage.getItem('tp_dashboard_data_v4');
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    if (parsed && parsed.length > 0) rawData = parsed;
+                } catch(e) { console.error(e); }
+            }
+            if (rawData.length > 0) {
+                setupStoreSelect();
+                updateDashboard();
+            } else {
+                // Auto-prompt para selecionar arquivo caso esteja vazio
+                document.getElementById('excelFileInput').click();
+            }
+        };
+
+        function readExcelFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheet = workbook.SheetNames[0];
+                const rows = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet]);
+
+                rawData = rows.map(row => {
+                    const getVal = (possibleKeys) => {
+                        for (let k of possibleKeys) {
+                            if (row[k] !== undefined && row[k] !== null) return row[k];
+                            let found = Object.keys(row).find(key => key.trim().toUpperCase() === k.toUpperCase());
+                            if (found && row[found] !== undefined && row[found] !== null) return row[found];
+                        }
+                        return '';
+                    };
+
+                    const loja = String(getVal(['Loja', 'LOJA'])).trim();
+                    const marca = String(getVal(['MARCA', 'Marca'])).trim();
+                    const descr = String(getVal(['DESCRPROD', 'Descr', 'DESCRICAO', 'PRODUTO'])).trim();
+                    const pdv = parseFloat(getVal(['PDV', 'pdv', 'PRECO'])) || 0;
+                    const venda = parseInt(getVal(['Venda', 'VENDA', 'Vendas'])) || 0;
+                    const estoque = parseInt(getVal(['Estoque', 'ESTOQUE'])) || 0;
+
+                    return { Loja: loja, Marca: marca, Descr: descr, PDV: pdv, Venda: venda, Estoque: estoque };
+                }).filter(d => d.Venda > 0 || d.Estoque > 0);
+
+                try { localStorage.setItem('tp_dashboard_data_v4', JSON.stringify(rawData)); } catch(err){}
+
+                setupStoreSelect();
+                updateDashboard();
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // Baixa a planilha base vazia (mesmas colunas da base importada) com uma linha de exemplo.
+        // Apague a linha de exemplo antes de importar os dados reais.
+        function downloadBaseTemplate() {
+            const message = document.getElementById('exportHealthMessage');
+            try {
+                const headers = ['LOJA', 'MARCA', 'NOME', 'DESCRPROD', 'PDV', 'Venda', 'Estoque'];
+                const example = ['APAR', 'MARCA EXEMPLO', 'CAMISETA EXEMPLO M', 'CAMISETA EXEMPLO M PRETO M', 99.99, 10, 25];
+                const sheet = XLSX.utils.aoa_to_sheet([headers, example]);
+                sheet['!cols'] = [11, 18, 36, 62, 13, 13, 13].map(wch => ({ wch }));
+                sheet['E2'].z = '0.00';
+                sheet['F2'].z = '0';
+                sheet['G2'].z = '0';
+                const book = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(book, sheet, 'Export');
+                XLSX.writeFile(book, 'Planilha_Base_Dashboard.xlsx', { compression: true });
+                message.textContent = 'Planilha base baixada. Apague a linha de exemplo antes de importar.';
+            } catch (error) {
+                console.error('Falha ao gerar a planilha base', error);
+                message.textContent = 'Não foi possível baixar a planilha base. Recarregue a página e tente novamente.';
+            }
+        }
+
+        function setupStoreSelect() {
+            const storeSelect = document.getElementById('storeSelect');
+            const stores = [...new Set(rawData.map(d => d.Loja))].filter(Boolean).sort();
+            
+            storeSelect.innerHTML = `<option value="Geral">Geral (${stores.length} Lojas)</option>`;
+            stores.forEach(s => {
+                storeSelect.innerHTML += `<option value="${s}">${s}</option>`;
+            });
+
+            document.getElementById('storeNamesText').innerText = stores.join(', ');
+            document.getElementById('auditBadge').innerText = `${stores.length} Lojas na Base`;
+        }
+
+        function updateDashboard() {
+
+
+            const store = document.getElementById('storeSelect').value;
+            const P = PERIODOS[periodo];
+            const M = P.meses;
+            applyPeriodLabels();
+            const filteredData = analysisRows();
+            
+            let estoquePcs = 0, estoqueValor = 0, vendaPcs = 0, vendaValor = 0;
+            let rupturaSkus = 0, vendaPerdida = 0, activeSkus = 0;
+            
+            const health = {
+                "Dados pendentes": { skus: 0, val: 0, color: "#888888", items: [] },
+                "Em observação": { skus: 0, val: 0, color: "#A78BFA", items: [] },
+                "Crítico (< 1 mês)": { skus: 0, val: 0, color: "#FB7185", items: [] },
+                "Excesso elevado (> 6 meses)": { skus: 0, val: 0, color: "#EF4444", items: [] },
+                "Giro Saudável": { skus: 0, val: 0, color: "#10B981", items: [] },
+                "Excesso": { skus: 0, val: 0, color: "#F59E0B", items: [] },
+                "Estoque Parado": { skus: 0, val: 0, color: "#64748B", items: [] },
+                "Ruptura": { skus: 0, val: 0, color: "#F43F5E", items: [] }
+            };
+            
+            const storeStats = {};
+            const brandStats = {};
+            
+            const processed = filteredData.map(d => {
+                const eVal = d.Estoque * (d.PDV || 0);
+                const cVal = stockCostValue(d);
+                const vVal = d.Revenue ?? 0;
+                const vmmPcs = d.Demand || 0;
+                const cob = d.cob;
+                let status = d.status;
+
+                if (status !== "Sem Demanda") activeSkus++;
+                
+                estoquePcs += d.Estoque; estoqueValor += eVal;
+                vendaPcs += d.Venda; vendaValor += vVal;
+                
+                if (status === "Ruptura") { rupturaSkus++; vendaPerdida += vVal; }
+                
+                const sku = { ...d, eVal, cVal, vVal, cob, status };
+                
+                if (health[status]) {
+                    health[status].skus++;
+                    health[status].val += cVal ?? 0;
+                    if(cVal==null)health[status].costMissing=(health[status].costMissing||0)+1;
+                    health[status].items.push(sku);
+                }
+                
+                if (!storeStats[d.Loja]) storeStats[d.Loja] = { cVal: 0, soldCost: 0 };
+                storeStats[d.Loja].cVal += cVal ?? 0; storeStats[d.Loja].soldCost += (d.CostSold ?? 0) / M;
+                
+                if (!brandStats[d.Marca]) brandStats[d.Marca] = { ePcs: 0, vPcs: 0 };
+                brandStats[d.Marca].ePcs += d.Estoque; brandStats[d.Marca].vPcs += d.Venda;
+                
+                return sku;
+            }).filter(d => d.status !== "Sem Demanda");
+            
+            // 1. KPIs Gerais
+            const vmmTotal = vendaPcs / M;
+            const vmmValorTotal = vendaValor / M;
+            const cobGeral = vmmTotal > 0 ? estoquePcs / vmmTotal : 0;
+            const giro = estoqueValor > 0 ? vendaValor / estoqueValor : 0;
+            const taxaRup = activeSkus > 0 ? rupturaSkus / activeSkus : 0;
+            
+            document.getElementById('kpiEstoquePcs').innerText = formatN(estoquePcs);
+            document.getElementById('kpiEstoqueValor').innerText = formatC(estoqueValor);
+            document.getElementById('kpiVmmPcs').innerText = formatN(Math.round(vmmTotal));
+            document.getElementById('kpiVmmValor').innerText = formatC(vmmValorTotal);
+            document.getElementById('kpiCoberturaMeses').innerText = cobGeral.toFixed(2);
+            document.getElementById('kpiCoberturaDias').innerText = Math.round(cobGeral * 30);
+            document.getElementById('kpiGiro').innerText = giro.toFixed(2) + "x";
+            document.getElementById('kpiRupturaTaxa').innerText = (taxaRup * 100).toFixed(1) + "%";
+            document.getElementById('kpiRupturaSkus').innerText = rupturaSkus;
+            document.getElementById('kpiVendaPerdida').innerText = formatC(vendaPerdida);
+            
+            document.querySelectorAll('.selectedStoreText').forEach(el => el.innerText = store);
+            document.getElementById('diagKpi').innerHTML = `A operação de <strong>${store}</strong> apresenta cobertura de <strong>${cobGeral.toFixed(2)} meses</strong> com giro de ${P.extenso} em <strong>${giro.toFixed(2)}x</strong>. A taxa de ruptura está em <strong>${(taxaRup*100).toFixed(1)}%</strong> (${rupturaSkus} SKUs sem estoque com demanda registrada). Apuração em <strong>${P.extenso}</strong>: as vendas importadas são lidas como vendas de ${P.extenso}.`;
+
+            // 2. Saúde do Estoque
+            document.getElementById('sec2TotalSkus').innerText = formatN(activeSkus);
+            const knownStockCost=processed.reduce((a,d)=>a+(d.cVal??0),0);
+            const missingStockCost=processed.filter(d=>d.cVal==null).length;
+            document.getElementById('stockCostCoverage').textContent=missingStockCost?`Valores parciais: ${missingStockCost} itens com saldo estão sem custo válido. Não entram nos valores ou percentuais financeiros; continuam na análise em peças.`:'Valores e percentuais calculados pelo custo unitário de compra informado.';
+            document.getElementById('diagStore').textContent=`Estoque e unidades vendidas valorizados ao custo unitário atual. ${missingStockCost?'Estoque parcial por ausência de custo. ':''}${processed.some(d=>d.CostSold==null)?'Custo vendido parcial por histórico ou custo incompleto. ':''}Não representa faturamento.`;
+            document.getElementById('healthStatusList').innerHTML = Object.keys(health).map(k => {
+                const h = health[k];
+                const pct = knownStockCost > 0 ? ((h.val / knownStockCost) * 100).toFixed(1) : null;
+                return `<li onclick="openTop10Modal('health', '${k}')" class="flex justify-between items-center p-2.5 bg-slate-800/50 rounded-lg hover:bg-slate-700/50 cursor-pointer border border-transparent hover:border-tpBorder transition group">
+                    <div class="flex items-center gap-2">
+                        <span class="w-3 h-3 rounded-full" style="background:${h.color}"></span>
+                        <span class="text-slate-300 font-medium group-hover:text-white transition">${k}</span>
+                        <span class="text-[10px] bg-slate-700 px-1.5 py-0.5 rounded text-slate-400">${h.skus} SKUs</span>
+                    </div>
+                    <div class="text-right">
+                        <span class="block text-white font-bold">${h.costMissing&&h.costMissing===h.skus?'—':formatC(h.val)}${h.costMissing?' (parcial)':''}</span>
+                        <span class="text-[10px] text-slate-400">${pct==null?'Sem base de custo':pct+'% do custo informado'}</span>
+                    </div>
+                </li>`;
+            }).join('');
+            
+            document.getElementById('diagHealth').innerHTML = `Em <strong>${store}</strong>, temos <strong>${health['Estoque Parado'].skus} SKUs (${formatC(health['Estoque Parado'].val)}) a custo</strong> parados sem venda nos últimos ${P.extenso}, e <strong>${health['Excesso'].skus} SKUs (${formatC(health['Excesso'].val)}) a custo</strong> em excesso de cobertura.${missingStockCost?' Valores parciais; há custos não informados.':''}`;
+
+            renderHealthChart(health);
+            renderStoreChart(storeStats);
+            renderBrandChart(brandStats);
+            
+            // 5. Curva ABC (Pareto)
+            processed.sort((a, b) => b.vVal - a.vVal);
+            let acumulado = 0;
+            let abc = { 'CLASSE A': { skus: 0, val: 0, items: [] }, 'CLASSE B': { skus: 0, val: 0, items: [] }, 'CLASSE C': { skus: 0, val: 0, items: [] } };
+            
+            processed.forEach(d => {
+                if (d.vVal > 0) {
+                    const pct = acumulado / vendaValor;
+                    acumulado += d.vVal;
+                    let classe = pct <= 0.8 ? 'CLASSE A' : (pct <= 0.95 ? 'CLASSE B' : 'CLASSE C');
+                    d.abc = classe;
+                    abc[classe].skus++; abc[classe].val += d.vVal; abc[classe].items.push(d);
+                } else {
+                    d.abc = d.Revenue == null ? 'RECEITA AUSENTE' : 'SEM VENDA';
+                }
+            });
+            
+            if(vendaValor > 0) {
+                document.getElementById('abcA_desc').innerHTML = `<strong>${abc['CLASSE A'].skus} SKUs</strong> geram ${formatC(abc['CLASSE A'].val)}. Recomenda-se ruptura zero.`;
+                document.getElementById('abcB_desc').innerHTML = `<strong>${abc['CLASSE B'].skus} SKUs</strong> geram ${formatC(abc['CLASSE B'].val)} em vendas de ${P.extenso}.`;
+                document.getElementById('abcC_desc').innerHTML = `<strong>${abc['CLASSE C'].skus} SKUs</strong> geram ${formatC(abc['CLASSE C'].val)}, atenção à imobilização.`;
+            }
+            renderParetoChart(processed.filter(d => d.vVal > 0), vendaValor);
+            
+            // 6. Matriz Giro x Valor
+            // Giro relativo ao estoque atual: média mensal / saldo, nunca volume vs. média dos SKUs.
+            const matrix = stockTurnoverMatrix(processed);
+            const quadrants = matrix.quadrants;
+            const matrixRows = matrix.items;
+            document.getElementById('matrixMethod').textContent = `Giro estimado pela cobertura: alto até 3 meses; baixo acima de 3 meses ou sem vendas. Alto valor = estoque a custo a partir de ${formatC(matrix.valueThreshold)} (média dos estoques positivos com custo válido). ${processed.length - matrixRows.length} itens fora da matriz por custo ausente, dados pendentes ou entrada recente sem vendas. Não mede giro contábil pelo estoque médio.`;
+
+            const qTbody = document.getElementById('quadrantTableBody');
+            qTbody.innerHTML = '';
+            window.quadrantData = {};
+            
+            quadrants.forEach((q) => {
+                const qItems = matrixRows.filter(q.filter);
+                window.quadrantData[q.name] = qItems;
+                qTbody.innerHTML += `
+                    <tr class="hover:bg-slate-800/40 transition">
+                        <td class="p-3 text-slate-300 font-bold">${q.name}</td>
+                        <td class="p-3 text-center">${formatN(qItems.length)}</td>
+                        <td class="p-3 text-right">${formatN(qItems.reduce((acc, c) => acc + c.Estoque, 0))}</td>
+                        <td class="p-3 text-right">${formatC(qItems.reduce((acc, c) => acc + (c.cVal??0), 0))}</td>
+                        <td class="p-3 text-center">
+                            <button onclick="openTop10Modal('quadrant', '${q.name}')" class="text-[10px] bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded text-white transition cursor-pointer">${q.action}</button>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            document.getElementById("exportHealthBtn").disabled = processed.length === 0;
+            document.getElementById("exportHealthMessage").textContent = "";
+            window.fullData = processed;
+            window.healthData = health;
+            window.abcData = abc;
+            renderTable();
+            refreshExtras();
+        }
+
+
+        // Faixas do arquivo de referência; cobertura (meses) = estoque / (venda do período / meses do período).
+        function getExportHealth(d) {
+            if (d.Estoque <= 0 && d.Venda > 0) return 'Ruptura';
+            if (d.Venda <= 0) return 'Parado (Venda=0)';
+            const months = d.Estoque * PERIODOS[periodo].meses / d.Venda;
+            if (months < 1) return 'Crítico (< 1 Mês)';
+            if (months <= 3) return 'Ideal (1 - 3 Meses)';
+            if (months <= 6) return 'Excesso (3 - 6 Meses)';
+            return 'Obsoleto (> 6 Meses)';
+        }
+
+        function buildHealthWorkbook(items) {
+            const headers = ['Status de Saúde', 'Loja', 'Marca', 'Descrição do Produto', 'Estoque (Pçs)', `Venda (${PERIODOS[periodo].longo})`, 'Preço PDV (R$)', 'Valor Estoque (R$)'];
+            const sorted = items.map(d => ({...d, exportHealth: getExportHealth(d)})).sort((a,b) =>
+                a.Loja.localeCompare(b.Loja, 'pt-BR') || a.exportHealth.localeCompare(b.exportHealth, 'pt-BR') ||
+                a.Marca.localeCompare(b.Marca, 'pt-BR') || a.Descr.localeCompare(b.Descr, 'pt-BR'));
+            const rows = sorted.map(d => [d.exportHealth, d.Loja, d.Marca, d.Descr, d.Estoque, d.Venda, d.PDV, Math.round(d.Estoque * d.PDV * 100) / 100]);
+            const sheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+            const end = rows.length + 1, total = end + 1;
+            sheet['A' + total] = {t:'s', v:'TOTAL'};
+            for (const [col, index] of [['E',4], ['F',5], ['H',7]]) {
+                sheet[col + total] = {t:'n', f:`SUBTOTAL(9,${col}2:${col}${end})`, v:rows.reduce((sum,r) => sum + r[index], 0)};
+            }
+            sheet['!ref'] = `A1:H${total}`;
+            sheet['!autofilter'] = {ref:`A1:H${end}`};
+            sheet['!cols'] = [24,9,19,60,16,19,19,22].map(wch => ({wch}));
+            for (let row=2; row<=total; row++) {
+                for (const col of ['E','F']) if (sheet[col+row]) sheet[col+row].z = '#,##0';
+                for (const col of ['G','H']) if (sheet[col+row]) sheet[col+row].z = '"R$" #,##0.00';
+            }
+            const book = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(book, sheet, 'Sheet1');
+            book.Props = {Title:'Saúde das Lojas Rede - Vestuário', Author:'Tennis Place'};
+            return book;
+        }
+
+        function exportHealthExcel() {
+            const message = document.getElementById('exportHealthMessage');
+            const items = window.fullData || [];
+            if (!items.length) { message.textContent = 'Carregue a base de dados antes de exportar.'; return; }
+            try {
+                const store = document.getElementById('storeSelect').value;
+                const scope = store.replace(/[^a-zA-Z0-9_-]/g, '_');
+                XLSX.writeFile(buildHealthWorkbook(items), `Export-Dados${scope}.xlsx`, {compression:true});
+                message.textContent = `${formatN(items.length)} registros exportados (${store}).`;
+            } catch(error) {
+                console.error('Falha na exportação', error);
+                message.textContent = 'Não foi possível exportar. Recarregue a página e tente novamente.';
+            }
+        }
+
+        function renderHealthChart(health) {
+            if (chartHealth) chartHealth.destroy();
+            chartHealth = new Chart(document.getElementById('healthChart').getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(health),
+                    datasets: [{ data: Object.values(health).map(h => h.val), backgroundColor: Object.values(health).map(h => h.color), borderWidth: 0 }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, cutout: '70%' }
+            });
+        }
+
+        function renderStoreChart(storeStats) {
+            if (chartStore) chartStore.destroy();
+            const labels = Object.keys(storeStats);
+            chartStore = new Chart(document.getElementById('storePerformanceChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: 'Estoque a custo (R$)', data: labels.map(l => storeStats[l].cVal), backgroundColor: '#334155', yAxisID: 'y' },
+                        { label: 'Custo estimado vendido por mês (R$)', data: labels.map(l => storeStats[l].soldCost), backgroundColor: '#FFCC00', yAxisID: 'y' }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, grid: { color: '#1E293B' }, ticks: { color: '#94A3B8' } }, x: { grid: { display: false }, ticks: { color: '#94A3B8' } } }, plugins: { legend: { labels: { color: '#F8FAFC' } } } }
+            });
+        }
+
+        function renderBrandChart(brandStats) {
+            if (chartBrand) chartBrand.destroy();
+            const sorted = Object.entries(brandStats).sort((a,b) => b[1].vPcs - a[1].vPcs).slice(0, 15);
+            chartBrand = new Chart(document.getElementById('brandShareChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: sorted.map(s => s[0]),
+                    datasets: [
+                        { label: 'Share Vendas (Peças)', data: sorted.map(s => s[1].vPcs), backgroundColor: '#10B981' },
+                        { label: 'Share Estoque (Peças)', data: sorted.map(s => s[1].ePcs), backgroundColor: '#F43F5E' }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, grid: { color: '#1E293B' }, ticks: { color: '#94A3B8' } }, x: { grid: { display: false }, ticks: { color: '#94A3B8', maxRotation: 45, minRotation: 45 } } }, plugins: { legend: { labels: { color: '#F8FAFC' } } } }
+            });
+        }
+
+        function renderParetoChart(data, totalVenda) {
+            if (chartPareto) chartPareto.destroy();
+            const top20 = data.slice(0, 50);
+            let acc = 0;
+            chartPareto = new Chart(document.getElementById('paretoChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: top20.map(d => d.Descr.substring(0,15)+'...'),
+                    datasets: [
+                        { type: 'line', label: '% Acumulado', data: top20.map(d => { acc += d.vVal; return (acc / totalVenda) * 100; }), borderColor: '#FFCC00', backgroundColor: '#FFCC00', yAxisID: 'y1', tension: 0.1 },
+                        { type: 'bar', label: 'Venda (R$)', data: top20.map(d => d.vVal), backgroundColor: '#b8a156', yAxisID: 'y' }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, grid: { color: '#1E293B' }, ticks: { color: '#94A3B8' } }, y1: { beginAtZero: true, max: 100, position: 'right', grid: { display: false }, ticks: { color: '#94A3B8' } }, x: { display: false } }, plugins: { legend: { labels: { color: '#F8FAFC' } } } }
+            });
+        }
+
+        function renderTable() {
+            const term = (document.getElementById('tableSearch').value || '').toLowerCase();
+            const filtered = (window.fullData || []).filter(d => 
+                d.Descr.toLowerCase().includes(term) || d.Marca.toLowerCase().includes(term) || d.Loja.toLowerCase().includes(term)
+            ).slice(0, 100);
+            
+            document.getElementById('sec7Count').innerText = formatN((window.fullData || []).length);
+            document.getElementById('tableBody').innerHTML = filtered.map(d => `
+                <tr class="hover:bg-slate-800/30 transition">
+                    <td class="p-3 font-medium text-white">${d.Descr}</td>
+                    <td class="p-3">${d.Loja}</td>
+                    <td class="p-3">${d.Marca}</td>
+                    <td class="p-3 text-right">${formatC(d.PDV)}</td>
+                    <td class="p-3 text-right">${formatN(d.Venda)}</td>
+                    <td class="p-3 text-right">${formatN(d.Estoque)}</td>
+                    <td class="p-3 text-right">${formatC(d.eVal)}</td>
+                    <td class="p-3 text-center">${d.cob === Infinity ? '∞' : d.cob.toFixed(1)}</td>
+                    <td class="p-3 text-center">${d.abc || '-'}</td>
+                    <td class="p-3 text-center">
+                        <span class="px-2 py-1 rounded text-[10px] font-bold ${
+                            d.status === 'Ruptura' ? 'bg-rose-500/20 text-rose-400' : 
+                            (d.status === 'Estoque Parado' ? 'bg-slate-500/20 text-slate-400' : 
+                            (d.status === 'Giro Saudável' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'))
+                        }">${d.status}</span>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function filterAlertTable() { renderTable(); }
+
+        function openTop10Modal(type, category) {
+            let items = [];
+            if (type === 'health') items = window.healthData[category].items;
+            else if (type === 'abc') items = window.abcData[category].items;
+            else if (type === 'quadrant') items = window.quadrantData[category];
+            
+            if (!items) return;
+
+            if (['Estoque Parado', 'Excesso'].includes(category) || (type === 'quadrant' && category.includes('Alto Valor'))) {
+                items.sort((a,b) => b.eVal - a.eVal);
+            } else {
+                items.sort((a,b) => b.vVal - a.vVal);
+            }
+            
+            document.getElementById('modalTitle').innerHTML = `<i class="fa-solid fa-trophy text-tpYellow"></i> Produtos - ${category}`;
+            document.getElementById('modalSub').innerText = `Total na categoria: ${items.length} itens`;
+            document.getElementById('modalTableBody').innerHTML = items.slice(0, 10).map((d, i) => `
+                <tr class="hover:bg-slate-800/50 transition">
+                    <td class="p-2.5 text-center font-bold text-slate-500">${i+1}</td>
+                    <td class="p-2.5 font-medium text-white">${d.Descr}</td>
+                    <td class="p-2.5">${d.Marca}</td>
+                    <td class="p-2.5">${d.Loja}</td>
+                    <td class="p-2.5 text-right">${formatC(d.PDV)}</td>
+                    <td class="p-2.5 text-right">${formatN(d.Venda)}</td>
+                    <td class="p-2.5 text-right">${formatN(d.Estoque)}</td>
+                    <td class="p-2.5 text-right font-bold text-tpYellow">${formatC(d.eVal)}</td>
+                    <td class="p-2.5 text-center text-[10px] text-slate-400">${d.status}</td>
+                </tr>
+            `).join('');
+            
+            document.getElementById('top10Modal').classList.remove('hidden');
+        }
+
+        function closeTop10Modal() { document.getElementById('top10Modal').classList.add('hidden'); }
+    </script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const norm = v => String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+function numberValue(v){
+    if(v==null||String(v).trim()==='')return null;
+    if(typeof v==='number')return Number.isFinite(v)?v:null;
+    let t=String(v).trim().replace(/^R\$\s*/i,'').replace(/[\u00a0\u202f]/g,' ');
+    // Never concatenate arbitrary digits separated by spaces ("1 2" is invalid).
+    if(t.includes(' ')){
+        if(!/^[+-]?\d{1,3}(?: \d{3})+(?:[,.]\d+)?$/.test(t))return null;
+        t=t.replace(/ /g,'');
+    }
+    // Excel numeric cells retain their numeric value. Text uses Brazilian thousands;
+    // mixed US separators are accepted only when their grouping is unambiguous.
+    if(/^[+-]?\d{1,3}(?:,\d{3})+\.\d+$/.test(t))t=t.replace(/,/g,'');
+    if(t.includes(',')){
+        if(!/^[+-]?(?:\d+|\d{1,3}(?:\.\d{3})+),\d+$/.test(t))return null;
+        t=t.replace(/\./g,'').replace(',','.');
+    }else if(/^[+-]?\d{1,3}(?:\.\d{3})+$/.test(t)){
+        t=t.replace(/\./g,'');
+    }else if(!/^[+-]?\d+(?:\.\d+)?$/.test(t))return null;
+    const n=Number(t);return Number.isFinite(n)?n:null;
+}
+function quantityValue(v){
+    if(typeof v==='string'&&/R\$/.test(v))return null;
+    const n=numberValue(v);
+    return n!=null&&Number.isSafeInteger(n)&&n>=0?n:null;
+}
+function rowValue(row,names){const key=Object.keys(row).find(k=>names.some(n=>norm(k)===norm(n)));return key===undefined?null:row[key];}
+function dateValue(v){if(v==null||String(v).trim()===''||norm(v)==='nao identificado')return '';if(typeof v==='number'){const d=XLSX.SSF.parse_date_code(v);return d?`${String(d.d).padStart(2,'0')}/${String(d.m).padStart(2,'0')}/${d.y}`:'';}if(v instanceof Date)return v.toLocaleDateString('pt-BR');return String(v);}
+function parseRows(rows){return rows.map(r=>({Loja:String(rowValue(r,['loja'])??'').trim(),Marca:String(rowValue(r,['marca'])??'').trim(),Descr:String(rowValue(r,['descrprod','descr','descrição','produto'])??'').trim(),Agrupador:String(rowValue(r,['agrupador','nome'])??'').trim(),Entrada:dateValue(rowValue(r,['data de entrada','data entrada'])),Custo:numberValue(rowValue(r,['valor de compra','custo','custo unitário'])),Subgrupo:String(rowValue(r,['subgrupo'])??'').trim(),Genero:String(rowValue(r,['gênero','genero'])??'').trim(),PDV:numberValue(rowValue(r,['pdv','preco','preço']))??0,Venda:numberValue(rowValue(r,['venda','vendas']))??0,Estoque:numberValue(rowValue(r,['estoque']))??0}));}
+function options(id,values,label){const el=$(id),prev=el.value;el.innerHTML=`<option value="">${esc(label)}</option>`+[...new Set(values.filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR')).map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');if([...el.options].some(o=>o.value===prev))el.value=prev;}
+function match(d,q){return norm([d.Descr,d.Marca,d.Loja,d.Agrupador,d.Subgrupo,d.Genero,d.Entrada,d.status].join(' ')).includes(norm(q));}
+const detailHeaders=['Produto','Loja','Marca','Agrupador','Data de entrada','Valor de compra (unit.)','Subgrupo','Gênero','PDV','Venda','Estoque','Estoque a custo','Cobertura (meses)','ABC','Status'];
+function detailHead(){return '<tr>'+detailHeaders.map(h=>`<th class="p-3">${esc(h)}</th>`).join('')+'</tr>';}
+function totalText(items){return compactTotal(items);}
+$('filters7').innerHTML=[['status7','Status'],['brand7','Marca'],['sub7','Subgrupo'],['gender7','Gênero']].map(([id,label])=>`<select id="${id}" aria-label="${label}" onchange="renderTable()"><option value="">Todos: ${label}</option></select>`).join('');
+renderTable=function(){const data=window.fullData||[];const filtered=data.filter(d=>match(d,$('tableSearch').value)&&(!$('status7').value||d.status===$('status7').value)&&(!$('brand7').value||d.Marca===$('brand7').value)&&(!$('sub7').value||d.Subgrupo===$('sub7').value)&&(!$('gender7').value||d.Genero===$('gender7').value));$('headers7').innerHTML=detailHead();$('tableBody').innerHTML=detailRows(filtered);$('sec7Count').textContent=filtered.length;$('subtotal7').textContent=totalText(filtered);};
+const oldModal=openTop10Modal;
+openTop10Modal=function(type,category){const source = type==='health' ? window.healthData?.[category]?.items : type==='abc' ? window.abcData?.[category]?.items : window.quadrantData?.[category];const items=[...(source||[])].sort((a,b)=>(stockCostValue(b)??-1)-(stockCostValue(a)??-1));$('modalTitle').textContent=category+' — todos os produtos';$('modalSub').textContent=totalText(items);$('modalTableBody').closest('table').querySelector('thead').innerHTML=detailHead();$('modalTableBody').innerHTML=detailRows(items);$('top10Modal').classList.remove('hidden');};
+function refreshExtras(){const data=window.fullData||[];options('status7',data.map(d=>d.status),'Todos os status');options('brand7',data.map(d=>d.Marca),'Todas as marcas');options('sub7',data.map(d=>d.Subgrupo),'Todos os subgrupos');options('gender7',data.map(d=>d.Genero),'Todos os gêneros');options('brand8',data.map(d=>d.Marca),'Todas as marcas');options('sub8',data.map(d=>d.Subgrupo),'Todos os subgrupos');options('group9',rawData.filter(d=>belongs(d)).map(d=>d.Agrupador),'Selecione o agrupador');$('stockCost').textContent=formatC(data.reduce((a,d)=>a+(stockCostValue(d)??0),0));const missing=data.filter(d=>stockCostValue(d)==null).length;$('costNote').textContent=missing?`Total parcial: ${missing} produtos com estoque estão sem custo informado.`:'Estoque atual × custo unitário de compra.';renderTable();renderMarkup();renderComparison();}
+function renderMarkup(){const items=(window.fullData||[]).filter(d=>match(d,$('search8').value)&&(!$('brand8').value||d.Marca===$('brand8').value)&&(!$('sub8').value||d.Subgrupo===$('sub8').value));const paired=items.filter(d=>d.Custo>0&&d.PDV>0&&d.Estoque>0),denominator=paired.reduce((a,d)=>a+d.Custo*d.Estoque,0),numerator=paired.reduce((a,d)=>a+d.PDV*d.Estoque,0),cost=items.reduce((a,d)=>a+(stockCostValue(d)??0),0),missing=items.filter(d=>stockCostValue(d)==null).length;$('subtotal8').textContent=`${items.length} produtos · Markup ponderado (preços válidos): ${denominator>0?(numerator/denominator).toFixed(2)+'x':'—'} · Estoque a custo: ${formatC(cost)}${missing?` (parcial: ${missing} itens sem custo)`:''}`;$('body8').innerHTML=items.map(d=>'<tr>'+[d.Descr,d.Loja,d.Marca,d.Agrupador||'—',d.Subgrupo||'—',d.Custo>0?formatC(d.Custo):'Não informado',d.PDV>0?formatC(d.PDV):'Não informado',formatN(d.Estoque),d.Custo>0&&d.PDV>0?(d.PDV/d.Custo).toFixed(2)+'x':'—'].map(v=>`<td>${esc(v)}</td>`).join('')+'</tr>').join('')||'<tr><td colspan="9">Nenhum produto encontrado.</td></tr>';}
+
+// Retém as oito colunas originais e acrescenta os novos dados na exportação.
+
+</script>
+<script>
+// Análise de compras: dados históricos separados; nenhum período é reinterpretado.
+PERIODOS[60]={meses:2,longo:'60 Dias',curto:'60D',extenso:'60 dias'};
+const periodLabelBase=applyPeriodLabels;
+applyPeriodLabels=function(){periodLabelBase();const b=$('periodBtn60');b.className=periodo===60?'bg-tpYellow text-black px-3 py-1.5 rounded-lg':'bg-slate-800 text-white px-3 py-1.5 rounded-lg';b.setAttribute('aria-pressed',String(periodo===60));};
+function decimal(id,fallback){const n=numberValue($(id).value);return n==null?fallback:n;}
+function controls(){return {target:Math.max(1,decimal('targetMonths',3)),lead:Math.max(0,decimal('leadDays',15)),minimum:Math.max(1,decimal('minDays',14)),aging:Math.max(30,decimal('agingDays',90))};}
+function entryDate(v){if(!v)return null;let m=String(v).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);let d;if(/^\d{4}-\d{2}-\d{2}$/.test(v))d=new Date(v+'T12:00:00');else {m=String(v).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);if(!m)return null;d=new Date(+m[3],+m[2]-1,+m[1],12);if(d.getDate()!=+m[1]||d.getMonth()!=+m[2]-1)return null;}return Number.isNaN(+d)?null:d;}
+const legacyParse=parseRows;
+parseRows=function(rows){return legacyParse(rows).map((d,i)=>{const r=rows[i];const num=names=>numberValue(rowValue(r,names));const str=names=>String(rowValue(r,names)??'').trim();return {...d,Codigo:str(['Código do produto','Código','EAN','REFERENCIA']),Cor:str(['Cor']),Tamanho:str(['Tamanho']),Vendas:[1,2,3].map(n=>quantityValue(rowValue(r,['Venda M'+n]))),Estoque:quantityValue(rowValue(r,['Estoque'])),PDV:num(['PDV','preço','preco']),SourceRow:i+2};});};
+function belongs(d){return d.Estoque>0||(d.Vendas||[]).some(v=>v>0);}
+function identity(d){return JSON.stringify([norm(d.Marca),String(d.Codigo||'')]);}
+function qualityRows(data){const counts=new Map();for(const d of data){const k=JSON.stringify([norm(d.Loja),d.Codigo||norm(d.Descr)]);counts.set(k,(counts.get(k)||0)+1);}return data.map(d=>{const issues=[];if(counts.get(JSON.stringify([norm(d.Loja),d.Codigo||norm(d.Descr)]))>1)issues.push('Duplicidade de loja/produto');if(!d.Codigo)issues.push('Sem código/EAN');if(!d.Agrupador)issues.push('Sem agrupador');if(!d.Cor||!d.Tamanho)issues.push('Sem cor/tamanho');if(d.Estoque==null||d.Estoque<0)issues.push('Estoque ausente/negativo');else if(!Number.isSafeInteger(d.Estoque))issues.push('Estoque com quantidade inválida (use inteiro)');if(!(d.PDV>0))issues.push('PDV ausente/inválido');if(!(d.Custo>0))issues.push('Custo ausente/inválido');if(!['masculino','feminino','unissex'].includes(norm(d.Genero)))issues.push('Gênero fora do padrão');if(!d.Subgrupo)issues.push('Sem subgrupo');if(d.Entrada&&(!entryDate(d.Entrada)||entryDate(d.Entrada)>new Date()))issues.push('Data de entrada inválida/futura');for(let i=0;i<PERIODOS[periodo].meses;i++){const v=d.Vendas?.[i];if(v==null||v<0||!Number.isSafeInteger(v))issues.push(`Venda M${i+1} ausente/inválida`);}return {...d,Issues:issues};});}
+function analyzeRow(d){const n=PERIODOS[periodo].meses,c=controls(),v=(d.Vendas||[]).slice(0,n);const history=v.length===n&&v.every(x=>x!=null&&x>=0&&Number.isSafeInteger(x)),sales=history?v.reduce((a,x)=>a+x,0):0,demand=history?sales/n:null,last=entryDate(d.Entrada),lastAge=last?Math.floor((Date.now()-last.getTime())/86400000):null,recent=lastAge!=null&&lastAge>=0&&lastAge<c.minimum,coverage=demand>0?d.Estoque/demand:(d.Estoque>0?Infinity:0);let status;if(!history||d.Issues.some(x=>/Duplicidade|Estoque ausente|Estoque com quantidade/.test(x)))status='Dados pendentes';else if(d.Estoque>0&&sales===0&&recent)status='Em observação';else if(d.Estoque<=0&&sales>0)status='Ruptura';else if(d.Estoque>0&&sales===0)status='Estoque Parado';else if(d.Estoque===0&&sales===0)status='Sem Demanda';else if(coverage<1)status='Crítico (< 1 mês)';else if(coverage<=3)status='Giro Saudável';else if(coverage<=6)status='Excesso';else status='Excesso elevado (> 6 meses)';const ideal=demand==null?null:Math.ceil(demand*Math.max(c.target,c.lead/30)),need=ideal==null?null:Math.max(0,ideal-d.Estoque),blocked=[];if(!history)blocked.push('histórico de vendas incompleto');if(d.Issues.some(x=>/Duplicidade|Estoque ausente|Estoque com quantidade|PDV ausente|Custo ausente|Sem código|Sem agrupador|Sem cor\/tamanho|Data de entrada/.test(x)))blocked.push('corrigir cadastro/qualidade');if(recent&&sales===0)blocked.push('entrada recente sem vendas: observar');let trend='Sem comparação';if(d.Vendas?.[0]!=null&&d.Vendas?.[1]!=null){trend=d.Vendas[1]>0?((d.Vendas[0]/d.Vendas[1]-1)*100).toFixed(1)+'%':d.Vendas[0]>0?'Nova demanda':'Estável (zero)';}return {...d,Venda:sales,History:history,Demand:demand,Revenue:history&&d.PDV>0?sales*d.PDV:null,CostSold:history&&d.Custo>0?sales*d.Custo:null,LastAge:lastAge,Trend:trend,cob:coverage,status,Ideal:ideal,Need:need,Blocked:[...new Set(blocked)],Ready:blocked.length===0};}
+function analysisRows(){window.qualityData=qualityRows(rawData);window.networkAnalysis=window.qualityData.filter(d=>belongs(d)&&d.Estoque!=null&&d.Estoque>=0&&Number.isSafeInteger(d.Estoque)).map(analyzeRow);const store=$('storeSelect').value;return window.networkAnalysis.filter(d=>store==='Geral'||d.Loja===store);}
+readExcelFile=function(event){const file=event.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=e=>{try{const wb=XLSX.read(e.target.result,{type:'array'});const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:null});if(!rows.length)throw Error('Planilha vazia.');const parsed=parseRows(rows);if(parsed.some(d=>!d.Loja||!d.Descr))throw Error('Preencha Loja e DESCRPROD em todas as linhas.');rawData=parsed;try{localStorage.setItem('tp_dashboard_data_v4',JSON.stringify(rawData));}catch(_){}setupStoreSelect();updateDashboard();$('importNotice').textContent=`${parsed.length} registros importados. Confira a Validação da importação no início do dashboard.`;}catch(err){alert(err.message);}finally{event.target.value='';}};reader.readAsArrayBuffer(file);};
+const NEW_HEADERS=['LOJA','MARCA','NOME','DESCRPROD','PDV','Estoque','Agrupador','Cor','Tamanho','Código do produto','Data de entrada','Valor de compra','Subgrupo','Gênero','Venda M1','Venda M2','Venda M3'];
+downloadBaseTemplate=function(){const wb=XLSX.utils.book_new(),sheet=XLSX.utils.aoa_to_sheet([NEW_HEADERS]);sheet['!cols']=NEW_HEADERS.map(h=>({wch:h==='DESCRPROD'?60:25}));XLSX.utils.book_append_sheet(wb,sheet,'Export');const help=XLSX.utils.aoa_to_sheet([['Campo','Como preencher'],['Granularidade','Uma linha por loja e código de produto, sem duplicação. Código/EAN como texto para preservar zeros.'],['Venda M1/M2/M3','M1 = últimos 30 dias; M2 = 30 dias anteriores; M3 = 30 dias anteriores a M2. Sem sobreposição, mesmas janelas para todas as lojas. Zero significa sem venda; vazio significa ausente.'],['Apuração','30 dias usa M1; 60 usa M1+M2; 90 usa M1+M2+M3. Demanda mensal = soma das vendas dividida por 1, 2 ou 3.'],['Números','Prefira células numéricas no Excel. Em texto: 1.234 = 1234; 1.234,56 = 1234,56; 99.99 = 99,99. Estoque e vendas exigem inteiros não negativos. Valores inválidos viram pendências, nunca zero.'],['Valor de compra','Custo UNITÁRIO médio atual do produto, em R$. Não informar o total da nota.'],['Data de entrada','ÚLTIMA entrada no estoque. Pode ficar vazia em itens antigos: será exibida como Não identificado. Não é idade de todo o saldo e não comprova lançamento.'],['Agrupador / cor / tamanho','Modelo e variação. Exemplo: CORRE 5 / PRETO / 40.'],['Gênero','MASCULINO, FEMININO ou UNISSEX.'],['Participação da loja','Estoque ou vendas positivos identificam participação. Linhas zeradas não entram na análise.'],['Sugestões','Compra = ideal menos estoque menos remanejamento proposto. Não desconta pedidos em aberto. Revise-os antes de aprovar novas compras.'],['Limites','Sem dias disponíveis, a venda média pode ser reduzida por rupturas anteriores. Resultados financeiros são estimativas pelo PDV atual e custo unitário atual; não representam lucro efetivamente realizado.']]);help['!cols']=[{wch:28},{wch:135}];XLSX.utils.book_append_sheet(wb,help,'Instruções');XLSX.writeFile(wb,'Planilha_Base_Dashboard.xlsx');};
+function healthStatus(d){return d.status||analyzeRow(d).status;}getExportHealth=healthStatus;
+function tableOut(id,headers,rows){$(id).innerHTML='<thead><tr>'+headers.map(h=>`<th>${esc(h)}</th>`).join('')+'</tr></thead><tbody>'+(rows.length?rows.map(r=>'<tr>'+r.map(v=>`<td>${esc(v??'—')}</td>`).join('')+'</tr>').join(''):`<tr><td colspan="${headers.length}">Nenhum resultado.</td></tr>` )+'</tbody>';}
+const na=v=>v==null?'—':formatN(v);const money=v=>v==null?'—':formatC(v);
+function remapPlan(network){const c=controls(),buckets=new Map(),plan=[],incoming=new Map(),outgoing=new Map();for(const d of network.filter(d=>d.Ready&&d.Codigo)){const key=identity(d);if(!buckets.has(key))buckets.set(key,[]);buckets.get(key).push(d);}for(const items of buckets.values()){const donors=items.map(d=>({d,left:Math.max(0,Math.floor(d.Estoque-(d.Demand||0)*Math.max(c.target,c.lead/30)))})).filter(x=>x.left>0).sort((a,b)=>b.left-a.left);const receivers=items.filter(d=>d.Need>0&&d.Demand>0).map(d=>({d,left:d.Need})).sort((a,b)=>a.d.cob-b.d.cob);for(const receiver of receivers){for(const donor of donors){if(receiver.d.Loja===donor.d.Loja||!donor.left||!receiver.left)continue;if(norm(receiver.d.Agrupador)!==norm(donor.d.Agrupador)||norm(receiver.d.Cor)!==norm(donor.d.Cor)||norm(receiver.d.Tamanho)!==norm(donor.d.Tamanho))continue;const qty=Math.min(donor.left,receiver.left);donor.left-=qty;receiver.left-=qty;incoming.set(receiver.d,(incoming.get(receiver.d)||0)+qty);outgoing.set(donor.d,(outgoing.get(donor.d)||0)+qty);plan.push({from:donor.d.Loja,to:receiver.d.Loja,code:receiver.d.Codigo,product:receiver.d.Descr,qty});}}}return {plan,incoming,outgoing};}
+function recommendations(network){const transfers=remapPlan(network),c=controls();const rows=network.map(d=>{const incoming=transfers.incoming.get(d)||0;const buy=d.Ready&&d.Need!=null&&d.Demand>0?Math.max(0,d.Need-incoming):null;let action=d.Blocked.length?'Revisar dados':d.Need>0?buy>0?'Comprar':incoming>0?'Remanejar':'Aguardar pedido':d.status==='Estoque Parado'||d.cob>6?'Reduzir estoque':d.cob>3?'Suspender reposição':'Manter';if(d.Ready&&d.Venda===0)action='Avaliar redução; sem reposição';const delay=d.Demand>0?Math.max(0,d.Demand*c.lead/30-d.Estoque):0;return {d,incoming,buy,action,delay,investment:buy==null?null:buy*d.Custo};});return {rows,transfers};}
+const baseRefresh=refreshExtras;
+refreshExtras=function(){baseRefresh();renderBuyingViews();};
+function renderBuyingViews(){const data=window.fullData||[],network=window.networkAnalysis||[],plan=recommendations(network);window.buyingPlan=plan;options('buyBrand',data.map(d=>d.Marca),'Todas as marcas');options('buyAction',plan.rows.map(x=>x.action),'Todas as ações');const store=$('storeSelect').value,rows=plan.rows.filter(x=>(store==='Geral'||x.d.Loja===store)&&match(x.d,$('buySearch').value)&&(!$('buyBrand').value||x.d.Marca===$('buyBrand').value)&&(!$('buyAction').value||x.action===$('buyAction').value));tableOut('buyTable',['Loja','Produto / código','Agrupador','Venda média mensal','Tendência M1/M2','Estoque','Ideal','Remanejar para receber','Compra sugerida','Investimento','Ação / pendência','Risco no prazo'],rows.map(x=>[x.d.Loja,x.d.Descr+' / '+(x.d.Codigo||'—'),x.d.Agrupador,x.d.Demand==null?'—':x.d.Demand.toFixed(2),x.d.Trend,na(x.d.Estoque),na(x.d.Ideal),x.incoming,x.buy==null?'—':x.buy,money(x.investment),x.d.Blocked.length?x.d.Blocked.join('; '):x.action,x.delay>0?'Pode faltar antes da reposição':'—']));$('buyTotal').textContent=`${rows.length} variações · Compra após remanejamento proposto: ${rows.reduce((a,x)=>a+(x.buy||0),0)} peças · Investimento estimado: ${formatC(rows.reduce((a,x)=>a+(x.investment||0),0))}. Não desconta pedidos em aberto. Sem aprovação do remanejamento, a compra aumenta pelo volume proposto para receber.`;const transfers=plan.transfers.plan.filter(p=>store==='Geral'||p.from===store||p.to===store);tableOut('transferTable',['Produto','Código','Origem','Destino','Quantidade'],transfers.map(p=>[p.product,p.code,p.from,p.to,p.qty]));$('transferTotal').textContent=`${transfers.reduce((a,p)=>a+p.qty,0)} peças propostas. Cada doador mantém a cobertura definida; o mesmo saldo não é utilizado duas vezes. Não executa transferências.`;renderModelView();renderProfitView();renderQualityView();const known=data.filter(d=>d.Revenue!=null),revenue=known.reduce((a,d)=>a+d.Revenue,0);$('kpiVmmValor').textContent=formatC(revenue/PERIODOS[periodo].meses)+(known.length<data.length?' (parcial)':'')+' (estimado)';$('diagKpi').textContent=`Cobertura = estoque ÷ venda média mensal. ${data.filter(d=>!d.History).length} produtos sem histórico completo. Sem informação de dias com estoque, a média pode subestimar demanda de itens que sofreram ruptura. Valores de vendas e ABC são estimados pelo PDV atual. Data de entrada é opcional e indica apenas a última entrada.`;const stock=data.reduce((a,d)=>a+d.eVal,0);$('kpiGiro').textContent=stock>0?(revenue/stock).toFixed(2)+'x (estimado)':'—';const demand=data.reduce((a,d)=>a+(d.Demand||0),0);$('kpiVmmPcs').textContent=demand.toFixed(1);$('kpiCoberturaMeses').textContent=demand>0?(data.reduce((a,d)=>a+d.Estoque,0)/demand).toFixed(2):'—';$('kpiCoberturaDias').textContent=demand>0?Math.round(data.reduce((a,d)=>a+d.Estoque,0)/demand*30):'—';}
+function renderModelView(){const data=(window.fullData||[]).filter(d=>match(d,$('modelSearch').value));const map=new Map();for(const d of data){const key=JSON.stringify([d.Loja,d.Marca,d.Agrupador||'Sem agrupador']);if(!map.has(key))map.set(key,{loja:d.Loja,marca:d.Marca,group:d.Agrupador||'Sem agrupador',items:[]});map.get(key).items.push(d);}const rows=[];for(const g of map.values()){const stock=g.items.reduce((a,d)=>a+d.Estoque,0),demand=g.items.reduce((a,d)=>a+(d.Demand||0),0),crit=g.items.filter(d=>d.status==='Ruptura'||d.status==='Crítico (< 1 mês)').length;rows.push([g.loja,g.marca,g.group,'TOTAL DO MODELO',g.items.length,na(stock),demand.toFixed(2),demand>0?(stock/demand).toFixed(2):'—',crit+' variações críticas']);for(const d of g.items)rows.push([g.loja,g.marca,g.group,(d.Cor||'—')+' / '+(d.Tamanho||'—'),d.Codigo||'—',na(d.Estoque),d.Demand==null?'—':d.Demand.toFixed(2),d.Demand>0?d.cob.toFixed(2):'—',d.status]);}tableOut('modelTable',['Loja','Marca','Agrupador','Cor / tamanho','Código / variações','Estoque','Demanda mensal','Cobertura','Diagnóstico'],rows);}
+function renderProfitView(){const items=(window.fullData||[]).filter(d=>match(d,$('profitSearch').value));let rev=0,cost=0;tableOut('profitTable',['Loja','Produto','Venda','Venda estimada a PDV','Custo estimado vendido','Markup atual','Margem teórica','Resultado bruto teórico'],items.map(d=>{const valid=d.Revenue!=null&&d.CostSold!=null;if(valid){rev+=d.Revenue;cost+=d.CostSold;}return [d.Loja,d.Descr,d.History?na(d.Venda):'—',money(d.Revenue),money(d.CostSold),d.Custo>0&&d.PDV>0?(d.PDV/d.Custo).toFixed(2)+'x':'—',d.PDV>0&&d.Custo>0?((d.PDV-d.Custo)/d.PDV*100).toFixed(1)+'%':'—',valid?money(d.Revenue-d.CostSold):'—'];}));$('profitTotal').textContent=`Estimativas apenas para itens com dados válidos: venda a PDV ${formatC(rev)} · resultado bruto teórico ${formatC(rev-cost)} · margem ${rev>0?((rev-cost)/rev*100).toFixed(1)+'%':'—'}. Não considera descontos, preço efetivo das vendas, custos históricos, impostos ou despesas; não é lucro realizado.`;}
+function renderQualityView(){const store=$('storeSelect').value;const rows=(window.qualityData||[]).filter(d=>(store==='Geral'||d.Loja===store)&&d.Issues.length);tableOut('qualityTable',['Linha da base','Loja','Produto','Pendências'],rows.map(d=>[d.SourceRow||'—',d.Loja,d.Descr,d.Issues.join('; ')]));$('qualityTotal').textContent=`${rows.length} registros com pendências. Corrija na base e importe novamente. Duplicidades não são somadas automaticamente; bloqueiam recomendações. Conferência de saldo, conferência com ERP e rastreabilidade permanecem para uma próxima etapa.`;}
+// Comparativo baseado exclusivamente em estoque atual, vendas e cobertura.
+comparisonData=function(group){const items=(window.networkAnalysis||[]).filter(d=>d.Agrupador===group),stores=[...new Set(items.map(d=>d.Loja))].sort(),products=new Map();for(const d of items){const key=JSON.stringify([d.Marca,d.Codigo||d.Descr]);if(!products.has(key))products.set(key,{label:d.Descr+' · '+d.Marca,stores:{}});const duplicate=d.Issues.some(x=>/Duplicidade/.test(x));products.get(key).stores[d.Loja]={stock:duplicate?null:d.Estoque,sell:duplicate||!d.History?null:d.Venda,coverage:duplicate||!d.History?null:d.cob};}return {stores,products:[...products.values()].sort((a,b)=>a.label.localeCompare(b.label,'pt-BR'))};};
+renderComparison=function(){const group=$('group9').value;if(!group){$('table9').innerHTML='<tbody><tr><td>Selecione um agrupador.</td></tr></tbody>';return;}const {stores,products}=comparisonData(group);const coverage=v=>v==null?'—':Number.isFinite(v)?v.toFixed(2):'Sem venda';let h='<thead><tr><th rowspan="2">Produto / variação</th>'+stores.map(s=>`<th colspan="3">${esc(s)}</th>`).join('')+'</tr><tr>'+stores.map(()=>'<th>Estoque atual</th><th>Vendas do período</th><th>Cobertura (meses)</th>').join('')+'</tr></thead><tbody>'+products.map(p=>'<tr><td>'+esc(p.label)+'</td>'+stores.map(s=>{const v=p.stores[s];return v?`<td>${na(v.stock)}</td><td>${na(v.sell)}</td><td>${coverage(v.coverage)}</td>`:'<td>—</td><td>—</td><td>—</td>';}).join('')+'</tr>').join('')+'</tbody>';h+='<tfoot><tr><td>Subtotal por loja</td>'+stores.map(s=>{const vs=products.map(p=>p.stores[s]).filter(Boolean),valid=vs.filter(v=>v.stock!=null&&v.sell!=null),stock=valid.reduce((a,v)=>a+v.stock,0),sold=valid.reduce((a,v)=>a+v.sell,0),allstock=vs.filter(v=>v.stock!=null).reduce((a,v)=>a+v.stock,0);const partial=valid.length<vs.length?' (parcial)':'';return `<td>${na(allstock)}${vs.some(v=>v.stock==null)?' (parcial)':''}</td><td>${na(sold)}${partial}</td><td>${valid.length?coverage(sold>0?stock/(sold/PERIODOS[periodo].meses):stock>0?Infinity:0):'—'}${partial}</td>`;}).join('')+'</tr></tfoot>';$('table9').innerHTML=h;};
+const costRefresh=baseRefresh;
+// A lista de agrupadores usa todo o sortimento comprovado da rede.
+const enhancedRefresh=refreshExtras;
+refreshExtras=function(){enhancedRefresh();options('group9',(window.networkAnalysis||[]).map(d=>d.Agrupador),'Selecione o agrupador');renderComparison();};
+function exportBuying(){const store=$('storeSelect').value,rows=(window.buyingPlan?.rows||[]).filter(x=>(store==='Geral'||x.d.Loja===store)&&match(x.d,$('buySearch').value)&&(!$('buyBrand').value||x.d.Marca===$('buyBrand').value)&&(!$('buyAction').value||x.action===$('buyAction').value));const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Loja','Código','Produto','Agrupador','Estoque','Venda média mensal','Ideal','Remanejamento proposto','Compra sugerida','Investimento estimado','Ação','Pendências'],...rows.map(x=>[x.d.Loja,x.d.Codigo,x.d.Descr,x.d.Agrupador,x.d.Estoque,x.d.Demand,x.d.Ideal,x.incoming,x.buy,x.investment,x.action,x.d.Blocked.join('; ')])]),'Compras');XLSX.writeFile(wb,`Export-Compras${store.replace(/[^a-zA-Z0-9_-]/g,'_')}.xlsx`);}
+detailHeaders.splice(0,detailHeaders.length,...['Produto','Loja','Marca','Agrupador','Última entrada','Custo unitário','Subgrupo','Gênero','PDV unitário','Venda do período','Estoque','Estoque a custo','Cobertura','ABC estimado','Status','Venda M1','Venda M2','Venda M3','Sugestão bruta','Observação']);
+function costExportRow(d){return [d.Descr,d.Loja,d.Marca,d.Agrupador,d.Entrada||'Não identificado',d.Custo,d.Subgrupo,d.Genero,d.PDV,d.History?d.Venda:null,d.Estoque,stockCostValue(d),d.Demand==null?null:Number.isFinite(d.cob)?d.cob:'Sem venda',d.abc,d.status,...(d.Vendas||[null,null,null]),d.Ready&&d.Demand>0?d.Need:null,d.Entrada?'Última entrada':'Não identificado'];}
+detailRows=function(items){return items.map(d=>'<tr>'+costExportRow(d).map(v=>`<td class="p-3">${esc(v??'—')}</td>`).join('')+'</tr>').join('')||'<tr><td colspan="20">Nenhum resultado.</td></tr>';};
+buildHealthWorkbook=function(items){const headers=[...detailHeaders],sorted=[...items].sort((a,b)=>a.Loja.localeCompare(b.Loja,'pt-BR')||a.status.localeCompare(b.status,'pt-BR')||a.Descr.localeCompare(b.Descr,'pt-BR')),rows=sorted.map(costExportRow);const ws=XLSX.utils.aoa_to_sheet([headers,...rows]);ws['!cols']=headers.map(h=>({wch:h==='Produto'?60:25}));ws['!autofilter']={ref:`A1:T${rows.length+1}`};const last=rows.length+2,missing=rows.filter(r=>r[11]==null).length;ws['A'+last]={t:'s',v:missing?'SUBTOTAL PARCIAL (há itens sem custo)':'SUBTOTAL (dados informados)'};for(const [col,index] of [['J',9],['K',10],['L',11]])ws[col+last]={t:'n',f:rows.length?`SUBTOTAL(9,${col}2:${col}${last-1})`:'0',v:rows.reduce((a,r)=>a+(r[index]??0),0)};ws['!ref']=`A1:T${last}`;for(let i=2;i<=last;i++)for(const col of ['F','I','L'])if(ws[col+i]?.t==='n')ws[col+i].z='"R$" #,##0.00';const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Saúde das Lojas');return wb;};
+
+applyPeriodLabels=function(){const P=PERIODOS[periodo];const setAll=(cls,text)=>document.querySelectorAll('.'+cls).forEach(el=>el.textContent=text);setAll('lblGiro','Giro '+P.longo);setAll('lblVendaPerdida','Venda histórica em ruptura '+P.curto);setAll('lblVendas','Vendas '+P.curto);setAll('lblVda','Vda '+P.curto);[30,60,90].forEach(v=>{const b=$('periodBtn'+v);b.className='period-choice'+(v===periodo?' active':'');b.setAttribute('aria-pressed',String(v===periodo));});};
+
+</script>
+<script>
+// Compact screen tables; full fields remain in the Excel export and per-item details.
+function stockCostValue(d){if(!Number.isSafeInteger(d.Estoque)||d.Estoque<0)return null;if(d.Estoque===0)return 0;return Number.isFinite(d.Custo)&&d.Custo>0?d.Estoque*d.Custo:null;}
+function compactGender(v){return ({masculino:'M',feminino:'F',unissex:'U'})[norm(v)]||'—';}
+function itemDetails(d){const fields=[['Código',d.Codigo||'—'],['Agrupador',d.Agrupador||'—'],['Marca',d.Marca||'—'],['Subgrupo',d.Subgrupo||'—'],['Gênero (M/F/U)',compactGender(d.Genero)],['Cor / tamanho',[d.Cor,d.Tamanho].filter(Boolean).join(' / ')||'—'],['Última entrada',d.Entrada||'Não identificado'],['Custo unitário',money(d.Custo)],['PDV',money(d.PDV)],['Estoque a custo',d.Custo>0?money(d.Estoque*d.Custo):'—'],['Saúde',d.status],['ABC',d.abc||'—']];return '<details class="item-disclosure"><summary>Detalhes</summary><dl>'+fields.map(([label,value])=>`<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('')+'</dl></details>';}
+function compactColumns(mode){const cols=[{label:'Produto',key:'product'}];if($('storeSelect').value==='Geral')cols.push({label:'Loja',key:'Loja'});if(mode==='abc'){cols.push({label:'Vendas (pçs)',key:'sales'},{label:'Vendas estim. (R$)',key:'revenue'},{label:'Estoque (pçs)',key:'stock'},{label:'Cob. (meses)',key:'coverage'});}else{cols.push({label:'Vendas (pçs)',key:'sales'},{label:'Estoque (pçs)',key:'stock'},{label:'Cob. (meses)',key:'coverage'},{label:'Estoque a custo (R$)',key:'value'});}return cols;}
+function compactHead(mode){return '<tr>'+compactColumns(mode).map(c=>`<th class="compact-cell ${['product','Loja'].includes(c.key)?'':'compact-number'}">${esc(c.label)}</th>`).join('')+'</tr>';}
+function compactRows(items,mode){const cols=compactColumns(mode);return items.map(d=>'<tr>'+cols.map(c=>{let value;switch(c.key){case 'product':return `<td class="compact-cell compact-product"><span>${esc(d.Descr)}</span>${itemDetails(d)}</td>`;case 'Loja':value=d.Loja;break;case 'sales':value=d.History?na(d.Venda):'—';break;case 'revenue':value=money(d.Revenue);break;case 'stock':value=na(d.Estoque);break;case 'coverage':value=d.Demand==null?'—':Number.isFinite(d.cob)?d.cob.toFixed(1):'Sem venda';break;case 'value':value=money(stockCostValue(d));break;}return `<td class="compact-cell ${c.key==='Loja'?'':'compact-number'}">${esc(value)}</td>`;}).join('')+'</tr>').join('')||`<tr><td class="compact-cell" colspan="${cols.length}">Nenhum produto encontrado.</td></tr>`;}
+function compactTotal(items){const stock=items.reduce((a,d)=>a+d.Estoque,0),sales=items.filter(d=>d.History).reduce((a,d)=>a+d.Venda,0),cost=items.reduce((a,d)=>a+(stockCostValue(d)??0),0),missing=items.filter(d=>stockCostValue(d)==null).length,partialSales=items.some(d=>!d.History);return `${items.length} itens · Venda: ${formatN(sales)} pçs${partialSales?' (parcial)':''} · Estoque: ${formatN(stock)} pçs · Estoque a custo: ${missing===items.length&&items.length?'Não informado':formatC(cost)}${missing?` (parcial: ${missing} itens sem custo válido)`:''}`;}
+
+renderTable=function(){const filtered=(window.fullData||[]).filter(d=>match(d,$('tableSearch').value)&&(!$('status7').value||d.status===$('status7').value)&&(!$('brand7').value||d.Marca===$('brand7').value)&&(!$('sub7').value||d.Subgrupo===$('sub7').value)&&(!$('gender7').value||d.Genero===$('gender7').value));$('headers7').innerHTML=compactHead('list');$('tableBody').innerHTML=compactRows(filtered,'list');$('sec7Count').textContent=filtered.length;$('subtotal7').textContent=compactTotal(filtered);};
+openTop10Modal=function(type,category){const source=type==='health'?window.healthData?.[category]?.items:type==='abc'?window.abcData?.[category]?.items:window.quadrantData?.[category];const items=[...(source||[])].sort(type==='abc'?(a,b)=>(b.Revenue||0)-(a.Revenue||0):(a,b)=>(stockCostValue(b)??-1)-(stockCostValue(a)??-1));$('modalTitle').textContent=category+' · '+items.length+' itens';$('modalSub').textContent=compactTotal(items);$('modalTableBody').closest('table').querySelector('thead').innerHTML=compactHead(type);$('modalTableBody').innerHTML=compactRows(items,type);$('top10Modal').classList.remove('hidden');};
+
+</script>
+<script>
+
+function stockTurnoverMatrix(rows){
+    const items=rows.filter(d=>d.History&&d.Custo>0&&Number.isSafeInteger(d.Estoque)&&d.Estoque>=0&&d.status!=='Em observação'&&d.status!=='Dados pendentes'&&Number.isFinite(d.Demand)&&d.Demand>=0);
+    const positive=items.filter(d=>d.cVal>0);
+    const valueThreshold=positive.length?positive.reduce((a,d)=>a+d.cVal,0)/positive.length:Infinity;
+    const highTurn=d=>d.Venda>0&&d.Demand>0&&d.cob<=3;
+    const highValue=d=>d.cVal>0&&d.cVal>=valueThreshold;
+    return {items,valueThreshold:Number.isFinite(valueThreshold)?valueThreshold:0,quadrants:[
+        {name:'Alto Giro, Alto Valor',filter:d=>highTurn(d)&&highValue(d),action:'Avaliar reposição'},
+        {name:'Alto Giro, Baixo Valor',filter:d=>highTurn(d)&&!highValue(d),action:'Avaliar reposição / ruptura'},
+        {name:'Baixo Giro, Alto Valor',filter:d=>!highTurn(d)&&highValue(d),action:'Avaliar remanejamento / redução'},
+        {name:'Baixo Giro, Baixo Valor',filter:d=>!highTurn(d)&&!highValue(d),action:'Avaliar redução / sortimento'}
+    ]};
+}
+
+</script>
+<script>
+// Import validation is first; every panel keeps its original data and filter IDs.
+const renderQualityBeforeLayout=renderQualityView;
+renderQualityView=function(){
+ renderQualityBeforeLayout();
+ const store=$('storeSelect').value,scope=d=>store==='Geral'||d.Loja===store;
+ const all=(window.qualityData||[]).filter(scope),analysis=(window.networkAnalysis||[]).filter(scope),issues=all.filter(d=>d.Issues.length);
+ $('validationRows').textContent=formatN(all.length);$('validationAnalyzed').textContent=formatN(analysis.length);$('validationReady').textContent=formatN(analysis.filter(d=>d.Ready).length);$('validationIssues').textContent=formatN(issues.length);
+ const state=$('validationState');
+ state.dataset.state=!all.length?'empty':issues.length?'pending':'ready';
+ state.textContent=!all.length?'Nenhum registro neste recorte. Importe a planilha ou selecione Geral.':issues.length?`${issues.length} registros com pendências neste recorte. Consulte a lista antes de usar totais ou sugestões. Nem toda pendência bloqueia todos os cálculos.`:'Nenhuma pendência detectada pelas regras de preenchimento deste recorte. Confirme a extração antes de aprovar compras.';
+ $('qualityTotal').textContent=all.length?`${issues.length} registros com pendências. Corrija na planilha e importe novamente. Esta validação verifica os dados informados; não confere saldos com o ERP.`:'A lista será preenchida após importar sua planilha.';
+};
+</script>
+<script>
+// Secondary detail tables remain available without lengthening the initial view.
+document.querySelectorAll('.module-subpanel').forEach(panel=>{
+ const title=panel.querySelector('.module-subtitle');
+ if(!title||!['Giro e valor imobilizado','Modelo cor e tamanho','Rentabilidade teórica das vendas'].includes(title.textContent.trim()))return;
+ const details=document.createElement('details'),summary=document.createElement('summary');
+ details.className='module-subpanel module-fold';summary.appendChild(title);details.appendChild(summary);
+ while(panel.firstChild)details.appendChild(panel.firstChild);
+ panel.replaceWith(details);
+});
+</script>
+</body>
+</html>
