@@ -5,20 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#10110f">
   <meta name="description" content="Contagem de estoque da Tennis Place com salvamento no Google Drive.">
-  <title>Contagem de Estoque | Tennis Place</title>
+  <title>Inventário | Tennis Place</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="../../" aria-label="Voltar ao Hub Tennis Place"><img src="../../logo.png" alt="Tennis Place"><span>TP <small>CONTAGEM DE ESTOQUE</small></span></a>
+    <a class="brand" href="../../" aria-label="Voltar ao Hub Tennis Place"><img src="../../logo.png" alt="Tennis Place"><span>TP <small>INVENTÁRIO</small></span></a>
     <div class="account-bar"><span id="account-label" class="local-badge">ACESSO TENNIS PLACE</span><button id="logout" class="button button-quiet" hidden>SAIR</button></div>
   </header>
-  <section class="login-panel" id="login-panel"><p class="eyebrow">ACESSO TENNIS PLACE</p><h1>Contagem de<br><em>Estoque</em></h1><p>Use o mesmo acesso dos manuais.</p><form id="login-form"><label for="login-id">Sigla da loja ou e-mail</label><input id="login-id" autocomplete="username" required><label for="login-password">CNPJ da loja ou senha</label><input id="login-password" type="password" autocomplete="current-password" required><button class="button button-primary" id="login-submit">ENTRAR</button><p id="login-error" role="alert"></p></form></section>
+  <section class="login-panel" id="login-panel"><p class="eyebrow">ACESSO TENNIS PLACE</p><h1><em>Inventário</em></h1><p>Use o mesmo acesso dos manuais.</p><form id="login-form"><label for="login-id">Sigla da loja ou e-mail</label><input id="login-id" autocomplete="username" required><label for="login-password">CNPJ da loja ou senha</label><input id="login-password" type="password" autocomplete="current-password" required><button class="button button-primary" id="login-submit">ENTRAR</button><p id="login-error" role="alert"></p></form></section>
   <main id="app-main" hidden><nav class="tool-tabs"><button id="tab-count" class="active">CONTAGEM</button><button id="tab-analysis" hidden>ANÁLISE DE ESTOQUE</button></nav><p id="app-error" role="alert"></p><div id="count-view">
     <section class="intro">
       <div>
         <p class="eyebrow">OPERAÇÃO DE LOJA <span> / </span> ESTOQUE</p>
-        <h1>Contagem de<br><em>Estoque</em></h1>
+        <h1><em>Inventário</em></h1>
         <p class="intro-copy">Bipe os produtos, registre os defeitos e gere o arquivo pronto para conferência.</p>
       </div>
       <div class="intro-art" aria-hidden="true">
