@@ -11,7 +11,7 @@ function setShell(open){workspace.hidden=!open;hero.hidden=open;tools.hidden=ope
 function openTool(key,writeHistory=true){const item=routes[key];if(!item)return;setShell(true);workspaceTitle.textContent=item.title;frame.title=item.title;if(frame.dataset.currentTool!==key){frame.dataset.currentTool=key;frame.src=item.url}if(writeHistory)history.pushState({tpHubTool:key},'',`${location.pathname}${location.search}#${key}`);window.scrollTo({top:0,behavior:'instant'})}
 function closeTool(fromHistory=false){setShell(false);frame.removeAttribute('src');delete frame.dataset.currentTool;if(!fromHistory&&location.hash)history.replaceState({},'',`${location.pathname}${location.search}`)}
 cards.forEach(card=>card.addEventListener('click',e=>{if(e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;const key=card.dataset.tool;if(!routes[key])return;e.preventDefault();openTool(key)}));
-document.querySelector('#return-to-hub').addEventListener('click',()=>{if(history.state?.tpHubTool)history.back();else closeTool()});
+document.querySelector('#return-to-hub').addEventListener('click',e=>{e.preventDefault();closeTool()});
 window.addEventListener('popstate',()=>{const key=location.hash.slice(1);if(routes[key])openTool(key,false);else closeTool(true)});
 const initialTool=location.hash.slice(1);if(routes[initialTool])openTool(initialTool,false);
 const motion=document.querySelector('#motion');motion.addEventListener('click',()=>{const paused=document.body.classList.toggle('paused');motion.setAttribute('aria-pressed',String(paused));motion.setAttribute('aria-label',paused?'Retomar animações':'Pausar animações');motion.title=motion.getAttribute('aria-label');motion.textContent=paused?'▶':'Ⅱ'});document.querySelector('#year').textContent=new Date().getFullYear();
