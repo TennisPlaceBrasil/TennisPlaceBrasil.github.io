@@ -102,14 +102,21 @@ function writeState_(meta,counts,defects){
   sheet.getRange(5,2,size,1).setNumberFormat('0');sheet.getRange(5,8,size,1).setNumberFormat('0');sheet.getRange(5,14,size,1).setNumberFormat('0');
   SpreadsheetApp.flush();
 }
+function countDate_(value,now){
+  const date=value||Utilities.formatDate(now,'America/Sao_Paulo','yyyy-MM-dd');
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||Number(date.slice(0,4))<1900)throw new Error('Data da contagem inválida.');
+  const parsed=new Date(date+'T12:00:00Z');
+  if(isNaN(parsed.getTime())||parsed.toISOString().slice(0,10)!==date)throw new Error('Data da contagem inválida.');
+  return date;
+}
 function route_(p){
   if(p.action==='catalog')return catalog_();
   let list=metadata_();
   if(p.action==='list')return list.filter(m=>p.allStores||m.store===p.store).map(publicMeta_);
   if(p.action==='create'){
     if(!/^[A-Z0-9]{2,24}$/.test(p.store))throw new Error('Loja inválida.');
-    const now=new Date(),date=Utilities.formatDate(now,'America/Sao_Paulo','yyyy-MM-dd');
-    const base=p.store+'-'+Utilities.formatDate(now,'America/Sao_Paulo','dd-MM-yyyy');
+    const now=new Date(),date=countDate_(p.date,now);
+    const base=p.store+'-'+date.slice(8,10)+'-'+date.slice(5,7)+'-'+date.slice(0,4);
     let label=base,n=2;while(db_().getSheetByName(label))label=base+'-'+n++;
     const sheet=db_().insertSheet(label),meta={id:Utilities.getUuid(),store:p.store,date,label,status:'EM ANDAMENTO',version:0,sheet:label,createdBy:p.userId,createdAt:now.toISOString(),updatedAt:now.toISOString(),requestId:''};
     sheet.getRange('A1:B2').setValues([['LOJA',p.store],['DATA',date]]);

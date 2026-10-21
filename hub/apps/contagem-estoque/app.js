@@ -39,7 +39,7 @@ async function boot(){
   const r=await api('bootstrap');user=r.user;stores=r.stores;sessions=r.sessions;
   $('#login-panel').hidden=true;$('#app-main').hidden=false;$('#logout').hidden=false;
   $('#account-label').textContent=user.allStores?'ACESSO ADMINISTRATIVO':user.store;
-  $('#store-code').value=user.store||stores[0]||'';$('#store-code').readOnly=!user.allStores;$('#tab-analysis').hidden=!user.allStores;
+  $('#store-code').innerHTML=(user.allStores?'<option value="">Selecione a loja</option>':'')+stores.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('');$('#store-code').value=user.store||'';$('#store-code').disabled=!user.allStores;$('#count-date').value=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());$('#tab-analysis').hidden=!user.allStores;
   picker();render();
   const data=await api('catalog');catalog=new Map(data.data.map(([ean,description,brand])=>[String(ean),{ean,description,brand}]));
   $('#catalog-status').textContent='Cadastro do Drive · '+catalog.size.toLocaleString('pt-BR')+' produtos';
@@ -100,7 +100,8 @@ async function createCount(){
   try{
     await ensureSaved();const store=$('#store-code').value.trim().toUpperCase();
     if(!stores.includes(store))throw Error('Informe uma sigla de loja válida.');
-    current=(await api('create',{store})).data;sessions.push(current);serial=0;saved=0;retry=null;conflict=false;
+    const date=$('#count-date').value;if(!date||!$('#count-date').checkValidity())throw Error('Selecione uma data válida para a contagem.');
+    current=(await api('create',{store,date})).data;sessions.push(current);serial=0;saved=0;retry=null;conflict=false;
     picker();render();sync('Nova contagem criada no Drive');$('#ean-input').focus();
   }catch(e){alert(e.message);}finally{$('#new-count').disabled=false;}
 }
