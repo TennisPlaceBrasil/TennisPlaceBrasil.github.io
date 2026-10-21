@@ -34,10 +34,11 @@
         <label for="count-date">DATA DA CONTAGEM</label><input id="count-date" type="date" required>
         <button id="new-count" class="button button-primary" type="button">＋ NOVA CONTAGEM</button>
       </div>
-      <label class="session-picker-wrap" id="session-picker-wrap" hidden>
-        <span>CONTAGEM ATUAL</span>
-        <select id="session-picker" aria-label="Selecionar contagem salva"></select>
-      </label>
+      <div class="session-picker-wrap" id="session-picker-wrap" hidden>
+        <span>CONTAGENS SALVAS</span>
+        <select id="session-picker" aria-label="Selecionar contagem salva" hidden></select>
+        <button id="load-sessions" class="button button-quiet" type="button">CARREGAR CONTAGENS</button>
+      </div>
     </section>
     <section class="empty-state" id="empty-state">
       <div class="empty-symbol">01</div>
@@ -88,6 +89,6 @@
     <footer><span>TENNIS PLACE <b>HUB</b></span><span>BE BOLD. BE YOU.</span></footer>
   </main>
   <dialog id="unknown-dialog"><p class="eyebrow">EAN NÃO RECONHECIDO</p><h2>Produto inexistente</h2><p id="unknown-ean"></p><p>O código não foi encontrado no cadastro de produtos.</p><div class="dialog-actions"><button id="correct-ean" class="button button-quiet">CORRIGIR</button><button id="allow-ean" class="button button-primary">LANÇAR MESMO ASSIM</button></div></dialog>
-  <script src="app.js?v=inventory3"></script>
+  <script src="app.js?v=inventory4"></script>
 </body>
 </html>

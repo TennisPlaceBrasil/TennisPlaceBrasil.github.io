@@ -1,6 +1,6 @@
 'use strict';
 const $=s=>document.querySelector(s),BASE='https://rihvnshexilakojnltox.supabase.co',KEY='sb_publishable_7coOHeG2tOc9XfS0qeKvPg_z2fh0KWz',AUTH_KEY='tp-manuais-supabase-v1';
-let auth=null,user=null,stores=[],sessions=[],current=null,catalog=new Map(),mode='count',unknown=null,lookingUp=false;
+let auth=null,user=null,stores=[],sessions=[],sessionsLoaded=false,loadingSessions=false,current=null,catalog=new Map(),mode='count',unknown=null,lookingUp=false;
 let serial=0,saved=0,inflight=null,timer=null,retry=null,conflict=false,xlsxPromise;
 const uuid=()=>crypto.randomUUID?crypto.randomUUID():Array.from(crypto.getRandomValues(new Uint8Array(16)),v=>v.toString(16).padStart(2,'0')).join('');
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -17,9 +17,12 @@ async function api(action,params={},again=false){
   const data=await r.json();if(!r.ok){const e=Error(data.error||'Falha de comunicação.');e.status=r.status;throw e;}return data;
 }
 function picker(){
-  $('#session-picker-wrap').hidden=!sessions.length;
+  $('#session-picker-wrap').hidden=!user;
+  $('#session-picker').hidden=!sessions.length;
   $('#session-picker').innerHTML='<option value="">Selecione uma contagem</option>'+sessions.slice().reverse().map(s=>'<option value="'+esc(s.id)+'">'+esc(s.label)+' · '+esc(s.status)+'</option>').join('');
   $('#session-picker').value=current?.id||'';
+  $('#load-sessions').disabled=loadingSessions;
+  $('#load-sessions').textContent=loadingSessions?'CARREGANDO…':sessionsLoaded?'ATUALIZAR CONTAGENS':'CARREGAR CONTAGENS';
 }
 function render(){
   $('#empty-state').hidden=!!current;$('#counting').hidden=!current;if(!current)return;
@@ -36,7 +39,7 @@ function render(){
   document.querySelectorAll('.qty-actions button,.quantity-input,.remove-row').forEach(b=>b.disabled=done||conflict);
 }
 async function boot(){
-  const r=await api('bootstrap');user=r.user;stores=r.stores;sessions=r.sessions;
+  const r=await api('bootstrap');user=r.user;stores=r.stores;sessions=[];sessionsLoaded=false;
   $('#login-panel').hidden=true;$('#app-main').hidden=false;$('#logout').hidden=false;
   $('#account-label').textContent=user.allStores?'ACESSO ADMINISTRATIVO':user.store;
   $('#store-code').innerHTML=(user.allStores?'<option value="">Selecione a loja</option>':'')+stores.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('');$('#store-code').value=user.store||'';$('#store-code').disabled=!user.allStores;$('#count-date').value=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());$('#tab-analysis').hidden=!user.allStores;
@@ -44,6 +47,20 @@ async function boot(){
   $('#catalog-status').textContent='Cadastro do Drive · consulta por EAN';
   $('#filter-store').innerHTML='<option value="">Todas as lojas</option>'+stores.map(s=>'<option>'+esc(s)+'</option>').join('');
   $('#filter-brand').innerHTML='<option value="">Todas as marcas</option>';
+}
+async function loadSessions(){
+  if(loadingSessions)return;
+  loadingSessions=true;picker();
+  try{
+    if(current)await ensureSaved();
+    const r=await api('list');
+    const latest=current;
+    sessions=r.data||[];
+    if(latest&&!sessions.some(s=>s.id===latest.id))sessions.push(latest);
+    else if(latest)sessions=sessions.map(s=>s.id===latest.id?latest:s);
+    sessionsLoaded=true;picker();
+  }catch(e){$('#app-error').textContent=e.message;}
+  finally{loadingSessions=false;picker();}
 }
 function draftKey(){return 'tp-stockcount-draft-'+user.id+'-'+current.id;}
 function persistDraft(){try{localStorage.setItem(draftKey(),JSON.stringify({version:current.version,inflightId:retry?.body.requestId||null,counts:current.counts,defects:current.defects}));}catch(_){sync('Não foi possível criar o rascunho local. Aguarde o Drive.','error');}}
@@ -186,6 +203,7 @@ $('#logout').addEventListener('click',async()=>{
 });
 $('#new-count').addEventListener('click',createCount);
 $('#session-picker').addEventListener('change',event=>openCount(event.target.value).catch(e=>note(e.message,true)));
+$('#load-sessions').addEventListener('click',loadSessions);
 $('#scan-form').addEventListener('submit',event=>{event.preventDefault();scan();});
 $('#correct-ean').addEventListener('click',()=>{$('#unknown-dialog').close();unknown=null;$('#ean-input').focus();$('#ean-input').select();});
 $('#allow-ean').addEventListener('click',()=>{$('#unknown-dialog').close();addScan(unknown,true);unknown=null;});

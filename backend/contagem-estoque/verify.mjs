@@ -34,7 +34,7 @@ assert.equal(normalized[0].quantity,5);
 vm.runInContext("metadata_=()=>[{id:'s',store:'APAR',status:'EM ANDAMENTO',version:2,requestId:'last'}];",gas);
 assert.throws(()=>vm.runInContext("route_({action:'read',id:'s',store:'JOIN',allStores:false})",gas),/permissão/);
 assert.throws(()=>vm.runInContext("route_({action:'save',id:'s',store:'APAR',version:1})",gas),/CONFLICT/);
-let handler,outbound,actor='store',active=true;
+let handler,outbound,bridgeCalls=0,actor='store',active=true;
 globalThis.Deno={env:{get:k=>k==='SUPABASE_URL'?'https://test.supabase.co':'server-only'},serve:fn=>handler=fn};
 globalThis.fetch=async(url,options={})=>{
  const s=String(url);
@@ -42,12 +42,14 @@ globalThis.fetch=async(url,options={})=>{
  if(s.includes('manual_portal_members'))return Response.json([{active,profiles:actor==='admin'?['adm']:['loja']}]);
  if(s.includes('manual_portal_store_logins'))return Response.json([{sigla:'APAR'},{sigla:'JOIN'}]);
  if(s.includes('stockcount_bridge_config'))return Response.json([{endpoint:'https://bridge.test',secret:'server-secret'}]);
- if(s==='https://bridge.test'){outbound=JSON.parse(options.body);return Response.json({ok:true,data:[]});}
+ if(s==='https://bridge.test'){bridgeCalls++;outbound=JSON.parse(options.body);return Response.json({ok:true,data:[]});}
  throw Error('Unexpected URL '+s);
 };
 await import('./index.ts');
 const request=body=>new Request('https://api.test',{method:'POST',headers:{Authorization:'Bearer valid','Content-Type':'application/json'},body:JSON.stringify(body)});
-let response=await handler(request({action:'create',store:'JOIN',allStores:true,secret:'spoof'}));
+let response=await handler(request({action:'bootstrap'}));
+assert.equal(response.status,200);assert.deepEqual((await response.json()).sessions,[]);assert.equal(bridgeCalls,0,'Login bootstrap must not contact Google Drive for history');
+response=await handler(request({action:'create',store:'JOIN',allStores:true,secret:'spoof'}));
 assert.equal(response.status,200);assert.equal(outbound.store,'APAR');assert.equal(outbound.allStores,false);assert.equal(outbound.secret,'server-secret');
 response=await handler(request({action:'analysis',allStores:true}));assert.equal(response.status,403);
 active=false;response=await handler(request({action:'list'}));assert.equal(response.status,403);
