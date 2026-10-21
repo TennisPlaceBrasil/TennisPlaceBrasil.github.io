@@ -1,0 +1,6 @@
+const cards=[...document.querySelectorAll('.card')],search=document.querySelector('#search');
+const normalize=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+search.addEventListener('input',()=>{let visible=0;cards.forEach(card=>{card.hidden=!normalize(card.dataset.name).includes(normalize(search.value.trim()));if(!card.hidden)visible++});document.querySelector('#empty').hidden=visible>0});
+document.addEventListener('keydown',e=>{if(e.key==='/'&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)){e.preventDefault();search.focus()}});
+cards.forEach(card=>card.addEventListener('pointermove',e=>{if(e.pointerType==='touch')return;let r=card.getBoundingClientRect();card.style.setProperty('--mx',`${e.clientX-r.left}px`);card.style.setProperty('--my',`${e.clientY-r.top}px`)}));
+const motion=document.querySelector('#motion');motion.addEventListener('click',()=>{const paused=document.body.classList.toggle('paused');motion.setAttribute('aria-pressed',String(paused));motion.setAttribute('aria-label',paused?'Retomar animações':'Pausar animações');motion.title=motion.getAttribute('aria-label');motion.textContent=paused?'▶':'Ⅱ'});document.querySelector('#year').textContent=new Date().getFullYear();
