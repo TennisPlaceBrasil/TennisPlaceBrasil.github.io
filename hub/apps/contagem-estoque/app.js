@@ -17,12 +17,14 @@ async function api(action,params={},again=false){
   const data=await r.json();if(!r.ok){const e=Error(data.error||'Falha de comunicação.');e.status=r.status;throw e;}return data;
 }
 function picker(){
-  $('#session-picker-wrap').hidden=!user;
+  $('#session-picker-wrap').hidden=!user?.allStores;
   $('#session-picker').hidden=!sessions.length;
   $('#session-picker').innerHTML='<option value="">Selecione uma contagem</option>'+sessions.slice().reverse().map(s=>'<option value="'+esc(s.id)+'">'+esc(s.label)+' · '+esc(s.status)+'</option>').join('');
   $('#session-picker').value=current?.id||'';
   $('#load-sessions').disabled=loadingSessions;
   $('#load-sessions').textContent=loadingSessions?'CARREGANDO…':sessionsLoaded?'ATUALIZAR CONTAGENS':'CARREGAR CONTAGENS';
+  $('#delete-session').hidden=!user?.allStores||!$('#session-picker').value;
+  $('#delete-session').disabled=loadingSessions;
 }
 function render(){
   $('#empty-state').hidden=!!current;$('#counting').hidden=!current;if(!current)return;
@@ -49,6 +51,7 @@ async function boot(){
   $('#filter-brand').innerHTML='<option value="">Todas as marcas</option>';
 }
 async function loadSessions(){
+  if(!user?.allStores)return;
   if(loadingSessions)return;
   loadingSessions=true;picker();
   try{
@@ -61,6 +64,19 @@ async function loadSessions(){
     sessionsLoaded=true;picker();
   }catch(e){$('#app-error').textContent=e.message;}
   finally{loadingSessions=false;picker();}
+}
+async function deleteSession(){
+  const id=$('#session-picker').value;
+  if(!user?.allStores||!id)return;
+  const item=sessions.find(s=>s.id===id);
+  if(!confirm('Excluir '+(item?.label||'esta contagem')+' do histórico e apagar a aba correspondente no Google Drive? Esta ação não pode ser desfeita.'))return;
+  try{
+    if(current?.id===id)await ensureSaved();
+    await api('delete',{id});
+    sessions=sessions.filter(s=>s.id!==id);
+    if(current?.id===id){localStorage.removeItem(draftKey());current=null;serial=0;saved=0;retry=null;conflict=false;}
+    picker();render();$('#app-error').textContent='';sync('Contagem excluída do Drive');
+  }catch(e){$('#app-error').textContent=e.message;}
 }
 function draftKey(){return 'tp-stockcount-draft-'+user.id+'-'+current.id;}
 function persistDraft(){try{localStorage.setItem(draftKey(),JSON.stringify({version:current.version,inflightId:retry?.body.requestId||null,counts:current.counts,defects:current.defects}));}catch(_){sync('Não foi possível criar o rascunho local. Aguarde o Drive.','error');}}
@@ -204,6 +220,7 @@ $('#logout').addEventListener('click',async()=>{
 $('#new-count').addEventListener('click',createCount);
 $('#session-picker').addEventListener('change',event=>openCount(event.target.value).catch(e=>note(e.message,true)));
 $('#load-sessions').addEventListener('click',loadSessions);
+$('#delete-session').addEventListener('click',deleteSession);
 $('#scan-form').addEventListener('submit',event=>{event.preventDefault();scan();});
 $('#correct-ean').addEventListener('click',()=>{$('#unknown-dialog').close();unknown=null;$('#ean-input').focus();$('#ean-input').select();});
 $('#allow-ean').addEventListener('click',()=>{$('#unknown-dialog').close();addScan(unknown,true);unknown=null;});

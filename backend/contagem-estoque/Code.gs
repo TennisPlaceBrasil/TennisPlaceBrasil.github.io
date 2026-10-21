@@ -112,7 +112,21 @@ function countDate_(value,now){
 function route_(p){
   if(p.action==='catalog'){const products=catalog_();if(p.ean)return products.find(r=>r[0]===String(p.ean).trim())||null;return products;}
   let list=metadata_();
-  if(p.action==='list')return list.filter(m=>p.allStores||m.store===p.store).map(publicMeta_);
+  if(p.action==='list'){
+    if(!p.allStores)throw new Error('Histórico restrito aos administradores.');
+    return list.map(publicMeta_);
+  }
+  if(p.action==='delete'){
+    if(!p.allStores)throw new Error('Exclusão restrita aos administradores.');
+    const meta=list.find(m=>m.id===p.id);
+    if(!meta)throw new Error('Esta contagem já não existe no histórico.');
+    const ss=db_(),target=ss.getSheetByName(meta.sheet),metadata=ss.getSheetByName('_Contagens');
+    if(target)ss.deleteSheet(target);
+    metadata.deleteRow(meta.row);
+    SpreadsheetApp.flush();
+    return {id:meta.id,deleted:true};
+  }
+  if(p.action==='read'&&!p.allStores)throw new Error('Histórico restrito aos administradores.');
   if(p.action==='create'){
     if(!/^[A-Z0-9]{2,24}$/.test(p.store))throw new Error('Loja inválida.');
     const now=new Date(),date=countDate_(p.date,now);

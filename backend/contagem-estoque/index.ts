@@ -22,7 +22,7 @@ Deno.serve(async req=>{
     if(!userResponse.ok)return reply({error:"Sessão expirada. Entre novamente."},401);
     const user=await userResponse.json();
     const input=await req.json();
-    const actions=new Set(["bootstrap","catalog","list","create","read","save","finish","analysis"]);
+    const actions=new Set(["bootstrap","catalog","list","create","read","save","finish","analysis","delete"]);
     if(!actions.has(input.action))return reply({error:"Ação inválida."},400);
     const userId=encodeURIComponent(user.id);
     const [members,mapping]=await Promise.all([
@@ -35,7 +35,7 @@ Deno.serve(async req=>{
     const allStores=analysts.has(user.id);
     const store=mapping[0]?.sigla;
     if(!allStores&&!store)return reply({error:"Sua conta não possui loja liberada nesta ferramenta."},403);
-    if(input.action==="analysis"&&!allStores)return reply({error:"Análise restrita aos responsáveis."},403);
+    if(["list","read","analysis","delete"].includes(input.action)&&!allStores)return reply({error:"Histórico restrito aos administradores."},403);
     const stores=input.action==="bootstrap"&&allStores
       ? await rows("manual_portal_store_logins","select=sigla&order=sigla")
       : mapping;
