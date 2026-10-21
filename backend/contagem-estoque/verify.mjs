@@ -39,11 +39,11 @@ vm.runInContext("deletedRow=0;removedTab=false;db_=()=>({getSheetByName:n=>n==='
 const deleted=vm.runInContext("route_({action:'delete',id:'s',allStores:true})",gas);
 assert.equal(deleted.deleted,true);assert.equal(vm.runInContext('deletedRow',gas),2);assert.equal(vm.runInContext('removedTab',gas),true);
 assert.throws(()=>vm.runInContext("route_({action:'delete',id:'s',allStores:false})",gas),/Exclusão restrita/);
-let handler,outbound,bridgeCalls=0,actor='store',active=true;
+let handler,outbound,bridgeCalls=0,authLookups=0,actor='store',active=true;
 globalThis.Deno={env:{get:k=>k==='SUPABASE_URL'?'https://test.supabase.co':'server-only'},serve:fn=>handler=fn};
 globalThis.fetch=async(url,options={})=>{
  const s=String(url);
- if(s.includes('/auth/v1/user'))return Response.json({id:actor==='admin'?'adb6a08e-1a28-4b41-8dde-addd9c06f915':'store-user'});
+ if(s.includes('/auth/v1/user')){authLookups++;return Response.json({id:actor==='admin'?'adb6a08e-1a28-4b41-8dde-addd9c06f915':'store-user'});}
  if(s.includes('manual_portal_members'))return Response.json([{active,profiles:actor==='admin'?['adm']:['loja']}]);
  if(s.includes('manual_portal_store_logins'))return Response.json([{sigla:'APAR'},{sigla:'JOIN'}]);
  if(s.includes('stockcount_bridge_config'))return Response.json([{endpoint:'https://bridge.test',secret:'server-secret'}]);
@@ -52,14 +52,19 @@ globalThis.fetch=async(url,options={})=>{
 };
 await import('./index.ts');
 const request=body=>new Request('https://api.test',{method:'POST',headers:{Authorization:'Bearer valid','Content-Type':'application/json'},body:JSON.stringify(body)});
-let response=await handler(request({action:'bootstrap'}));
-assert.equal(response.status,200);assert.deepEqual((await response.json()).sessions,[]);assert.equal(bridgeCalls,0,'Login bootstrap must not contact Google Drive for history');
-response=await handler(request({action:'create',store:'JOIN',allStores:true,secret:'spoof'}));
+const jwtRequest=body=>{
+ const id=actor==='admin'?'adb6a08e-1a28-4b41-8dde-addd9c06f915':'store-user';
+ const payload=btoa(JSON.stringify({sub:id,email:actor==='admin'?'admin@example.test':null})).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+ return new Request('https://api.test',{method:'POST',headers:{Authorization:'Bearer e30.'+payload+'.sig','Content-Type':'application/json'},body:JSON.stringify(body)});
+};
+let response=await handler(jwtRequest({action:'bootstrap'}));
+assert.equal(response.status,200);assert.deepEqual((await response.json()).sessions,[]);assert.equal(bridgeCalls,0,'Login bootstrap must not contact Google Drive for history');assert.equal(authLookups,0,'Verified JWT claims avoid a second Auth user lookup');
+response=await handler(jwtRequest({action:'create',store:'JOIN',allStores:true,secret:'spoof'}));
 assert.equal(response.status,200);assert.equal(outbound.store,'APAR');assert.equal(outbound.allStores,false);assert.equal(outbound.secret,'server-secret');
-response=await handler(request({action:'list'}));assert.equal(response.status,403);
-response=await handler(request({action:'read',id:'known-count'}));assert.equal(response.status,403);
-response=await handler(request({action:'delete',id:'known-count'}));assert.equal(response.status,403);
-response=await handler(request({action:'analysis',allStores:true}));assert.equal(response.status,403);
-active=false;response=await handler(request({action:'list'}));assert.equal(response.status,403);
-active=true;actor='admin';response=await handler(request({action:'analysis'}));assert.equal(response.status,200);assert.equal(outbound.allStores,true);
+response=await handler(jwtRequest({action:'list'}));assert.equal(response.status,403);
+response=await handler(jwtRequest({action:'read',id:'known-count'}));assert.equal(response.status,403);
+response=await handler(jwtRequest({action:'delete',id:'known-count'}));assert.equal(response.status,403);
+response=await handler(jwtRequest({action:'analysis',allStores:true}));assert.equal(response.status,403);
+active=false;response=await handler(jwtRequest({action:'list'}));assert.equal(response.status,403);
+active=true;actor='admin';response=await handler(jwtRequest({action:'analysis'}));assert.equal(response.status,200);assert.equal(outbound.allStores,true);
 console.log('Verified: unknown-EAN confirmation; quantity consolidation; stock pivot; version conflicts; store history/read/delete restrictions; admin deletion of spreadsheet tab and history row.');

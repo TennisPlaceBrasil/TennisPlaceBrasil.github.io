@@ -7,6 +7,15 @@ const cors = {
 const reply=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers:{...cors,"Content-Type":"application/json"}});
 const project=Deno.env.get("SUPABASE_URL")!;
 const service=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+function verifiedClaims(token:string){
+  const part=token.split(".")[1];
+  if(!part)throw new Error("Sessão inválida.");
+  const base64=part.replace(/-/g,"+").replace(/_/g,"/").padEnd(Math.ceil(part.length/4)*4,"=");
+  const bytes=Uint8Array.from(atob(base64),c=>c.charCodeAt(0));
+  const claims=JSON.parse(new TextDecoder().decode(bytes));
+  if(typeof claims.sub!=="string"||!claims.sub)throw new Error("Sessão inválida.");
+  return {id:claims.sub,email:typeof claims.email==="string"?claims.email:null};
+}
 async function rows(table:string,query:string){
   const response=await fetch(project+"/rest/v1/"+table+"?"+query,{headers:{apikey:service,Authorization:"Bearer "+service}});
   if(!response.ok)throw new Error("Não foi possível verificar as permissões.");
@@ -18,9 +27,8 @@ Deno.serve(async req=>{
   try{
     const auth=req.headers.get("Authorization")||"";
     if(!/^Bearer \S+$/.test(auth))return reply({error:"Entre para continuar."},401);
-    const userResponse=await fetch(project+"/auth/v1/user",{headers:{apikey:service,Authorization:auth}});
-    if(!userResponse.ok)return reply({error:"Sessão expirada. Entre novamente."},401);
-    const user=await userResponse.json();
+    let user:{id:string,email:string|null};
+    try{user=verifiedClaims(auth.slice(7));}catch{return reply({error:"Sessão expirada. Entre novamente."},401);}
     const input=await req.json();
     const actions=new Set(["bootstrap","catalog","list","create","read","save","finish","analysis","delete"]);
     if(!actions.has(input.action))return reply({error:"Ação inválida."},400);
