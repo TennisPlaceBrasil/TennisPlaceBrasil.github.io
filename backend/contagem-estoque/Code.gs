@@ -110,7 +110,7 @@ function countDate_(value,now){
   return date;
 }
 function route_(p){
-  if(p.action==='catalog')return catalog_();
+  if(p.action==='catalog'){const products=catalog_();if(p.ean)return products.find(r=>r[0]===String(p.ean).trim())||null;return products;}
   let list=metadata_();
   if(p.action==='list')return list.filter(m=>p.allStores||m.store===p.store).map(publicMeta_);
   if(p.action==='create'){

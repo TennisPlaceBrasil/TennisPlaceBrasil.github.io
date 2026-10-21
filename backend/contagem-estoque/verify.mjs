@@ -4,7 +4,7 @@ import vm from 'node:vm';
 const root=new URL('../../',import.meta.url);
 const element=()=>({value:'',textContent:'',innerHTML:'',hidden:false,disabled:false,className:'',classList:{toggle(){},add(){},remove(){}},addEventListener(){},focus(){},select(){},showModal(){this.open=true;},close(){this.open=false;}});
 const elements=new Map();
-const context=vm.createContext({console,Map,Set,JSON,Number,String,Array,Error,crypto:globalThis.crypto,structuredClone,localStorage:{setItem(){},getItem(){return null;},removeItem(){}},sessionStorage:{getItem(){return null;}},document:{querySelector(s){if(!elements.has(s))elements.set(s,element());return elements.get(s);},querySelectorAll(){return[];}},window:{addEventListener(){}},setTimeout(){return 1;},clearTimeout(){}});
+const context=vm.createContext({console,Map,Set,JSON,Number,String,Array,Error,crypto:globalThis.crypto,structuredClone,localStorage:{setItem(){},getItem(){return null;},removeItem(){}},sessionStorage:{getItem(){return null;}},document:{querySelector(s){if(!elements.has(s))elements.set(s,element());return elements.get(s);},querySelectorAll(){return[];}},fetch:async()=>Response.json({data:null}),window:{addEventListener(){}},setTimeout(){return 1;},clearTimeout(){}});
 vm.runInContext(fs.readFileSync(new URL('../../dist/apps/contagem-estoque/app.js',import.meta.url),'utf8'),context);
 vm.runInContext("catalog=new Map([['1',{description:'Produto A',brand:'MARCA'}]]);",context);
 context.fixture=[
@@ -19,11 +19,13 @@ assert.equal(pivot.rows.find(r=>r.store==='APAR'&&r.ean==='1').values['2026-10-2
 assert.equal(pivot.rows.find(r=>r.store==='JOIN').values['2026-10-21'],8);
 vm.runInContext("current={id:'s',status:'EM ANDAMENTO',version:0,counts:[],defects:[]};user={id:'u'};",context);
 context.document.querySelector('#ean-input').value='999';
-vm.runInContext('scan()',context);
+await vm.runInContext('scan()',context);
 assert.equal(elements.get('#unknown-dialog').open,true);
 assert.equal(vm.runInContext('current.counts.length',context),0,'Unknown EAN must wait for confirmation');
 vm.runInContext("addScan('999',true)",context);
 assert.equal(vm.runInContext('current.counts[0].unknown',context),true);
+vm.runInContext("catalog.set('2',{description:'Produto B',brand:'MARCA'});addScan('2');addScan('1');",context);
+assert.deepEqual(JSON.parse(JSON.stringify(vm.runInContext("current.counts.map(r=>r.ean)",context))),['999','2','1'],'Scanned products must keep first-scan order');
 const gas=vm.createContext({console,Map,Set,JSON,Number,String,Array,Error});
 vm.runInContext(fs.readFileSync(new URL('Code.gs',import.meta.url),'utf8'),gas);
 assert.throws(()=>vm.runInContext("normalizeRows_([{ean:'999',quantity:1}],new Map())",gas),/inexistente/);
