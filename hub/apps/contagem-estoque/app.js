@@ -226,12 +226,12 @@ async function flush(){
   if(result.empty){await forgetEmpty(target);return;}
   target.version=result.version;target.updatedAt=result.updatedAt;target.status=result.status||target.status;
   saved=packet.serial;retry=null;retryDelay=5000;
-  await persistDraft();if(serial===saved){localStorage.removeItem(draftKey());sync(target.status==='FINALIZADA'?'Contagem finalizada no Google Drive':'Salvo no Google Drive');}else sync('Salvo localmente · alterações pendentes','pending');render();
+  await persistDraft();if(serial===saved){localStorage.removeItem(draftKey());sync(target.status==='FINALIZADA'?'Contagem finalizada no Google Drive':'Salvo no Google Drive');}else sync('Salvo localmente · alterações pendentes','pending');if(packet.action==='finish')render();
  }catch(e){
   if(/sem permissão|não foi encontrada|original foi excluída|já não existe/.test(e.message)){
    if(target.localFinished&&!target.counts.length&&!target.defects.length)try{const exists=await api('checkCount',{id:target.id});if(!exists.data.exists){await forgetEmpty(target);return;}}catch(_){}
    remoteUnavailable('A contagem não está disponível no Drive.');return;}
-  conflict=e.status===409;if(!conflict&&e.status&&e.status<500)note(e.message+' Os dados locais continuam disponíveis.',true);sync(conflict?'Drive alterado em outro acesso. Continue localmente e exporte para conferência.':'Salvo localmente · envio ao Drive pendente','error');if(conflict)note('As bipagens locais foram preservadas. O Drive não será sobrescrito.',true);retryDelay=Math.min(60000,retryDelay*2);render();
+  conflict=e.status===409;if(!conflict&&e.status&&e.status<500)note(e.message+' Os dados locais continuam disponíveis.',true);sync(conflict?'Drive alterado em outro acesso. Continue localmente e exporte para conferência.':'Salvo localmente · envio ao Drive pendente','error');if(conflict)note('As bipagens locais foram preservadas. O Drive não será sobrescrito.',true);retryDelay=Math.min(60000,retryDelay*2);
  }finally{inflight=null;updateOfflineStatus();if(current&&serial!==saved&&!conflict&&navigator.onLine&&auth?.access_token){clearTimeout(timer);timer=setTimeout(()=>{timer=null;flush();},retryDelay);}}})();return inflight;
 }
 
