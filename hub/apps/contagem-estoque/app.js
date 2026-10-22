@@ -24,7 +24,7 @@ function showUnknown(ean,origin,reason){
  scanSound(false);$('#unknown-dialog').showModal();
 }
 async function showInventoryHome(){
- stopCamera();await persistDraft();await TPInventoryLocal.drain();inventoryHome=true;render();await renderDeviceDrafts();
+ stopCamera();await persistDraft();await TPInventoryLocal.drain();inventoryHome=true;$('#recount-inbox').hidden=false;render();await renderDeviceDrafts();
  $('#count-view').scrollIntoView({block:'start'});if(navigator.onLine&&auth)loadRecounts();
 }
 async function renderDeviceDrafts(){
