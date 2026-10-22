@@ -30,3 +30,6 @@
 .share-link-heading small{color:var(--muted,#9b9b9b);font-size:.75rem}
 #share-link-value{display:block;width:100%;min-width:0;padding:.68rem .8rem;border:1px solid rgba(255,255,255,.12);border-radius:9px;background:rgba(0,0,0,.35);color:var(--text,#fff);font:inherit;font-size:.78rem}
 @media(max-width:650px){.share-link-heading{align-items:flex-start;flex-direction:column}.share-link-heading .button{width:100%}}
+
+
+.offline-panel{border:1px solid #ffffff24;background:#191a16;border-radius:14px;padding:14px 18px;margin:16px 0;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.offline-panel>div{display:flex;gap:8px;flex-wrap:wrap}.offline-status{font-size:13px;color:#d9dacd;line-height:1.6}.offline-status.pending{color:#ffda28}.offline-status.error{color:#ffb5b5}

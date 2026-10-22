@@ -55,3 +55,18 @@ Only finalized counts appear in the analysis. If a store has several finalized c
 Count names end with a daily sequence for the store: LOJA-dd-MM-yyyy #1, #2, etc. Recount names reference the original numbered count and end with RECONTAGEM #1, #2. updateInventoryNamesAndCleanup migrates existing labels and sheet names while preserving IDs and quantities.
 
 metadata_ ignores tabs deleted manually in Google Sheets, including recounts whose source no longer exists. reconcileDeletedCounts cleans their stale metadata and dependent recount tabs. The website refreshes its visible state when the tab/window regains focus; store accounts can only check the existence of their known current count, without reading history.
+
+
+## Contagem sem conexão (Chrome)
+
+Depois do login e de criar/abrir a contagem com internet, aguarde **Pronto para contar sem internet**. O cadastro completo, a página, os recursos de câmera e os exportadores ficam preparados no dispositivo. Use **Preparar / atualizar uso offline** para tentar novamente ou atualizar o cadastro.
+
+Cada bipagem é persistida no IndexedDB, separada por usuário e contagem; apenas a linha alterada é gravada durante a bipagem. A contagem pode ser recuperada no botão **Retomar contagem deste dispositivo** após recarregar ou reabrir a página. Sair explicitamente bloqueia essa retomada até o próximo login. Não há senha nem token no IndexedDB. Cadastro e recursos offline são preparados uma vez por sessão de acesso; nenhuma resposta autenticada é armazenada pelo service worker.
+
+Excel com três abas e TXT de Contagem/Defeitos, além do CSV de importação, são gerados localmente. EAN permanece texto, com zeros iniciais, e a importação lista os defeitos primeiro. Finalizar sem conexão fecha os lançamentos no dispositivo e deixa o envio pendente. A contagem vazia é removida quando o servidor confirma a exclusão, incluindo recuperação de uma resposta perdida.
+
+A sincronização transmite snapshots versionados em lotes com identificador estável, persistido antes da requisição. O mesmo pacote é repetido em caso de resposta perdida; bipagens posteriores são enviadas depois da confirmação do pacote anterior. Conflitos ou exclusão no Drive preservam uma cópia local para exportação, sem sobrescrever o servidor nem recriar a contagem apagada. Uma falha de armazenamento é exibida e uma gravação completa repara a cópia local na próxima tentativa bem-sucedida.
+
+Validado em Chrome com 5.000 EANs distintos, defeitos, horas de bipagem, fechamento/reabertura, resposta perdida, conflito de versão e exclusão de contagem vazia. A tabela renderiza 100 produtos por página, mantendo a ordem original. Arquivos/exportações sempre incluem todos os itens. O primeiro acesso e a criação de contagem exigem internet. Sincronizar após perder a sessão exige novo login. Limpar os dados do navegador, modo anônimo e perda do dispositivo podem remover a cópia local; preserve os arquivos exportados.
+
+Teste de exportação/cache: `node backend/contagem-estoque/verify-offline.mjs`. O arquivo XLSX de teste contém 5.000 produtos e pode ser aberto para conferência.

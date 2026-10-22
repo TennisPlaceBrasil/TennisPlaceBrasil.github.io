@@ -24,11 +24,12 @@ const content={
  'inventory-login':['Entrar no Inventário','Loja: digite a sigla e use o CNPJ, só com números, como senha. Administrativo: use seu e-mail e senha ou seu acesso habitual.'],
  'inventory-start':['Começar uma contagem','Confira a loja e a data e toque em “Nova contagem”. Se houver um pedido para sua loja, toque em “Abrir recontagem”.'],
  'inventory-admin-start':['Contagens e recontagens','Escolha a loja e a data para criar uma contagem. Para consultar uma já salva, toque em “Carregar contagens” e selecione a desejada. Em uma contagem finalizada, você pode solicitar a recontagem por TXT.'],
- 'inventory-count':['Contar os produtos','Bipe, digite ou leia pela câmera. Cada bipagem soma uma unidade. Você também pode importar um TXT EAN,QNTDD; as quantidades são somadas ao que já foi lançado. Confira os EANs não cadastrados antes de confirmar. Aguarde “Salvo no Google Drive” e finalize quando terminar.'],
+ 'inventory-count':['Contar os produtos','Confira “Pronto para contar sem internet” antes de começar. Bipe, digite, use a câmera ou importe TXT EAN,QNTDD. Cada bipagem é salva neste dispositivo. Sem conexão, continue contando e baixe os arquivos. O envio ao Drive fica pendente até a conexão voltar.'],
  'inventory-defects':['Registrar defeitos','Selecione “Defeitos” e bipe, digite, use a câmera ou importe um TXT EAN,QNTDD. Os valores importados se somam ao que já foi lançado. Conte cada unidade uma só vez: defeitos são somados à contagem na saída.'],
  'inventory-camera':['Ler pela câmera','Permita o acesso à câmera no Chrome e aponte para o código de barras. A leitura acontece neste dispositivo. Toque em “Fechar” para desligar a câmera.'],
  'inventory-import-unknown':['Conferir EANs importados','Estes códigos não aparecem no cadastro. Toque em “Corrigir arquivo” para cancelar e ajustar o TXT, ou em “Lançar mesmo assim” para incluir os itens como inexistentes.'],
  'inventory-recount':['Fazer a recontagem','Bipe os EANs solicitados. Amarelo significa apenas que o produto foi incluído; confira a quantidade por sua conta. Se não encontrar o item, marque “Não localizado (0)”. Finalize após conferir todos.'],
+ 'inventory-local-finished':['Finalizada neste dispositivo','A contagem está salva neste dispositivo e aguarda envio ao Drive. Você já pode baixar o Excel ou os arquivos TXT. Quando a conexão voltar, toque em Sincronizar.'],
  'inventory-finished':['Contagem finalizada','Esta contagem está salva e não aceita novas bipagens. Você pode baixar o Excel ou o CSV. Para contar novamente os produtos, abra uma nova contagem.'],
  'inventory-delete-pending':['Solicitação de exclusão enviada','A contagem fica bloqueada enquanto o ADM confere os produtos. A loja não consegue apagar a contagem.'],
  'inventory-delete-review':['Revisar pedido de exclusão','Confira os produtos e as quantidades antes de decidir. Depois escolha “Aprovar exclusão” ou “Recusar pedido”.'],
@@ -53,7 +54,7 @@ function infer(){
   else if(visible('#analysis-view'))send('inventory-analysis');
   else if(visible('#delete-review-actions'))send('inventory-delete-review');
   else if(visible('#delete-pending-status'))send('inventory-delete-pending');
-  else if(visible('#counting')){const finished=document.querySelector('#finish-count')?.textContent.includes('FINALIZADA');send(finished?(visible('#recount-targets')?'inventory-recount-finished':'inventory-finished'):visible('#recount-targets')?'inventory-recount':document.querySelector('[data-mode="defects"].active')?'inventory-defects':'inventory-count');}
+  else if(visible('#counting')){const finished=document.querySelector('#finish-count')?.textContent.includes('FINALIZADA');send(document.querySelector('#counting')?.dataset.localFinished==='true'?'inventory-local-finished':finished?(visible('#recount-targets')?'inventory-recount-finished':'inventory-finished'):visible('#recount-targets')?'inventory-recount':document.querySelector('[data-mode="defects"].active')?'inventory-defects':'inventory-count');}
   else if(visible('#deletion-inbox'))send('inventory-delete-inbox');
   else send(visible('#tab-analysis')?'inventory-admin-start':'inventory-start');return;
  }
@@ -88,3 +89,4 @@ function loadMascot(){mascot=document.createElement('iframe');mascot.src=base+'t
 if('requestIdleCallback'in window)requestIdleCallback(loadMascot,{timeout:2500});else setTimeout(loadMascot,1200);
 infer();paint();
 })();
+

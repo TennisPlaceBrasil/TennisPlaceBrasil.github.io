@@ -6,15 +6,15 @@
   <meta name="theme-color" content="#10110f">
   <meta name="description" content="Contagem de estoque da Tennis Place com salvamento no Google Drive.">
   <title>Inventário | Tennis Place</title>
-  <link rel="stylesheet" href="style.css?v=inventory12">
+  <link rel="stylesheet" href="style.css?v=offline1">
 </head>
 <body>
   <header class="topbar">
     <a class="brand" href="../../" aria-label="Voltar ao Hub Tennis Place"><img src="../../logo.png" alt="Tennis Place"><span class="brand-tool">INVENTÁRIO</span></a>
     <div class="account-bar"><span id="account-label" class="local-badge">ACESSO TENNIS PLACE</span><button id="logout" class="button button-quiet" hidden>SAIR</button></div>
   </header>
-  <section class="login-panel" id="login-panel"><p class="eyebrow">ACESSO TENNIS PLACE</p><h1><em>Inventário</em></h1><p>Use o mesmo acesso dos manuais.</p><form id="login-form"><label for="login-id">Sigla da loja ou e-mail</label><input id="login-id" autocomplete="username" required><label for="login-password">CNPJ da loja ou senha</label><input id="login-password" type="password" autocomplete="current-password" required><button class="button button-primary" id="login-submit">ENTRAR</button><p id="login-error" role="alert"></p></form></section>
-  <main id="app-main" hidden><nav class="tool-tabs"><button id="tab-count" class="active">CONTAGEM</button><button id="tab-analysis" hidden>ANÁLISE DE ESTOQUE</button></nav><p id="app-error" role="alert"></p><div id="count-view">
+  <section class="login-panel" id="login-panel"><p class="eyebrow">ACESSO TENNIS PLACE</p><h1><em>Inventário</em></h1><p>Use o mesmo acesso dos manuais.</p><form id="login-form"><label for="login-id">Sigla da loja ou e-mail</label><input id="login-id" autocomplete="username" required><label for="login-password">CNPJ da loja ou senha</label><input id="login-password" type="password" autocomplete="current-password" required><button class="button button-primary" id="login-submit">ENTRAR</button><p id="login-error" role="alert"></p><button id="recover-local" class="button button-quiet" type="button" hidden>RETOMAR CONTAGEM DESTE DISPOSITIVO</button></form></section>
+  <main id="app-main" hidden><nav class="tool-tabs"><button id="tab-count" class="active">CONTAGEM</button><button id="tab-analysis" hidden>ANÁLISE DE ESTOQUE</button></nav><p id="app-error" role="alert"></p><section class="offline-panel"><p id="offline-status" class="offline-status" role="status">Preparando uso sem internet…</p><div><button id="prepare-offline" class="button button-quiet" type="button">PREPARAR / ATUALIZAR USO OFFLINE</button><button id="sync-now" class="button button-quiet" type="button">SINCRONIZAR</button></div></section><div id="count-view">
     <section class="intro">
       <div>
         <p class="eyebrow">OPERAÇÃO DE LOJA <span> / </span> ESTOQUE</p>
@@ -26,7 +26,7 @@
         <div class="scan-label">EAN<br><b>QNTD</b></div>
       </div>
     </section>
-    <div class="privacy-note"><span>●</span><div><strong>Contagens salvas no Google Drive.</strong> O dashboard registra a hora da última bipagem por produto e mostra o IP e o dispositivo uma vez no topo; o IP é consultado uma vez por sessão.</div></div>
+    <div class="privacy-note"><span>●</span><div><strong>Contagens salvas neste dispositivo e sincronizadas com o Google Drive.</strong> O dashboard registra a hora da última bipagem por produto e mostra o IP e o dispositivo uma vez no topo; o IP é consultado uma vez por sessão.</div></div>
     <section class="session-bar" aria-label="Identificação da contagem">
       <div class="session-create">
         <label for="store-code">LOJA / SIGLA</label>
@@ -85,17 +85,17 @@
       <div class="lists" id="product-lists">
         <section class="list-panel">
           <div class="list-heading"><div><span class="eyebrow">01 / CONTAGEM</span><h3>Produtos contados</h3></div><span id="count-rows" class="row-count">0 ITENS</span></div>
-          <div class="table-wrap"><table><thead><tr><th>EAN</th><th>PRODUTO</th><th>MARCA</th><th>QTD.</th><th></th></tr></thead><tbody id="count-body"></tbody></table><p class="table-empty" id="count-empty">Nenhum produto contado ainda.</p></div>
+          <div class="table-wrap"><table><thead><tr><th>EAN</th><th>PRODUTO</th><th>MARCA</th><th>QTD.</th><th></th></tr></thead><tbody id="count-body"></tbody></table><p class="table-empty" id="count-empty">Nenhum produto contado ainda.</p></div><div class="recount-pages"><button id="counts-prev" class="button button-quiet" type="button">ANTERIOR</button><span id="counts-page"></span><button id="counts-next" class="button button-quiet" type="button">PRÓXIMA</button></div>
         </section>
         <section class="list-panel">
           <div class="list-heading"><div><span class="eyebrow">02 / DEFEITOS</span><h3>Produtos com defeito</h3></div><span id="defect-rows" class="row-count">0 ITENS</span></div>
-          <div class="table-wrap"><table><thead><tr><th>EAN</th><th>PRODUTO</th><th>MARCA</th><th>QTD.</th><th></th></tr></thead><tbody id="defect-body"></tbody></table><p class="table-empty" id="defect-empty">Nenhum defeito registrado ainda.</p></div>
+          <div class="table-wrap"><table><thead><tr><th>EAN</th><th>PRODUTO</th><th>MARCA</th><th>QTD.</th><th></th></tr></thead><tbody id="defect-body"></tbody></table><p class="table-empty" id="defect-empty">Nenhum defeito registrado ainda.</p></div><div class="recount-pages"><button id="defects-prev" class="button button-quiet" type="button">ANTERIOR</button><span id="defects-page"></span><button id="defects-next" class="button button-quiet" type="button">PRÓXIMA</button></div>
         </section>
       </div>
       <section id="delete-review-actions" class="recount-inbox delete-review-actions" hidden><div><span class="eyebrow">ANÁLISE DA SOLICITAÇÃO</span><h3>Confira os produtos acima antes de decidir</h3><p id="delete-review-summary"></p></div><label for="delete-review-reason">MOTIVO (opcional ao recusar)</label><input id="delete-review-reason" maxlength="200" placeholder="Explique por que o pedido foi recusado"><div class="dialog-actions"><button id="reject-delete" class="button button-quiet" type="button">RECUSAR SOLICITAÇÃO</button><button id="approve-delete" class="button button-primary" type="button">APROVAR E EXCLUIR</button></div></section>
       <section class="export-panel">
         <div><span class="eyebrow">03 / SAÍDA</span><h3>Preparar a contagem</h3><p>O Excel terá abas de Contagem, Defeitos e Importação. A importação lista defeitos primeiro e depois a contagem.</p></div>
-        <div class="export-actions"><button id="export-xlsx" class="button button-primary" type="button">BAIXAR PLANILHA EXCEL</button><button id="export-txt" class="button button-quiet" type="button">BAIXAR IMPORTAÇÃO CSV</button></div>
+        <div class="export-actions"><button id="export-xlsx" class="button button-primary" type="button">BAIXAR PLANILHA EXCEL</button><button id="export-count-txt" class="button button-quiet" type="button">BAIXAR CONTAGEM TXT</button><button id="export-defects-txt" class="button button-quiet" type="button">BAIXAR DEFEITOS TXT</button><button id="export-txt" class="button button-quiet" type="button">BAIXAR IMPORTAÇÃO CSV</button></div>
       </section>
       <p class="footer-note">A análise utiliza contagens finalizadas e soma as unidades da contagem com os defeitos.</p>
     </section>
@@ -104,8 +104,9 @@
   </main>
   <dialog id="camera-dialog" class="camera-dialog"><div class="list-heading"><div><p class="eyebrow">LEITURA PELO DISPOSITIVO</p><h2>Código de barras</h2></div><button id="camera-close" class="button button-quiet" type="button">FECHAR</button></div><video id="camera-video" autoplay muted playsinline></video><p id="camera-status" role="status">A câmera inicia apenas quando solicitada.</p><small>Aponte a câmera traseira para o código. A imagem é processada neste dispositivo.</small></dialog>
   <dialog id="import-unknown-dialog"><p class="eyebrow">EAN FORA DO CADASTRO</p><h2>Produto inexistente</h2><p id="import-unknown-count"></p><p id="import-unknown-list" class="import-unknown-list"></p><p>Confira o TXT ou confirme para lançar esses códigos como inexistentes.</p><div class="dialog-actions"><button id="import-cancel-unknown" class="button button-quiet" type="button">CORRIGIR ARQUIVO</button><button id="import-confirm-unknown" class="button button-primary" type="button">LANÇAR MESMO ASSIM</button></div></dialog>
-  <dialog id="unknown-dialog"><p class="eyebrow">EAN NÃO RECONHECIDO</p><h2>Produto inexistente</h2><p id="unknown-ean"></p><p>O código não foi encontrado no cadastro de produtos.</p><div class="dialog-actions"><button id="correct-ean" class="button button-quiet">CORRIGIR</button><button id="allow-ean" class="button button-primary">LANÇAR MESMO ASSIM</button></div></dialog>
+  <dialog id="unknown-dialog"><p class="eyebrow">EAN NÃO RECONHECIDO</p><h2>Produto inexistente</h2><p id="unknown-ean"></p><p id="unknown-reason">O código não foi encontrado no cadastro de produtos.</p><div class="dialog-actions"><button id="correct-ean" class="button button-quiet">CORRIGIR</button><button id="allow-ean" class="button button-primary">LANÇAR MESMO ASSIM</button></div></dialog>
   <dialog id="recount-dialog"><form id="recount-request-form"><p class="eyebrow">SOLICITAÇÃO PARA A LOJA</p><h2>Solicitar recontagem</h2><p id="recount-source-label"></p><p>Envie um TXT com um EAN por linha. A loja verá os códigos e informará as quantidades, sem consultar a contagem anterior.</p><label for="recount-file">ARQUIVO TXT</label><input id="recount-file" type="file" accept=".txt,text/plain" required><p id="recount-file-status" role="status"></p><div class="dialog-actions"><button id="cancel-recount" type="button" class="button button-quiet">CANCELAR</button><button id="send-recount" type="submit" class="button button-primary">ENVIAR À LOJA</button></div></form></dialog>
-  <script src="app.js?v=inventory12"></script><script src="../../shared/tepe-help.js?v=4" defer></script>
+  <script src="offline-store.js?v=1"></script><script src="offline-export.js?v=1"></script><script src="app.js?v=offline1"></script><script src="../../shared/tepe-help.js?v=5" defer></script>
 </body>
 </html>
+
