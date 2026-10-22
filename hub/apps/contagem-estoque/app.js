@@ -80,7 +80,7 @@ async function deleteSession(){
     sessions=sessions.filter(s=>s.id!==id);
     if(current?.id===id){localStorage.removeItem(draftKey());current=null;serial=0;saved=0;retry=null;conflict=false;}
     picker();render();$('#app-error').textContent='';sync('Contagem excluída do Drive');loadRecounts();
-  }catch(e){$('#app-error').textContent=e.message;}
+  }catch(e){if(/já não existe|sem permissão|excluída da planilha/.test(e.message)){sessions=sessions.filter(s=>s.id!==id);if(current?.id===id){clearTimeout(timer);current=null;serial=0;saved=0;retry=null;conflict=false;}picker();render();$('#app-error').textContent='Esta contagem já foi excluída da planilha.';}else $('#app-error').textContent=e.message;}
 }
 function draftKey(){return 'tp-stockcount-draft-'+user.id+'-'+current.id;}
 function persistDraft(){try{localStorage.setItem(draftKey(),JSON.stringify({version:current.version,inflightId:retry?.body.requestId||null,counts:current.counts,defects:current.defects,zeroEans:current.zeroEans||[]}));}catch(_){sync('Não foi possível criar o rascunho local. Aguarde o Drive.','error');}}
@@ -113,6 +113,7 @@ async function ensureSaved(){
   clearTimeout(timer);
   while(serial!==saved){
     const previous=saved;await flush();clearTimeout(timer);
+    if(serial===saved)return;
     if(saved===previous)throw Error('Aguarde o salvamento no Google Drive antes de continuar.');
   }
 }
