@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#10110f">
   <meta name="description" content="Contagem de estoque da Tennis Place com salvamento no Google Drive.">
   <title>Inventário | Tennis Place</title>
-  <link rel="stylesheet" href="style.css?v=inventory11">
+  <link rel="stylesheet" href="style.css?v=inventory12">
 </head>
 <body>
   <header class="topbar">
@@ -26,7 +26,7 @@
         <div class="scan-label">EAN<br><b>QNTD</b></div>
       </div>
     </section>
-    <div class="privacy-note"><span>●</span><div><strong>Contagens salvas no Google Drive.</strong> Aguarde a confirmação de salvamento antes de fechar a página.</div></div>
+    <div class="privacy-note"><span>●</span><div><strong>Contagens salvas no Google Drive.</strong> Horário, origem e dispositivo/IP dos produtos são registrados para conferência; o IP é consultado uma vez por sessão.</div></div>
     <section class="session-bar" aria-label="Identificação da contagem">
       <div class="session-create">
         <label for="store-code">LOJA / SIGLA</label>
@@ -43,6 +43,7 @@
       </div>
     </section>
     <section id="recount-inbox" class="recount-inbox" hidden aria-labelledby="recount-inbox-title"><div class="list-heading"><div><span class="eyebrow">PEDIDOS DO ADMINISTRATIVO</span><h3 id="recount-inbox-title">Recontagens solicitadas</h3></div><button id="refresh-recounts" class="button button-quiet" type="button">ATUALIZAR SOLICITAÇÕES</button></div><p id="recount-inbox-status" role="status"></p><div id="recount-inbox-list"></div></section>
+    <section id="deletion-inbox" class="recount-inbox" hidden aria-labelledby="deletion-inbox-title"><div class="list-heading"><div><span class="eyebrow">REVISÃO ADMINISTRATIVA</span><h3 id="deletion-inbox-title">Solicitações de exclusão</h3></div><button id="refresh-deletions" class="button button-quiet" type="button">ATUALIZAR PEDIDOS</button></div><p id="deletion-inbox-status" role="status"></p><div id="deletion-inbox-list"></div></section>
     <section class="empty-state" id="empty-state">
       <div class="empty-symbol">01</div>
       <h2>Comece uma nova contagem</h2>
@@ -51,11 +52,12 @@
     <section class="counting" id="counting" hidden>
       <div class="count-heading">
         <div><span class="eyebrow">SESSÃO ATIVA</span><h2 id="session-title">—</h2></div>
-        <div><span id="sync-status" class="sync-status">Salvo no Drive</span><button id="reload-count" class="button button-quiet">REABRIR</button><button id="finish-count" class="button button-quiet">FINALIZAR CONTAGEM</button></div><div class="totals">
+        <div><span id="sync-status" class="sync-status">Salvo no Drive</span><button id="reload-count" class="button button-quiet">REABRIR</button><button id="request-delete-session" class="button button-quiet" type="button" hidden>SOLICITAR EXCLUSÃO</button><button id="finish-count" class="button button-quiet">FINALIZAR CONTAGEM</button></div><div class="totals">
           <div><span>UNIDADES CONTADAS</span><b id="count-total">0</b></div>
           <div><span>DEFEITOS BIPADOS</span><b id="defect-total">0</b></div>
         </div>
       </div>
+      <p id="delete-pending-status" class="delete-pending-status" role="status" hidden>Solicitação de exclusão enviada. A contagem está bloqueada até o ADM revisar os produtos e decidir.</p>
       <section id="recount-targets" class="recount-targets" hidden aria-labelledby="recount-title"><div class="list-heading"><div><span class="eyebrow">RECONTAGEM SOLICITADA</span><h3 id="recount-title">Produtos para recontar</h3></div><span id="recount-progress"></span></div><p>Bipe os produtos solicitados. Amarelo significa incluído na recontagem; a quantidade é responsabilidade da loja. Se não encontrar um produto, marque “Não localizado (0)”.</p><label class="recount-search-label" for="recount-search">BUSCAR EAN OU PRODUTO</label><input id="recount-search" class="recount-search" type="search" placeholder="Buscar na solicitação…"><div id="recount-target-list" class="recount-target-list"></div><div class="recount-pages"><button id="recount-prev" type="button" class="button button-quiet">ANTERIOR</button><span id="recount-page"></span><button id="recount-next" type="button" class="button button-quiet">PRÓXIMA</button></div></section>
       <div class="scanner-panel">
         <div class="mode-switch" role="group" aria-label="Tipo de registro">
@@ -75,7 +77,7 @@
         </form>
         <div class="catalog-status" id="catalog-status"><span class="status-dot"></span> Carregando base de produtos…</div>
       </div>
-      <div class="lists">
+      <div class="lists" id="product-lists">
         <section class="list-panel">
           <div class="list-heading"><div><span class="eyebrow">01 / CONTAGEM</span><h3>Produtos contados</h3></div><span id="count-rows" class="row-count">0 ITENS</span></div>
           <div class="table-wrap"><table><thead><tr><th>EAN</th><th>PRODUTO</th><th>MARCA</th><th>QTD.</th><th></th></tr></thead><tbody id="count-body"></tbody></table><p class="table-empty" id="count-empty">Nenhum produto contado ainda.</p></div>
@@ -85,6 +87,7 @@
           <div class="table-wrap"><table><thead><tr><th>EAN</th><th>PRODUTO</th><th>MARCA</th><th>QTD.</th><th></th></tr></thead><tbody id="defect-body"></tbody></table><p class="table-empty" id="defect-empty">Nenhum defeito registrado ainda.</p></div>
         </section>
       </div>
+      <section id="delete-review-actions" class="recount-inbox delete-review-actions" hidden><div><span class="eyebrow">ANÁLISE DA SOLICITAÇÃO</span><h3>Confira os produtos acima antes de decidir</h3><p id="delete-review-summary"></p></div><label for="delete-review-reason">MOTIVO (opcional ao recusar)</label><input id="delete-review-reason" maxlength="200" placeholder="Explique por que o pedido foi recusado"><div class="dialog-actions"><button id="reject-delete" class="button button-quiet" type="button">RECUSAR SOLICITAÇÃO</button><button id="approve-delete" class="button button-primary" type="button">APROVAR E EXCLUIR</button></div></section>
       <section class="export-panel">
         <div><span class="eyebrow">03 / SAÍDA</span><h3>Preparar a contagem</h3><p>O Excel terá abas de Contagem, Defeitos e Importação. A importação lista defeitos primeiro e depois a contagem.</p></div>
         <div class="export-actions"><button id="export-xlsx" class="button button-primary" type="button">BAIXAR PLANILHA EXCEL</button><button id="export-txt" class="button button-quiet" type="button">BAIXAR IMPORTAÇÃO CSV</button></div>
@@ -98,6 +101,6 @@
   <dialog id="import-unknown-dialog"><p class="eyebrow">EAN FORA DO CADASTRO</p><h2>Produto inexistente</h2><p id="import-unknown-count"></p><p id="import-unknown-list" class="import-unknown-list"></p><p>Confira o TXT ou confirme para lançar esses códigos como inexistentes.</p><div class="dialog-actions"><button id="import-cancel-unknown" class="button button-quiet" type="button">CORRIGIR ARQUIVO</button><button id="import-confirm-unknown" class="button button-primary" type="button">LANÇAR MESMO ASSIM</button></div></dialog>
   <dialog id="unknown-dialog"><p class="eyebrow">EAN NÃO RECONHECIDO</p><h2>Produto inexistente</h2><p id="unknown-ean"></p><p>O código não foi encontrado no cadastro de produtos.</p><div class="dialog-actions"><button id="correct-ean" class="button button-quiet">CORRIGIR</button><button id="allow-ean" class="button button-primary">LANÇAR MESMO ASSIM</button></div></dialog>
   <dialog id="recount-dialog"><form id="recount-request-form"><p class="eyebrow">SOLICITAÇÃO PARA A LOJA</p><h2>Solicitar recontagem</h2><p id="recount-source-label"></p><p>Envie um TXT com um EAN por linha. A loja verá os códigos e informará as quantidades, sem consultar a contagem anterior.</p><label for="recount-file">ARQUIVO TXT</label><input id="recount-file" type="file" accept=".txt,text/plain" required><p id="recount-file-status" role="status"></p><div class="dialog-actions"><button id="cancel-recount" type="button" class="button button-quiet">CANCELAR</button><button id="send-recount" type="submit" class="button button-primary">ENVIAR À LOJA</button></div></form></dialog>
-  <script src="app.js?v=inventory11"></script><script src="../../shared/tepe-help.js?v=3" defer></script>
+  <script src="app.js?v=inventory12"></script><script src="../../shared/tepe-help.js?v=4" defer></script>
 </body>
 </html>

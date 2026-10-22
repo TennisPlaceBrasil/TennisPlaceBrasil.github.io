@@ -30,6 +30,9 @@ const content={
  'inventory-import-unknown':['Conferir EANs importados','Estes códigos não aparecem no cadastro. Toque em “Corrigir arquivo” para cancelar e ajustar o TXT, ou em “Lançar mesmo assim” para incluir os itens como inexistentes.'],
  'inventory-recount':['Fazer a recontagem','Bipe os EANs solicitados. Amarelo significa apenas que o produto foi incluído; confira a quantidade por sua conta. Se não encontrar o item, marque “Não localizado (0)”. Finalize após conferir todos.'],
  'inventory-finished':['Contagem finalizada','Esta contagem está salva e não aceita novas bipagens. Você pode baixar o Excel ou o CSV. Para contar novamente os produtos, abra uma nova contagem.'],
+ 'inventory-delete-pending':['Solicitação de exclusão enviada','A contagem fica bloqueada enquanto o ADM confere os produtos. A loja não consegue apagar a contagem.'],
+ 'inventory-delete-review':['Revisar pedido de exclusão','Confira os produtos e as quantidades antes de decidir. Depois escolha “Aprovar exclusão” ou “Recusar pedido”.'],
+ 'inventory-delete-inbox':['Pedidos de exclusão','Abra um pedido em “Ver produtos”. Confira os itens da contagem antes de aprovar ou recusar.'],
  'inventory-recount-finished':['Recontagem finalizada','As quantidades dos EANs solicitados foram atualizadas na contagem original. Os outros produtos foram mantidos. Esta recontagem está salva e não aceita novas bipagens.'],
  'inventory-request':['Solicitar recontagem','Confira a loja e a contagem selecionada. Escolha um TXT com um EAN por linha e toque em “Enviar à loja”. A loja receberá os códigos, sem ver as quantidades anteriores.'],
  'inventory-unknown':['EAN não encontrado','Confira o código. Toque em “Corrigir” para tentar novamente. Se quiser registrar esse código mesmo sem cadastro, escolha “Lançar mesmo assim”.'],
@@ -41,14 +44,17 @@ function send(key){if(!content[key])return;context=key;if(remote){parent.postMes
 const visible=selector=>{const e=document.querySelector(selector);return !!e&&!e.hidden&&e.getClientRects().length>0;};
 function infer(){
  const path=location.pathname.toLowerCase();
- if(path.includes('contagem-estoque')){
+  if(path.includes('contagem-estoque')){
   if(visible('#login-panel'))send('inventory-login');
   else if(visible('#camera-dialog[open]'))send('inventory-camera');
   else if(visible('#import-unknown-dialog[open]'))send('inventory-import-unknown');
   else if(visible('#unknown-dialog[open]'))send('inventory-unknown');
   else if(visible('#recount-dialog[open]'))send('inventory-request');
   else if(visible('#analysis-view'))send('inventory-analysis');
+  else if(visible('#delete-review-actions'))send('inventory-delete-review');
+  else if(visible('#delete-pending-status'))send('inventory-delete-pending');
   else if(visible('#counting')){const finished=document.querySelector('#finish-count')?.textContent.includes('FINALIZADA');send(finished?(visible('#recount-targets')?'inventory-recount-finished':'inventory-finished'):visible('#recount-targets')?'inventory-recount':document.querySelector('[data-mode="defects"].active')?'inventory-defects':'inventory-count');}
+  else if(visible('#deletion-inbox'))send('inventory-delete-inbox');
   else send(visible('#tab-analysis')?'inventory-admin-start':'inventory-start');return;
  }
  if(path.includes('precificador')){send(visible('#loginPassword')?'pricing-login':'pricing');return;}
@@ -63,7 +69,7 @@ let inferenceTimer;
 const scheduleInfer=()=>{clearTimeout(inferenceTimer);inferenceTimer=setTimeout(infer,80);};
 document.addEventListener('click',scheduleInfer,{passive:true});
 window.addEventListener('hashchange',infer);
-const watched=['#login-panel','#app-main','#analysis-view','#counting','#recount-targets','#recount-dialog','#unknown-dialog','#camera-dialog','#import-unknown-dialog','#loginPanel','#appMain','#detail','#secure-frame','#user-password','#password'];
+const watched=['#login-panel','#app-main','#analysis-view','#counting','#recount-targets','#recount-dialog','#unknown-dialog','#camera-dialog','#import-unknown-dialog','#deletion-inbox','#delete-review-actions','#delete-pending-status','#loginPanel','#appMain','#detail','#secure-frame','#user-password','#password'];
 if('MutationObserver'in window){const observer=new MutationObserver(scheduleInfer);watched.forEach(selector=>{const el=document.querySelector(selector);if(el)observer.observe(el,{attributes:true,attributeFilter:['hidden','class','open','style']});});const finish=document.querySelector('#finish-count');if(finish)observer.observe(finish,{childList:true});}
 if(location.pathname.includes('estoquevendas')&&'IntersectionObserver'in window){const observer=new IntersectionObserver(entries=>{const entry=entries.filter(e=>e.isIntersecting).sort((a,b)=>a.boundingClientRect.top-b.boundingClientRect.top)[0];if(entry){const key=entry.target.id.replace('modulo-','');send(key==='validacao'?'dashboard-validacao':'dashboard-'+key);}},{rootMargin:'-12% 0px -62% 0px'});document.querySelectorAll('.analysis-module').forEach(el=>observer.observe(el));}
 if(remote){infer();return;}

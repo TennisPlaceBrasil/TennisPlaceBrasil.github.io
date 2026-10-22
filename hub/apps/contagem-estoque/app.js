@@ -1,7 +1,7 @@
 'use strict';
 const $=s=>document.querySelector(s),BASE='https://rihvnshexilakojnltox.supabase.co',KEY='sb_publishable_7coOHeG2tOc9XfS0qeKvPg_z2fh0KWz',AUTH_KEY='tp-manuais-supabase-v1';
 let auth=null,user=null,stores=[],sessions=[],sessionsLoaded=false,loadingSessions=false,current=null,catalog=new Map(),mode='count',unknown=null,lookingUp=false;
-let serial=0,saved=0,inflight=null,timer=null,retry=null,conflict=false,xlsxPromise,recounts=[],loadingRecounts=false,recountSourceId=null,recountPage=0,pendingImport=null,cameraStream=null,cameraControls=null,cameraFrame=0,cameraActive=false,zxingPromise=null;
+let serial=0,saved=0,inflight=null,timer=null,retry=null,conflict=false,xlsxPromise,recounts=[],loadingRecounts=false,recountSourceId=null,recountPage=0,pendingImport=null,cameraStream=null,cameraControls=null,cameraFrame=0,cameraActive=false,zxingPromise=null,deletionRequests=[],loadingDeletions=false,activeDeletionReviewId=null,unknownOrigin='LEITOR / DIGITAÇÃO',auditSessionPromise=null;
 const uuid=()=>crypto.randomUUID?crypto.randomUUID():Array.from(crypto.getRandomValues(new Uint8Array(16)),v=>v.toString(16).padStart(2,'0')).join('');
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function note(s,error=false){$('#scan-message').textContent=s;$('#scan-message').className='scan-message '+(error?'error':'success');}
@@ -9,6 +9,15 @@ function sync(s,type=''){$('#sync-status').textContent=s;$('#sync-status').class
 function cacheCatalog(ean,value){catalog.set(ean,value);try{const db=JSON.parse(localStorage.getItem('tp-stock-catalog-v1')||'{}');db[ean]={value,expires:Date.now()+240000};const keys=Object.keys(db);if(keys.length>5000)keys.slice(0,keys.length-5000).forEach(k=>delete db[k]);localStorage.setItem('tp-stock-catalog-v1',JSON.stringify(db));}catch(_){}}
 function restoreCatalog(){try{const db=JSON.parse(localStorage.getItem('tp-stock-catalog-v1')||'{}'),now=Date.now();Object.entries(db).forEach(([ean,item])=>{if(item.expires>now)catalog.set(ean,item.value);else delete db[ean];});localStorage.setItem('tp-stock-catalog-v1',JSON.stringify(db));}catch(_){}}
 function saveAuth(a){auth=a;if(a)sessionStorage.setItem(AUTH_KEY,JSON.stringify(a));else sessionStorage.removeItem(AUTH_KEY);}
+function sessionDevice(){const ua=navigator.userAgent||'',browser=/Edg\//.test(ua)?'Edge':/Chrome\//.test(ua)?'Chrome':/Firefox\//.test(ua)?'Firefox':/Safari\//.test(ua)?'Safari':'Navegador';const device=/Android/i.test(ua)?(/Mobile/i.test(ua)?'Android celular':'Android tablet'):/iPhone|iPod/i.test(ua)?'iPhone':/iPad/i.test(ua)?'iPad':/Windows/i.test(ua)?'Windows':/Macintosh|Mac OS/i.test(ua)?'Mac':/Linux/i.test(ua)?'Linux':'Dispositivo';return browser+' · '+device;}
+function auditSession(){
+  if(auditSessionPromise)return auditSessionPromise;
+  auditSessionPromise=(async()=>{const key='tp-stockcount-audit-'+(user?.id||'guest');try{const cached=JSON.parse(sessionStorage.getItem(key)||'null');if(cached?.id&&cached?.device)return cached;}catch(_){}
+    const data={id:uuid(),device:sessionDevice(),ip:'IP não capturado'};
+    try{const response=await fetch('https://api.ipify.org?format=json',{signal:AbortSignal.timeout(3000),cache:'no-store'});if(response.ok){const result=await response.json(),ip=String(result.ip||'').trim();if(/^(?:\d{1,3}\.){3}\d{1,3}$/.test(ip)||/^[0-9a-f:]+$/i.test(ip))data.ip=ip;}}catch(_){}
+    try{sessionStorage.setItem(key,JSON.stringify(data));}catch(_){}return data;
+  })().finally(()=>{auditSessionPromise=null;});return auditSessionPromise;
+}
 async function refresh(){
   const r=await fetch(BASE+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{apikey:KEY,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:auth?.refresh_token})});
   const data=await r.json();if(!r.ok){saveAuth(null);throw Error('Sessão expirada. Entre novamente.');}saveAuth(data);
@@ -29,25 +38,32 @@ function picker(){
   $('#delete-session').disabled=loadingSessions;
   const selected=sessions.find(s=>s.id===$('#session-picker').value);
   $('#request-recount').hidden=!user?.allStores||!selected||selected.kind==='RECONTAGEM'||selected.status!=='FINALIZADA';
+  $('#request-delete-session').hidden=!!user?.allStores||!current||current.deleteStatus==='PENDENTE';
 }
 function render(){
-  $('#empty-state').hidden=!!current;$('#counting').hidden=!current;renderRecount();updateInventoryHelp();if(!current)return;
+  $('#empty-state').hidden=!!current;$('#counting').hidden=!current;renderRecount();updateInventoryHelp();if(!current){$('#delete-review-actions').hidden=true;$('#request-delete-session').hidden=true;return;}
   $('#session-title').textContent=current.label;
   $('#reload-count').hidden=!user?.allStores&&current.kind!=='RECONTAGEM';
-  const counts=current.counts,defects=current.defects,done=current.status==='FINALIZADA';
+  const counts=current.counts,defects=current.defects,done=current.status==='FINALIZADA',deletePending=current.deleteStatus==='PENDENTE';
   $('#count-total').textContent=counts.reduce((n,r)=>n+r.quantity,0).toLocaleString('pt-BR');
   $('#defect-total').textContent=defects.reduce((n,r)=>n+r.quantity,0).toLocaleString('pt-BR');
   $('#count-rows').textContent=counts.length+' ITENS';$('#defect-rows').textContent=defects.length+' ITENS';
   $('#count-empty').hidden=!!counts.length;$('#defect-empty').hidden=!!defects.length;
   function table(rows,kind){return rows.map(r=>'<tr><td>'+esc(r.ean)+'</td><td><span class="product-name">'+esc(r.description)+'</span>'+(r.unknown?'<span class="product-sub">Lançado mesmo assim</span>':'')+'</td><td>'+esc(r.brand)+'</td><td><div class="qty-actions"><button type="button" data-kind="'+kind+'" data-ean="'+esc(r.ean)+'" data-delta="-1" aria-label="Diminuir">−</button><input class="quantity-input" type="number" min="1" max="1000000" step="1" inputmode="numeric" value="'+r.quantity+'" data-quantity="1" data-list="'+kind+'" data-ean="'+esc(r.ean)+'" aria-label="Quantidade"><button type="button" data-kind="'+kind+'" data-ean="'+esc(r.ean)+'" data-delta="1" aria-label="Aumentar">+</button></div></td><td><button type="button" class="remove-row" data-kind="'+kind+'" data-ean="'+esc(r.ean)+'" data-remove="1" aria-label="Remover">×</button></td></tr>').join('');}
   $('#count-body').innerHTML=table(counts,'counts');$('#defect-body').innerHTML=table(defects,'defects');
-  $('#ean-input').disabled=done||conflict||lookingUp;
-  ['#open-camera','#import-count','#import-defects'].forEach(id=>{if($(id))$(id).disabled=done||conflict;});
-  $('#finish-count').disabled=done||conflict;$('#finish-count').textContent=done?'CONTAGEM FINALIZADA':'FINALIZAR CONTAGEM';
-  document.querySelectorAll('.qty-actions button,.quantity-input,.remove-row').forEach(b=>b.disabled=done||conflict);
+  $('#ean-input').disabled=done||conflict||lookingUp||deletePending;
+  ['#open-camera','#import-count','#import-defects'].forEach(id=>{if($(id))$(id).disabled=done||conflict||deletePending;});
+  $('#finish-count').disabled=done||conflict||deletePending;$('#finish-count').textContent=done?'CONTAGEM FINALIZADA':deletePending?'AGUARDANDO ADM':'FINALIZAR CONTAGEM';
+  $('#delete-pending-status').hidden=!deletePending;
+  $('#request-delete-session').hidden=!!user?.allStores||deletePending;$('#request-delete-session').disabled=done&&deletePending;
+  document.querySelectorAll('.qty-actions button,.quantity-input,.remove-row').forEach(b=>b.disabled=done||conflict||deletePending);
+  const review=activeDeletionReviewId===current.id&&user?.allStores&&current.deleteStatus==='PENDENTE';$('#delete-review-actions').hidden=!review;
+  if(review)$('#delete-review-summary').textContent=counts.length+' produtos na contagem · '+defects.length+' produtos com defeito · '+counts.reduce((n,r)=>n+r.quantity,0)+' unidades contadas · '+defects.reduce((n,r)=>n+r.quantity,0)+' unidades com defeito.';
+  $('#approve-delete').disabled=!review||loadingDeletions;$('#reject-delete').disabled=!review||loadingDeletions;
 }
 async function boot(){
   const r=await api('bootstrap');user=r.user;stores=r.stores;sessions=[];sessionsLoaded=false;
+  auditSession();
   restoreCatalog();
   $('#login-panel').hidden=true;$('#app-main').hidden=false;$('#logout').hidden=false;
   $('#account-label').textContent=user.allStores?'ACESSO ADMINISTRATIVO':user.store;
@@ -58,7 +74,7 @@ async function boot(){
   $('#filter-store').innerHTML='<option value="">Todas as lojas</option>'+stores.map(s=>'<option>'+esc(s)+'</option>').join('');
   $('#filter-brand').innerHTML='<option value="">Todas as marcas</option>';
   $('#register-gama').hidden=!user.allStores||stores.includes('GAMA');
-  $('#recount-inbox').hidden=false;loadRecounts();updateInventoryHelp();
+  $('#recount-inbox').hidden=false;loadRecounts();$('#deletion-inbox').hidden=!user.allStores;if(user.allStores)loadDeletionRequests();updateInventoryHelp();
 }
 async function loadSessions(){
   if(!user?.allStores)return;
@@ -87,6 +103,36 @@ async function deleteSession(){
     picker();render();$('#app-error').textContent='';sync('Contagem excluída do Drive');loadRecounts();
   }catch(e){if(/já não existe|sem permissão|excluída da planilha/.test(e.message)){sessions=sessions.filter(s=>s.id!==id);if(current?.id===id){clearTimeout(timer);current=null;serial=0;saved=0;retry=null;conflict=false;}picker();render();$('#app-error').textContent='Esta contagem já foi excluída da planilha.';}else $('#app-error').textContent=e.message;}
 }
+async function loadDeletionRequests(){
+  if(!user?.allStores||loadingDeletions)return;loadingDeletions=true;$('#refresh-deletions').disabled=true;$('#deletion-inbox-status').textContent='Buscando solicitações…';
+  try{const r=await api('deletionInbox');deletionRequests=r.data||[];$('#deletion-inbox-list').innerHTML=deletionRequests.map(item=>'<article class="recount-inbox-item"><div><strong>'+esc(item.store)+' · '+esc(item.label)+'</strong><span>Solicitada em '+esc(item.deleteRequestedAt||'data não informada')+'</span></div><button class="button button-primary" type="button" data-review-delete="'+esc(item.id)+'">VER PRODUTOS</button></article>').join('');$('#deletion-inbox-status').textContent=deletionRequests.length?deletionRequests.length+' solicitação(ões) aguardando análise.':'Nenhuma solicitação pendente.';}
+  catch(e){$('#deletion-inbox-status').textContent=e.message||'Não foi possível buscar os pedidos.';}
+  finally{loadingDeletions=false;$('#refresh-deletions').disabled=false;render();}
+}
+async function reviewDeletion(id){
+  const request=deletionRequests.find(item=>item.id===id);if(!request)return;
+  try{await openCount(id);if(current?.deleteStatus!=='PENDENTE')throw Error('Esta solicitação já foi analisada.');activeDeletionReviewId=id;$('#delete-review-reason').value='';render();$('#product-lists').scrollIntoView({block:'start'});}
+  catch(e){$('#app-error').textContent=e.message;loadDeletionRequests();}
+}
+async function requestDeletion(){
+  if(!current||user?.allStores||current.deleteStatus==='PENDENTE')return;
+  if(!confirm('Enviar solicitação para excluir '+current.label+'? O ADM vai revisar os produtos antes de decidir. A contagem ficará bloqueada até a análise.'))return;
+  $('#request-delete-session').disabled=true;
+  try{await ensureSaved();const result=(await api('requestDelete',{id:current.id,auditSession:await auditSession()})).data;current=Object.assign(current,result);picker();render();$('#app-error').textContent='Solicitação enviada ao painel ADM. A contagem está bloqueada enquanto aguarda análise.';}
+  catch(e){$('#app-error').textContent=e.message;}
+  finally{$('#request-delete-session').disabled=false;}
+}
+async function resolveDeletion(approve){
+  if(!user?.allStores||!current||activeDeletionReviewId!==current.id||current.deleteStatus!=='PENDENTE')return;
+  const id=current.id;if(approve&&!confirm('Os produtos da contagem foram revisados? Aprovar excluirá a aba e removerá a contagem do Inventário.'))return;
+  $('#approve-delete').disabled=true;$('#reject-delete').disabled=true;
+  try{const result=(await api('resolveDelete',{id,approve,reason:$('#delete-review-reason').value.trim(),auditSession:await auditSession()})).data;
+    if(approve){sessions=sessions.filter(item=>item.id!==id);localStorage.removeItem('tp-stockcount-draft-'+user.id+'-'+id);clearTimeout(timer);current=null;serial=0;saved=0;retry=null;conflict=false;activeDeletionReviewId=null;$('#app-error').textContent='Solicitação aprovada. A contagem e a aba no Drive foram excluídas.';}
+    else{current=Object.assign(current,result);activeDeletionReviewId=null;$('#app-error').textContent='Solicitação recusada. A contagem foi liberada para a loja.';}
+    picker();render();loadDeletionRequests();if(sessionsLoaded)loadSessions();
+  }catch(e){$('#app-error').textContent=e.message;}
+  finally{render();}
+}
 function draftKey(){return 'tp-stockcount-draft-'+user.id+'-'+current.id;}
 function persistDraft(){try{localStorage.setItem(draftKey(),JSON.stringify({version:current.version,inflightId:retry?.body.requestId||null,counts:current.counts,defects:current.defects,zeroEans:current.zeroEans||[]}));}catch(_){sync('Não foi possível criar o rascunho local. Aguarde o Drive.','error');}}
 function changed(){
@@ -103,7 +149,7 @@ async function flush(){
   inflight=(async()=>{
     try{
       sync('Salvando no Google Drive…','pending');
-      const response=await api('save',packet.body);target.version=response.data.version;target.updatedAt=response.data.updatedAt;
+      packet.body.auditSession=await auditSession();const response=await api('save',packet.body);target.version=response.data.version;target.updatedAt=response.data.updatedAt;
       saved=packet.serial;retry=null;
       if(serial===saved){localStorage.removeItem(draftKey());sync('Salvo no Google Drive');}
       else persistDraft();
@@ -145,21 +191,21 @@ async function createCount(){
     const store=$('#store-code').value.trim().toUpperCase();
     if(!stores.includes(store))throw Error('Informe uma sigla de loja válida.');
     const date=$('#count-date').value;if(!date||!$('#count-date').checkValidity())throw Error('Selecione uma data válida para a contagem.');
-    current=(await api('create',{store,date})).data;sessions.push(current);serial=0;saved=0;retry=null;conflict=false;
+    current=(await api('create',{store,date,auditSession:await auditSession()})).data;sessions.push(current);serial=0;saved=0;retry=null;conflict=false;
     picker();render();sync('Nova contagem criada no Drive');$('#ean-input').focus();
   }catch(e){alert(e.message);}finally{$('#new-count').disabled=false;}
 }
-function addScan(ean,allowUnknown=false){
+function addScan(ean,allowUnknown=false,origin='LEITOR / DIGITAÇÃO'){
   if(!current||current.status==='FINALIZADA'||conflict)return;
   if(current.kind==='RECONTAGEM'&&!current.targets.some(t=>t.ean===ean)){note('Este EAN não está na solicitação de recontagem.',true);return;}
   current.zeroEans=(current.zeroEans||[]).filter(e=>e!==ean);
   if(current.kind==='RECONTAGEM'){recountPage=Math.floor(current.targets.findIndex(r=>r.ean===ean)/80);$('#recount-search').value='';}
   const kind=mode==='count'?'counts':'defects',p=catalog.get(ean);
   let row=current[kind].find(r=>r.ean===ean);
-  if(!row){row={ean,quantity:0,description:p?.description||'PRODUTO INEXISTENTE',brand:p?.brand||'NÃO CADASTRADA',unknown:allowUnknown};current[kind].push(row);}
+  if(!row){row={ean,quantity:0,description:p?.description||'PRODUTO INEXISTENTE',brand:p?.brand||'NÃO CADASTRADA',unknown:allowUnknown,origin};current[kind].push(row);}else row.origin=origin;
   row.quantity++;changed();note(row.description);$('#ean-input').value='';$('#ean-input').focus();
 }
-async function scan(){
+async function scan(origin='LEITOR / DIGITAÇÃO'){
   if(!current||current.status==='FINALIZADA'||conflict||lookingUp)return;
   const ean=$('#ean-input').value.trim();
   if(!/^\d{1,30}$/.test(ean)){note('Confira o EAN informado: use apenas números.',true);$('#ean-input').select();return;}
@@ -171,8 +217,8 @@ async function scan(){
       const product=result.data;
       cacheCatalog(ean,product?{ean:String(product[0]),description:product[1],brand:product[2]}:null);
     }
-    if(!catalog.get(ean)){unknown=ean;$('#unknown-ean').textContent=ean;$('#unknown-dialog').showModal();return;}
-    addScan(ean);
+    if(!catalog.get(ean)){unknown=ean;unknownOrigin=origin;$('#unknown-ean').textContent=ean;$('#unknown-dialog').showModal();return;}
+    addScan(ean,false,origin);
   }catch(e){note(e.message||'Não foi possível consultar o cadastro.',true);}
   finally{lookingUp=false;$('#catalog-status').textContent='Cadastro do Drive · consulta por EAN';render();}
 }
@@ -181,7 +227,7 @@ async function finishCount(){
     await ensureSaved();
     if(current.kind==='RECONTAGEM'){const included=new Set(current.counts.concat(current.defects).map(r=>r.ean).concat(current.zeroEans||[]));if(current.targets.some(r=>!included.has(r.ean)))throw Error('Bipe ou marque como não localizado cada EAN solicitado.');}
     const empty=current.kind!=='RECONTAGEM'&&!current.counts.length&&!current.defects.length,question=current.kind==='RECONTAGEM'?'Finalizar a recontagem? Os produtos solicitados serão atualizados na contagem original.':empty?'Esta contagem não tem produtos. Ao confirmar, sua aba será excluída automaticamente do Drive e do Inventário.':'Finalizar esta contagem? Ela aparecerá na análise e não receberá mais bipagens.';if(!confirm(question))return;
-    const result=(await api('finish',{id:current.id,version:current.version,requestId:uuid(),counts:current.counts,defects:current.defects,zeroEans:current.zeroEans||[]})).data;
+    const result=(await api('finish',{id:current.id,version:current.version,requestId:uuid(),counts:current.counts,defects:current.defects,zeroEans:current.zeroEans||[],auditSession:await auditSession()})).data;
     if(result.empty){sessions=sessions.filter(s=>s.id!==result.id);clearTimeout(timer);localStorage.removeItem(draftKey());current=null;serial=0;saved=0;retry=null;conflict=false;picker();render();sync('Contagem vazia excluída automaticamente');$('#app-error').textContent='A contagem sem produtos foi excluída do Drive e do Inventário.';return;}
     current=result;
     sessions=sessions.map(s=>s.id===current.id?current:s);picker();render();sync('Contagem finalizada no Google Drive');loadRecounts();
@@ -245,7 +291,7 @@ async function sendImport(includeUnknown){
   if(!pendingImport||!current||pendingImport.id!==current.id)throw Error('A contagem mudou. Escolha o arquivo novamente.');
   const p=pendingImport;$('#import-confirm-unknown').disabled=true;
   try{
-    const r=await api('importRows',{id:p.id,version:current.version,kind:p.kind,rows:p.rows,requestId:p.requestId,includeUnknown});
+    const r=await api('importRows',{id:p.id,version:current.version,kind:p.kind,rows:p.rows,requestId:p.requestId,includeUnknown,auditSession:await auditSession()});
     if(r.data.requiresConfirmation){$('#import-unknown-list').textContent=r.data.unknown.slice(0,16).join(', ')+(r.data.unknownCount>16?' e mais '+(r.data.unknownCount-16):'');$('#import-unknown-count').textContent=r.data.unknownCount+' EAN(s) não constam no cadastro. Deseja lançar mesmo assim?';$('#import-unknown-dialog').showModal();window.dispatchEvent(new CustomEvent('tp-help',{detail:'inventory-import-unknown'}));return;}
     current=r.data;serial=0;saved=0;retry=null;conflict=false;localStorage.removeItem(draftKey());if(user.allStores)sessions=sessions.map(s=>s.id===current.id?current:s);render();picker();sync('Arquivo importado e salvo no Google Drive');note(p.rows.length+' linhas do arquivo importadas para '+(p.kind==='counts'?'Contagem':'Defeitos')+'.');pendingImport=null;$('#import-file-status').textContent='';
   }catch(e){if(e.status===409){conflict=true;render();}throw e;}finally{$('#import-confirm-unknown').disabled=false;}
@@ -253,7 +299,7 @@ async function sendImport(includeUnknown){
 async function importWithFeedback(kind,input){try{await importFile(kind,input);}catch(e){$('#import-file-status').textContent=e.message;}}
 function loadZxing(){if(window.ZXingBrowser)return Promise.resolve(window.ZXingBrowser);if(zxingPromise)return zxingPromise;zxingPromise=new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='../../shared/zxing-browser.min.js';s.onload=()=>window.ZXingBrowser?resolve(window.ZXingBrowser):reject(Error('Leitor de câmera indisponível.'));s.onerror=()=>reject(Error('Não foi possível carregar o leitor local.'));document.head.append(s);});return zxingPromise;}
 function stopCamera(close=true){cameraActive=false;if(cameraFrame)cancelAnimationFrame(cameraFrame);cameraFrame=0;try{cameraControls?.stop();}catch(_){}cameraControls=null;cameraStream?.getTracks().forEach(t=>t.stop());cameraStream=null;const video=$('#camera-video');if(video)video.srcObject=null;if(close&&$('#camera-dialog')?.open)$('#camera-dialog').close();}
-async function cameraDetected(value){if(!cameraActive)return;const ean=String(value||'').replace(/\D/g,'');if(!/^\d{8,14}$/.test(ean))return;stopCamera();$('#ean-input').value=ean;await scan();}
+async function cameraDetected(value){if(!cameraActive)return;const ean=String(value||'').replace(/\D/g,'');if(!/^\d{8,14}$/.test(ean))return;stopCamera();$('#ean-input').value=ean;await scan('CÂMERA');}
 async function startCamera(){
   stopCamera(false);$('#camera-status').textContent='Solicitando acesso à câmera…';
   try{
@@ -283,11 +329,11 @@ function requestRecountDialog(){
 }
 async function submitRecount(event){
   event.preventDefault();const file=$('#recount-file').files[0];if(!file)return;$('#send-recount').disabled=true;
-  try{if(file.size>1500000)throw Error('O TXT deve ter no máximo 1,5 MB.');const eans=parseRecountTxt(await file.text());$('#recount-file-status').textContent='Enviando '+eans.length+' EANs…';const r=await api('requestRecount',{id:recountSourceId,eans,requestId:uuid()});sessions.push(r.data);$('#recount-dialog').close();picker();$('#app-error').textContent='Recontagem enviada para a loja '+r.data.store+'.';loadRecounts();}
+  try{if(file.size>1500000)throw Error('O TXT deve ter no máximo 1,5 MB.');const eans=parseRecountTxt(await file.text());$('#recount-file-status').textContent='Enviando '+eans.length+' EANs…';const r=await api('requestRecount',{id:recountSourceId,eans,requestId:uuid(),auditSession:await auditSession()});sessions.push(r.data);$('#recount-dialog').close();picker();$('#app-error').textContent='Recontagem enviada para a loja '+r.data.store+'.';loadRecounts();}
   catch(e){$('#recount-file-status').textContent=e.message;}finally{$('#send-recount').disabled=false;}
 }
 function updateInventoryHelp(){
-  const context=!user?'inventory-login':!$('#analysis-view').hidden?'inventory-analysis':current?.status==='FINALIZADA'?(current.kind==='RECONTAGEM'?'inventory-recount-finished':'inventory-finished'):current?.kind==='RECONTAGEM'?'inventory-recount':!current?(user.allStores?'inventory-admin-start':'inventory-start'):mode==='defects'?'inventory-defects':'inventory-count';
+  const context=!user?'inventory-login':activeDeletionReviewId&&current?.id===activeDeletionReviewId?'inventory-delete-review':!$('#analysis-view').hidden?'inventory-analysis':current?.deleteStatus==='PENDENTE'?'inventory-delete-pending':current?.status==='FINALIZADA'?(current.kind==='RECONTAGEM'?'inventory-recount-finished':'inventory-finished'):current?.kind==='RECONTAGEM'?'inventory-recount':!current?(user.allStores?'inventory-admin-start':'inventory-start'):mode==='defects'?'inventory-defects':'inventory-count';
   window.dispatchEvent(new CustomEvent('tp-help',{detail:context}));
 }
 $('#recount-search').addEventListener('input',()=>{recountPage=0;renderRecount();});
@@ -303,6 +349,10 @@ $('#recount-request-form').addEventListener('submit',submitRecount);
 $('#cancel-recount').addEventListener('click',()=>$('#recount-dialog').close());
 $('#refresh-recounts').addEventListener('click',loadRecounts);
 $('#recount-inbox-list').addEventListener('click',event=>{const b=event.target.closest('[data-open-recount]');if(b)openCount(b.dataset.openRecount).catch(e=>{$('#app-error').textContent=e.message;});});
+$('#refresh-deletions').addEventListener('click',loadDeletionRequests);
+$('#deletion-inbox-list').addEventListener('click',event=>{const b=event.target.closest('[data-review-delete]');if(b)reviewDeletion(b.dataset.reviewDelete);});
+$('#request-delete-session').addEventListener('click',requestDeletion);
+$('#approve-delete').addEventListener('click',()=>resolveDeletion(true));$('#reject-delete').addEventListener('click',()=>resolveDeletion(false));
 $('#recount-target-list').addEventListener('click',event=>{const b=event.target.closest('[data-zero-ean]');if(!b||!current||current.status==='FINALIZADA'||conflict)return;const ean=b.dataset.zeroEan;current.zeroEans=current.zeroEans||[];current.zeroEans=current.zeroEans.includes(ean)?current.zeroEans.filter(e=>e!==ean):current.zeroEans.concat(ean);changed();});
 $('#login-form').addEventListener('submit',async event=>{
   event.preventDefault();$('#login-submit').disabled=true;$('#login-error').textContent='';
@@ -330,18 +380,18 @@ $('#import-unknown-dialog').addEventListener('close',()=>{$('#import-confirm-unk
 $('#open-camera').addEventListener('click',()=>{if(!current||current.status==='FINALIZADA')return;$('#camera-dialog').showModal();window.dispatchEvent(new CustomEvent('tp-help',{detail:'inventory-camera'}));startCamera();});
 $('#camera-close').addEventListener('click',()=>stopCamera());$('#camera-dialog').addEventListener('close',()=>{stopCamera(false);updateInventoryHelp();});
 $('#correct-ean').addEventListener('click',()=>{$('#unknown-dialog').close();unknown=null;$('#ean-input').focus();$('#ean-input').select();});
-$('#allow-ean').addEventListener('click',()=>{$('#unknown-dialog').close();addScan(unknown,true);unknown=null;});
+$('#allow-ean').addEventListener('click',()=>{$('#unknown-dialog').close();addScan(unknown,true,unknownOrigin);unknown=null;});
 document.querySelectorAll('.mode-button').forEach(b=>b.addEventListener('click',()=>{mode=b.dataset.mode;updateInventoryHelp();document.querySelectorAll('.mode-button').forEach(x=>x.classList.toggle('active',x===b));$('#ean-input').focus();}));
 document.querySelectorAll('#count-body,#defect-body').forEach(body=>body.addEventListener('click',event=>{
   const b=event.target.closest('[data-delta],[data-remove]');if(!b||!current||current.status==='FINALIZADA'||conflict)return;
   const list=current[b.dataset.kind],row=list.find(r=>r.ean===b.dataset.ean);if(!row)return;
-  row.quantity=b.dataset.remove?0:row.quantity+Number(b.dataset.delta);current[b.dataset.kind]=list.filter(r=>r.quantity>0);changed();
+  row.quantity=b.dataset.remove?0:row.quantity+Number(b.dataset.delta);row.origin='AJUSTE MANUAL';current[b.dataset.kind]=list.filter(r=>r.quantity>0);changed();
 }));
 document.querySelectorAll('#count-body,#defect-body').forEach(body=>body.addEventListener('change',event=>{
   const input=event.target.closest('[data-quantity]');if(!input||!current||current.status==='FINALIZADA'||conflict)return;
   const value=Number(input.value),list=current[input.dataset.list],row=list.find(r=>r.ean===input.dataset.ean);if(!row)return;
   if(!Number.isInteger(value)||value<1||value>1000000){input.value=String(row.quantity);note('Informe uma quantidade inteira entre 1 e 1.000.000.',true);return;}
-  if(value!==row.quantity){row.quantity=value;changed();}
+  if(value!==row.quantity){row.quantity=value;row.origin='AJUSTE MANUAL';changed();}
 }));
 $('#reload-count').addEventListener('click',()=>openCount(current?.id).catch(e=>note(e.message,true)));
 $('#finish-count').addEventListener('click',finishCount);$('#export-txt').addEventListener('click',exportCsv);$('#export-xlsx').addEventListener('click',exportExcel);
