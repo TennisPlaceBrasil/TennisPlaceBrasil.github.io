@@ -63,8 +63,8 @@ function reconcileDeletedCounts(){
   }finally{lock.releaseLock();}
 }
 function ensureMetaColumns_(sheet){if(sheet.getMaxColumns()<META_HEADERS.length)sheet.insertColumnsAfter(sheet.getMaxColumns(),META_HEADERS.length-sheet.getMaxColumns());sheet.getRange(1,1,1,META_HEADERS.length).setValues([META_HEADERS]);}
-function resizeRows_(sheet,target){const current=sheet.getMaxRows();if(current<target)sheet.insertRowsAfter(current,target-current);else if(current>target)sheet.deleteRows(target+1,current-target);}
-function resizeColumns_(sheet,target){const current=sheet.getMaxColumns();if(current<target)sheet.insertColumnsAfter(current,target-current);else if(current>target)sheet.deleteColumns(target+1,current-target);}
+function resizeRows_(sheet,target){target=Math.max(1,target,sheet.getFrozenRows()+1);const current=sheet.getMaxRows();if(current<target)sheet.insertRowsAfter(current,target-current);else if(current>target)sheet.deleteRows(target+1,current-target);}
+function resizeColumns_(sheet,target){target=Math.max(1,target,sheet.getFrozenColumns()+1);const current=sheet.getMaxColumns();if(current<target)sheet.insertColumnsAfter(current,target-current);else if(current>target)sheet.deleteColumns(target+1,current-target);}
 function sessionAudit_(value){const audit=value&&typeof value==='object'?value:{};const ip=String(audit.ip||'IP não capturado').trim().slice(0,80),device=String(audit.device||'Dispositivo não identificado').trim().slice(0,100),id=String(audit.id||'').trim().slice(0,80);return {ip,device,sessionId:id};}
 function saveMeta_(meta){db_().getSheetByName('_Contagens').getRange(meta.row,5,1,13).setValues([[meta.status,meta.version,meta.sheet,meta.createdBy,meta.createdAt,meta.updatedAt,meta.requestId,meta.kind||'CONTAGEM',meta.sourceId||'',meta.createdRequestId||'',meta.ip||'Não registrado',meta.device||'Não registrado',meta.sessionId||'']]);}
 function permitted_(meta,p){if(!meta || (!p.allStores&&meta.store!==p.store))throw new Error('Contagem sem permissão.');return meta;}
@@ -131,7 +131,7 @@ function writeState_(meta,counts,defects,previous){
   previous=previous||state_(meta);
   const combined=defects.concat(counts);
   const size=Math.max(counts.length,defects.length,combined.length,1);
-  const oldSize=Math.max((previous.counts||[]).length,(previous.defects||[]).length,1),clearSize=Math.max(size,oldSize);
+  const oldSize=Math.max((previous.counts||[]).length+(previous.defects||[]).length,1),clearSize=Math.max(size,oldSize);
   resizeRows_(sheet,Math.max(clearSize,isRecount?(previous.targets||[]).length:0)+4);
   resizeColumns_(sheet,isRecount?20:15);
   sheet.getRange(5,1,clearSize,15).clearContent();
@@ -182,7 +182,7 @@ function route_(p){
     const now=new Date(),date=countDate_(p.date,now);
     let number=nextCountNumber_(list,p.store,date),label=countLabel_(p.store,date,number);
     while(db_().getSheetByName(label))label=countLabel_(p.store,date,++number);
-    const sheet=db_().insertSheet(label),meta={id:Utilities.getUuid(),store:p.store,date,label,status:'EM ANDAMENTO',version:0,sheet:label,createdBy:p.userId,createdAt:now.toISOString(),updatedAt:now.toISOString(),requestId:'',...sessionAudit_(p.auditSession)};resizeRows_(sheet,4);resizeColumns_(sheet,15);
+    const sheet=db_().insertSheet(label),meta={id:Utilities.getUuid(),store:p.store,date,label,status:'EM ANDAMENTO',version:0,sheet:label,createdBy:p.userId,createdAt:now.toISOString(),updatedAt:now.toISOString(),requestId:'',...sessionAudit_(p.auditSession)};resizeRows_(sheet,5);resizeColumns_(sheet,15);
     sheet.getRange('A1:B2').setValues([['LOJA',p.store],['DATA',date]]);
     sheet.getRange('A3:E3').merge().setValue('CONTAGEM');sheet.getRange('G3:K3').merge().setValue('DEFEITOS');sheet.getRange('M3:O3').merge().setValue('IMPORTAÇÃO — DEFEITOS PRIMEIRO');
     sheet.getRange(4,1,1,15).setValues([['EAN','QNTD','PRODUTO','MARCA','INEXISTENTE','ÚLTIMA BIPAGEM','EAN','QNTD','PRODUTO','MARCA','INEXISTENTE','ÚLTIMA BIPAGEM','EAN','QNTD','EAN,QNTD']]);
@@ -308,3 +308,39 @@ function migrateCountNames(){
 }
 
 function updateInventoryNamesAndCleanup(){reconcileDeletedCounts();return migrateCountNames();}
+
+// Editor-only integration check. Uses a unique QA store and removes only its own test counts.
+function verifyInventoryRuntime(){
+  const ids=[],checks=[],store='QA'+Utilities.getUuid().replace(/-/g,'').slice(0,12).toUpperCase(),time=new Date().toISOString();
+  const check=(value,label)=>{if(!value)throw new Error('Falha no teste: '+label);checks.push(label);};
+  const call=p=>route_(Object.assign({allStores:true,store,userId:'runtime-test'},p));
+  try{
+    const products=catalog_().slice(0,2);if(products.length<2)throw new Error('Cadastro sem dois produtos para o teste.');
+    const a=products[0][0],b=products[1][0];
+    let count=call({action:'create'});ids.push(count.id);
+    const sheet=db_().getSheetByName(count.sheet);
+    check(sheet.getMaxRows()>sheet.getFrozenRows()&&sheet.getFrozenRows()===4,'criação com linha livre após o cabeçalho');
+    count=call({action:'importRows',id:count.id,version:count.version,kind:'counts',requestId:Utilities.getUuid(),rows:[{ean:a,quantity:2,lastScannedAt:time},{ean:b,quantity:3,lastScannedAt:time}]});
+    check(count.counts.length===2,'importação de contagem');
+    count=call({action:'save',id:count.id,version:count.version,requestId:Utilities.getUuid(),counts:count.counts,defects:[{ean:a,quantity:1,lastScannedAt:time}]});
+    check(count.counts[0].lastScannedAt===time&&count.defects[0].lastScannedAt===time,'salvamento dos horários de contagem e defeitos');
+    count=call({action:'finish',id:count.id,version:count.version,requestId:Utilities.getUuid(),counts:count.counts,defects:count.defects});
+    check(count.status==='FINALIZADA','finalização de contagem');
+    const requested=call({action:'requestRecount',id:count.id,eans:[a,b],requestId:Utilities.getUuid()});ids.push(requested.id);
+    let recount=call({action:'openRecount',id:requested.id});
+    recount=call({action:'save',id:recount.id,version:recount.version,requestId:Utilities.getUuid(),counts:[{ean:a,quantity:4,lastScannedAt:time}],defects:[{ean:a,quantity:1,lastScannedAt:time}],zeroEans:[b]});
+    check(recount.targets.length===2,'preservação dos produtos solicitados na recontagem');
+    recount=call({action:'finish',id:recount.id,version:recount.version,requestId:Utilities.getUuid(),counts:recount.counts,defects:[],zeroEans:[b]});
+    const updated=call({action:'read',id:count.id});
+    check(updated.counts.length===1&&updated.counts[0].quantity===4&&!updated.defects.length,'aplicação da recontagem');
+    check(db_().getSheetByName(recount.sheet).getRange(6,13).getDisplayValues()[0][0]==='','limpeza da importação antiga');
+    const empty=call({action:'create'});ids.push(empty.id);
+    const removed=call({action:'finish',id:empty.id,version:empty.version,requestId:Utilities.getUuid(),counts:[],defects:[]});
+    check(removed.empty&&!db_().getSheetByName(empty.sheet),'exclusão automática de contagem vazia');
+    console.log('VALIDAÇÃO OK: '+checks.join('; '));return checks;
+  }finally{
+    ids.forEach(id=>{if(metadata_().some(m=>m.id===id))call({action:'delete',id});});
+    console.log('Dados temporários do teste removidos.');
+  }
+}
+
