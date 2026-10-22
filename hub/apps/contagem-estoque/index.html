@@ -38,10 +38,15 @@
         <span>CONTAGENS SALVAS</span>
         <select id="session-picker" aria-label="Selecionar contagem salva" hidden></select>
         <button id="load-sessions" class="button button-quiet" type="button">CARREGAR CONTAGENS</button>
+        <button id="share-count" class="button button-quiet" type="button" hidden>GERAR LINK</button>
         <button id="register-gama" class="button button-quiet" type="button" hidden>LIBERAR ACESSO GAMA</button><button id="request-recount" class="button button-primary" type="button" hidden>SOLICITAR RECONTAGEM</button>
         <button id="delete-session" class="button button-quiet" type="button" hidden>EXCLUIR CONTAGEM</button>
       </div>
     </section>
+    <div id="share-link-panel" class="share-link-panel" hidden>
+      <div class="share-link-heading"><div><span class="eyebrow">ACOMPANHAMENTO</span><strong>Link somente para visualização</strong><small>Expira em 30 dias. Gerar outro link revoga o anterior.</small></div><button id="copy-share-link" class="button button-primary" type="button">COPIAR LINK</button></div>
+      <input id="share-link-value" type="url" readonly aria-label="Link de acompanhamento da contagem">
+    </div>
     <section id="recount-inbox" class="recount-inbox" hidden aria-labelledby="recount-inbox-title"><div class="list-heading"><div><span class="eyebrow">PEDIDOS DO ADMINISTRATIVO</span><h3 id="recount-inbox-title">Recontagens solicitadas</h3></div><button id="refresh-recounts" class="button button-quiet" type="button">ATUALIZAR SOLICITAÇÕES</button></div><p id="recount-inbox-status" role="status"></p><div id="recount-inbox-list"></div></section>
     <section id="deletion-inbox" class="recount-inbox" hidden aria-labelledby="deletion-inbox-title"><div class="list-heading"><div><span class="eyebrow">REVISÃO ADMINISTRATIVA</span><h3 id="deletion-inbox-title">Solicitações de exclusão</h3></div><button id="refresh-deletions" class="button button-quiet" type="button">ATUALIZAR PEDIDOS</button></div><p id="deletion-inbox-status" role="status"></p><div id="deletion-inbox-list"></div></section>
     <section class="empty-state" id="empty-state">
