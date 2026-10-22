@@ -18,7 +18,7 @@ The camera reader is opened only on request. Chrome uses the native Barcode Dete
 
 All users can import a TXT into Contagem or Defeitos. Each line uses EAN,QNTDD; duplicates in a file are summed, and imported quantities are added to existing rows. Unknown EANs are listed and require explicit confirmation. Imports are validated and written in a single request. In a recount, the server rejects EANs that were not requested for that recount.
 
-An empty count is removed when it is finalized, replaced with a new count, or the user leaves the page. A stale unfinished count with no products is also removed the next time that store starts a count after 12 hours. Spreadsheet tabs shrink to only the rows and columns actually used.
+An empty count is removed when it is finalized or replaced with a new count. Leaving the page triggers a best-effort cleanup request; if the browser is offline, an empty unfinished count is removed the next time that store starts a count after 12 hours. Spreadsheet tabs shrink to only the rows and columns actually used.
 
 ## Recount workflow
 
@@ -34,7 +34,7 @@ The shared Tepê helper provides short fixed instructions, without a chat. A sin
 
 ## Scale notes
 
-The Google Sheets workbook remains the storage ceiling. Count writes are serialized through one Apps Script lock because all stores share the same workbook. Autosave is debounced, TXT import writes in batches, and unused sheet cells are removed, but this is not unlimited horizontal scaling. Apps Script also applies per-owner daily URL Fetch and runtime quotas. If simultaneous store usage or historical records grow substantially, plan to move the live record store to a transactional database and mirror/export to Drive before the workbook limit becomes an operational risk.
+The Google Sheets workbook remains the storage ceiling. Count writes are serialized through one Apps Script lock because all stores share the same workbook. Autosave is debounced, TXT import writes in batches, analysis is paged, and unused sheet cells are removed, but this is not unlimited horizontal scaling. Apps Script applies per-owner execution-time and concurrent-execution limits; the current web app runs as the spreadsheet owner. Google Sheets also limits a workbook by total cells. If simultaneous store usage or historical records grow substantially, plan to move the live record store to a transactional database and mirror/export to Drive before the workbook limit becomes an operational risk.
 
 ## Verification
 
