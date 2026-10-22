@@ -5,7 +5,7 @@ function config_(name) {
   if(!value)throw new Error('Configuração ausente: '+name);
   return value;
 }
-const META_HEADERS = ['ID','LOJA','DATA','TITULO','STATUS','REVISAO','ABA','CRIADO_POR','CRIADO_EM','ATUALIZADO_EM','ULTIMA_REQUISICAO','TIPO','CONTAGEM_ORIGEM','REQUISICAO_CRIACAO'];
+const META_HEADERS = ['ID','LOJA','DATA','TITULO','STATUS','REVISAO','ABA','CRIADO_POR','CRIADO_EM','ATUALIZADO_EM','ULTIMA_REQUISICAO','TIPO','CONTAGEM_ORIGEM','REQUISICAO_CRIACAO','IP_SESSAO','DISPOSITIVO','SESSAO_ID'];
 
 function doPost(e) {
   try {
@@ -24,7 +24,8 @@ function db_() { return SpreadsheetApp.openById(config_('COUNT_FILE_ID')); }
 function setup() {
   const ss=db_();
   let meta=ss.getSheetByName('_Contagens');
-  if(!meta){meta=ss.insertSheet('_Contagens');meta.getRange(1,1,1,META_HEADERS.length).setValues([META_HEADERS]);meta.setFrozenRows(1);meta.hideSheet();}
+  if(!meta){meta=ss.insertSheet('_Contagens');meta.setFrozenRows(1);meta.hideSheet();}
+  ensureMetaColumns_(meta);
   let home=ss.getSheetByName('INÍCIO');
   if(!home){home=ss.getSheets().find(s=>s.getName()==='Página1')||ss.insertSheet('INÍCIO');home.setName('INÍCIO');}
   home.getRange('A1:B5').setValues([
@@ -41,10 +42,11 @@ function setup() {
 function metadata_() {
   const ss=db_(),sheet=ss.getSheetByName('_Contagens');
   if(!sheet)throw new Error('Execute a configuração inicial.');
+  ensureMetaColumns_(sheet);
   if(sheet.getLastRow()<2)return [];
   const list=sheet.getRange(2,1,sheet.getLastRow()-1,META_HEADERS.length).getDisplayValues().map((r,i)=>({
     row:i+2,id:r[0],store:r[1],date:r[2],label:r[3],status:r[4],version:Number(r[5]),sheet:r[6],
-    createdBy:r[7],createdAt:r[8],updatedAt:r[9],requestId:r[10],kind:r[11]||'CONTAGEM',sourceId:r[12]||'',createdRequestId:r[13]||''
+    createdBy:r[7],createdAt:r[8],updatedAt:r[9],requestId:r[10],kind:r[11]||'CONTAGEM',sourceId:r[12]||'',createdRequestId:r[13]||'',ip:r[14]||'Não registrado',device:r[15]||'Não registrado',sessionId:r[16]||''
   }));
   const tabs=new Set(ss.getSheets().map(s=>s.getName())),sources=new Set(list.filter(m=>m.kind!=='RECONTAGEM'&&tabs.has(m.sheet)).map(m=>m.id));
   // Deleting a tab manually must immediately remove it from all app results.
@@ -60,6 +62,9 @@ function reconcileDeletedCounts(){
     SpreadsheetApp.flush();console.log('Referências removidas: '+stale.length);return stale.length;
   }finally{lock.releaseLock();}
 }
+function ensureMetaColumns_(sheet){if(sheet.getMaxColumns()<META_HEADERS.length)sheet.insertColumnsAfter(sheet.getMaxColumns(),META_HEADERS.length-sheet.getMaxColumns());sheet.getRange(1,1,1,META_HEADERS.length).setValues([META_HEADERS]);}
+function sessionAudit_(value){const audit=value&&typeof value==='object'?value:{};const ip=String(audit.ip||'IP não capturado').trim().slice(0,80),device=String(audit.device||'Dispositivo não identificado').trim().slice(0,100),id=String(audit.id||'').trim().slice(0,80);return {ip,device,sessionId:id};}
+function saveMeta_(meta){db_().getSheetByName('_Contagens').getRange(meta.row,5,1,13).setValues([[meta.status,meta.version,meta.sheet,meta.createdBy,meta.createdAt,meta.updatedAt,meta.requestId,meta.kind||'CONTAGEM',meta.sourceId||'',meta.createdRequestId||'',meta.ip||'Não registrado',meta.device||'Não registrado',meta.sessionId||'']]);}
 function permitted_(meta,p){if(!meta || (!p.allStores&&meta.store!==p.store))throw new Error('Contagem sem permissão.');return meta;}
 function publicMeta_(m){const result=Object.assign({},m,{lastRequestId:m.requestId});delete result.row;delete result.requestId;delete result.createdBy;return result;}
 function catalog_(){
@@ -84,7 +89,7 @@ function state_(meta,spreadsheet){
   const last=sheet.getLastRow();
   const values=last>=5?sheet.getRange(5,1,last-4,11).getDisplayValues():[];
   const parse=(offset)=>values.filter(r=>r[offset]&&Number(r[offset+1])>0).map(r=>({
-    ean:String(r[offset]),quantity:Number(r[offset+1]),description:r[offset+2],brand:r[offset+3],unknown:r[offset+4]==='SIM'
+    ean:String(r[offset]),quantity:Number(r[offset+1]),description:r[offset+2],brand:r[offset+3],unknown:r[offset+4]==='SIM',lastScannedAt:r[offset+5]||''
   }));
   const result=Object.assign(publicMeta_(meta),{counts:parse(0),defects:parse(6)});
   if(meta.kind==='RECONTAGEM'){const rows=last>=5?sheet.getRange(5,17,last-4,4).getDisplayValues():[];result.targets=rows.filter(r=>r[0]).map(r=>({ean:r[0],description:r[1],brand:r[2]}));result.zeroEans=rows.filter(r=>r[0]&&r[3]==='SIM').map(r=>r[0]);}
@@ -98,14 +103,15 @@ function normalizeRows_(rows,products){
     if(!/^\d{1,30}$/.test(ean)||!Number.isInteger(quantity)||quantity<1||quantity>1000000)throw new Error('EAN ou quantidade inválida.');
     const product=products.get(ean);
     if(!product&&!r.unknown)throw new Error('Produto inexistente: '+ean);
-    const item=result.get(ean)||{ean,quantity:0,description:product?product[1]:'PRODUTO INEXISTENTE',brand:product?product[2]:'NÃO CADASTRADA',unknown:!product};
-    item.quantity+=quantity;result.set(ean,item);
+    const inputTime=String(r.lastScannedAt||'').trim(),inputMs=Date.parse(inputTime),safeTime=inputTime&&!isNaN(inputMs)?new Date(inputMs).toISOString():'';
+    const item=result.get(ean)||{ean,quantity:0,description:product?product[1]:'PRODUTO INEXISTENTE',brand:product?product[2]:'NÃO CADASTRADA',unknown:!product,lastScannedAt:safeTime};
+    item.quantity+=quantity;if(Date.parse(safeTime)>Date.parse(item.lastScannedAt||0))item.lastScannedAt=safeTime;result.set(ean,item);
   });
   return Array.from(result.values());
 }
 function mergeRows_(existing,incoming){
   const rows=existing.map(r=>Object.assign({},r)),byEan=new Map(rows.map((r,i)=>[r.ean,i]));
-  incoming.forEach(r=>{const i=byEan.get(r.ean);if(i===undefined){byEan.set(r.ean,rows.length);rows.push(Object.assign({},r));}else{const quantity=rows[i].quantity+r.quantity;if(quantity>1000000)throw new Error('A quantidade total do EAN '+r.ean+' ultrapassa 1.000.000.');rows[i].quantity=quantity;}});
+  incoming.forEach(r=>{const i=byEan.get(r.ean);if(i===undefined){byEan.set(r.ean,rows.length);rows.push(Object.assign({},r));}else{const quantity=rows[i].quantity+r.quantity;if(quantity>1000000)throw new Error('A quantidade total do EAN '+r.ean+' ultrapassa 1.000.000.');rows[i].quantity=quantity;rows[i].lastScannedAt=r.lastScannedAt||rows[i].lastScannedAt;}});
   return rows;
 }
 function deleteEmptyCount_(meta,list){
@@ -129,7 +135,7 @@ function writeState_(meta,counts,defects,previous){
   sheet.getRange(5,1,clearSize,15).clearContent();
   if(!isRecount){if(sheet.getMaxRows()>size+4)sheet.setMaxRows(size+4);if(sheet.getMaxColumns()>15)sheet.setMaxColumns(15);}
   const matrix=Array.from({length:size},()=>Array(15).fill(''));
-  const fill=(list,col)=>list.forEach((r,i)=>{matrix[i][col]=r.ean;matrix[i][col+1]=r.quantity;matrix[i][col+2]=r.description;matrix[i][col+3]=r.brand;matrix[i][col+4]=r.unknown?'SIM':'NÃO';});
+  const fill=(list,col)=>list.forEach((r,i)=>{matrix[i][col]=r.ean;matrix[i][col+1]=r.quantity;matrix[i][col+2]=r.description;matrix[i][col+3]=r.brand;matrix[i][col+4]=r.unknown?'SIM':'NÃO';matrix[i][col+5]=r.lastScannedAt||'';});
   fill(counts,0);fill(defects,6);
   combined.forEach((r,i)=>{matrix[i][12]=r.ean;matrix[i][13]=r.quantity;matrix[i][14]=r.ean+','+r.quantity;});
   sheet.getRange(5,1,size,15).setNumberFormat('@').setValues(matrix);
@@ -174,13 +180,13 @@ function route_(p){
     const now=new Date(),date=countDate_(p.date,now);
     let number=nextCountNumber_(list,p.store,date),label=countLabel_(p.store,date,number);
     while(db_().getSheetByName(label))label=countLabel_(p.store,date,++number);
-    const sheet=db_().insertSheet(label),meta={id:Utilities.getUuid(),store:p.store,date,label,status:'EM ANDAMENTO',version:0,sheet:label,createdBy:p.userId,createdAt:now.toISOString(),updatedAt:now.toISOString(),requestId:''};sheet.setMaxRows(4);if(sheet.getMaxColumns()>15)sheet.setMaxColumns(15);
+    const sheet=db_().insertSheet(label),meta={id:Utilities.getUuid(),store:p.store,date,label,status:'EM ANDAMENTO',version:0,sheet:label,createdBy:p.userId,createdAt:now.toISOString(),updatedAt:now.toISOString(),requestId:'',...sessionAudit_(p.auditSession)};sheet.setMaxRows(4);if(sheet.getMaxColumns()>15)sheet.setMaxColumns(15);
     sheet.getRange('A1:B2').setValues([['LOJA',p.store],['DATA',date]]);
     sheet.getRange('A3:E3').merge().setValue('CONTAGEM');sheet.getRange('G3:K3').merge().setValue('DEFEITOS');sheet.getRange('M3:O3').merge().setValue('IMPORTAÇÃO — DEFEITOS PRIMEIRO');
-    sheet.getRange(4,1,1,15).setValues([['EAN','QNTD','PRODUTO','MARCA','INEXISTENTE','','EAN','QNTD','PRODUTO','MARCA','INEXISTENTE','','EAN','QNTD','EAN,QNTD']]);
+    sheet.getRange(4,1,1,15).setValues([['EAN','QNTD','PRODUTO','MARCA','INEXISTENTE','ÚLTIMA BIPAGEM','EAN','QNTD','PRODUTO','MARCA','INEXISTENTE','ÚLTIMA BIPAGEM','EAN','QNTD','EAN,QNTD']]);
     sheet.getRange('A3:O4').setBackground('#eeeeee').setFontWeight('bold');sheet.setFrozenRows(4);
     sheet.setColumnWidths(1,15,140);sheet.setColumnWidth(3,360);sheet.setColumnWidth(9,360);sheet.setColumnWidth(15,220);
-    db_().getSheetByName('_Contagens').appendRow([meta.id,meta.store,meta.date,meta.label,meta.status,0,meta.sheet,meta.createdBy,meta.createdAt,meta.updatedAt,'']);
+    db_().getSheetByName('_Contagens').appendRow([meta.id,meta.store,meta.date,meta.label,meta.status,0,meta.sheet,meta.createdBy,meta.createdAt,meta.updatedAt,'',meta.kind||'CONTAGEM',meta.sourceId||'',meta.createdRequestId||'',meta.ip,meta.device,meta.sessionId]);
     return state_(meta);
   }
   if(p.action==='analysis'){
@@ -217,7 +223,7 @@ function route_(p){
     if(meta.kind==='RECONTAGEM')validateRecount_(meta,counts,defects,zeroEans,false,current);
     writeState_(meta,counts,defects,current);meta.version++;meta.updatedAt=new Date().toISOString();meta.requestId=String(p.requestId);
     if(meta.kind==='RECONTAGEM')writeRecountZeros_(meta,zeroEans);
-    db_().getSheetByName('_Contagens').getRange(meta.row,5,1,7).setValues([[meta.status,meta.version,meta.sheet,meta.createdBy,meta.createdAt,meta.updatedAt,meta.requestId]]);
+    if(p.auditSession){Object.assign(meta,sessionAudit_(p.auditSession));}saveMeta_(meta);
     const result=state_(meta);result.imported=incoming.length;return result;
   }
   const counts=normalizeRows_(p.counts,products),defects=normalizeRows_(p.defects,products),previous=state_(meta);
@@ -229,7 +235,7 @@ function route_(p){
   writeState_(meta,counts,defects,previous);
   if(meta.kind==='RECONTAGEM'){writeRecountZeros_(meta,p.zeroEans||[]);if(p.action==='finish')applyRecount_(meta,counts,defects,list);}
   meta.version++;meta.updatedAt=new Date().toISOString();meta.requestId=String(p.requestId||'');if(p.action==='finish')meta.status='FINALIZADA';
-  db_().getSheetByName('_Contagens').getRange(meta.row,5,1,7).setValues([[meta.status,meta.version,meta.sheet,meta.createdBy,meta.createdAt,meta.updatedAt,meta.requestId]]);
+  if(p.auditSession){Object.assign(meta,sessionAudit_(p.auditSession));}saveMeta_(meta);
   return meta.kind==='RECONTAGEM'?state_(meta):Object.assign(publicMeta_(meta),{counts,defects});
 }
 
