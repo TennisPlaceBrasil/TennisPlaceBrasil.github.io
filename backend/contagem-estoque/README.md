@@ -1,6 +1,6 @@
 # Contagem de Estoque — Tennis Place
 
-Status: implementation and preview tests complete; Google Apps Script owner authorization/deployment is pending. The feature branch has not been deployed to the public Hub.
+Status: Google Apps Script version 5 and authenticated Edge API deployed. Recount workflow and contextual Tepê help implemented and verified.
 
 ## Data flow
 
@@ -12,20 +12,21 @@ Status: implementation and preview tests complete; Google Apps Script owner auth
 - Public website code contains no CNPJ list, service-role credential, Google credential or bridge secret.
 - Count data is stored in Google Sheets. Local pending drafts protect temporary connection failures.
 
-## Google setup remaining
+## Recount workflow
 
-1. In the owner's Google Apps Script account, create a project with Code.gs and appsscript.json.
-2. Set Script Properties PRODUCT_FILE_ID and COUNT_FILE_ID to the private source and destination spreadsheet IDs. Set BRIDGE_SECRET to the existing private Supabase bridge secret. Never commit these values.
-3. Authorize spreadsheet access and run setup().
-4. Deploy a Web App executing as the owner, accepting requests from anyone. The endpoint rejects requests without the bridge secret. Store users reach it through the authenticated Edge Function.
-5. Store the returned /exec URL in public.stockcount_bridge_config.endpoint through the trusted administrator connection.
-6. Verify the live product read, store-scoped count write/read, unknown-EAN decisions and administrative analysis. Then deploy the feature branch to the public Hub.
+Administrators select a finalized original count, choose Solicitar recontagem and upload a TXT. The first column of each nonempty line is read as an EAN; leading zeros are preserved and duplicate codes are removed. The store sees only its pending requests. The separate recount sheet has no original quantities.
 
-The target spreadsheet already has the initial INÍCIO and _Contagens structure. Neither has real count data yet.
+Yellow means the EAN was included, not that its quantity is correct. Every requested EAN must be scanned or explicitly marked Não localizado (0). Finishing updates only those EANs in the original snapshot; other products keep their quantities. The separate recount worksheet remains as an audit record and is excluded from the stock pivot. Deleting the original count also removes its related recounts.
+
+The EAN list is paginated at 80 entries. Catalog lookups do not wait for the write lock; mutations remain serialized and protected by revision checks. Inbox loading is asynchronous and does not block entry into the tool.
+
+## Contextual help
+
+The shared Tepê helper provides short fixed instructions, without a chat. A single mascot is used when apps are opened inside the Hub; standalone tool entrypoints load the same helper. The supplied Three.js character is loaded after idle and only animates while the help panel is open. WebGL failures fall back to the bundled vector character.
 
 ## Verification
 
-Run: node backend/contagem-estoque/verify.mjs
+Run: node backend/contagem-estoque/verify.mjs and node backend/contagem-estoque/verify-recount.mjs
 
 Tests cover unknown-EAN confirmation, quantity consolidation, zero for absent products, store isolation, revision conflicts, inactive users and server-side analyst restrictions. A browser preview also verified the unknown-product dialog and analysis matrix with explicit test data.
 

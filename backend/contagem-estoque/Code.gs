@@ -5,13 +5,14 @@ function config_(name) {
   if(!value)throw new Error('Configuração ausente: '+name);
   return value;
 }
-const META_HEADERS = ['ID','LOJA','DATA','TITULO','STATUS','REVISAO','ABA','CRIADO_POR','CRIADO_EM','ATUALIZADO_EM','ULTIMA_REQUISICAO'];
+const META_HEADERS = ['ID','LOJA','DATA','TITULO','STATUS','REVISAO','ABA','CRIADO_POR','CRIADO_EM','ATUALIZADO_EM','ULTIMA_REQUISICAO','TIPO','CONTAGEM_ORIGEM','REQUISICAO_CRIACAO'];
 
 function doPost(e) {
   try {
     const input = JSON.parse(e.postData.contents);
     const expected = PropertiesService.getScriptProperties().getProperty('BRIDGE_SECRET');
     if (!expected || !input.secret || input.secret !== expected) throw new Error('Acesso negado.');
+    if(['catalog','list','recountInbox'].includes(input.action))return json_({ok:true,data:route_(input)});
     const lock = LockService.getScriptLock();
     lock.waitLock(25000);
     try { return json_({ok:true,data:route_(input)}); }
@@ -43,7 +44,7 @@ function metadata_() {
   if(sheet.getLastRow()<2)return [];
   return sheet.getRange(2,1,sheet.getLastRow()-1,META_HEADERS.length).getDisplayValues().map((r,i)=>({
     row:i+2,id:r[0],store:r[1],date:r[2],label:r[3],status:r[4],version:Number(r[5]),sheet:r[6],
-    createdBy:r[7],createdAt:r[8],updatedAt:r[9],requestId:r[10]
+    createdBy:r[7],createdAt:r[8],updatedAt:r[9],requestId:r[10],kind:r[11]||'CONTAGEM',sourceId:r[12]||'',createdRequestId:r[13]||''
   }));
 }
 function permitted_(meta,p){if(!meta || (!p.allStores&&meta.store!==p.store))throw new Error('Contagem sem permissão.');return meta;}
@@ -72,7 +73,9 @@ function state_(meta){
   const parse=(offset)=>values.filter(r=>r[offset]&&Number(r[offset+1])>0).map(r=>({
     ean:String(r[offset]),quantity:Number(r[offset+1]),description:r[offset+2],brand:r[offset+3],unknown:r[offset+4]==='SIM'
   }));
-  return Object.assign(publicMeta_(meta),{counts:parse(0),defects:parse(6)});
+  const result=Object.assign(publicMeta_(meta),{counts:parse(0),defects:parse(6)});
+  if(meta.kind==='RECONTAGEM'){const rows=last>=5?sheet.getRange(5,17,last-4,4).getDisplayValues():[];result.targets=rows.filter(r=>r[0]).map(r=>({ean:r[0],description:r[1],brand:r[2]}));result.zeroEans=rows.filter(r=>r[0]&&r[3]==='SIM').map(r=>r[0]);}
+  return result;
 }
 function normalizeRows_(rows,products){
   if(!Array.isArray(rows)||rows.length>40000)throw new Error('Quantidade de linhas inválida.');
@@ -112,6 +115,8 @@ function countDate_(value,now){
 function route_(p){
   if(p.action==='catalog'){const products=catalog_();if(p.ean)return products.find(r=>r[0]===String(p.ean).trim())||null;return products;}
   let list=metadata_();
+  if(p.action==='recountInbox')return list.filter(m=>m.kind==='RECONTAGEM'&&m.status!=='FINALIZADA'&&(p.allStores||m.store===p.store)&&list.some(source=>source.id===m.sourceId&&source.store===m.store)).map(publicMeta_);
+  if(p.action==='requestRecount')return requestRecount_(p,list);
   if(p.action==='list'){
     if(!p.allStores)throw new Error('Histórico restrito aos administradores.');
     return list.map(publicMeta_);
@@ -120,9 +125,8 @@ function route_(p){
     if(!p.allStores)throw new Error('Exclusão restrita aos administradores.');
     const meta=list.find(m=>m.id===p.id);
     if(!meta)throw new Error('Esta contagem já não existe no histórico.');
-    const ss=db_(),target=ss.getSheetByName(meta.sheet),metadata=ss.getSheetByName('_Contagens');
-    if(target)ss.deleteSheet(target);
-    metadata.deleteRow(meta.row);
+    const ss=db_(),metadata=ss.getSheetByName('_Contagens');
+    list.filter(m=>m.id===meta.id||m.sourceId===meta.id).sort((a,b)=>b.row-a.row).forEach(m=>{const tab=ss.getSheetByName(m.sheet);if(tab)ss.deleteSheet(tab);metadata.deleteRow(m.row);});
     SpreadsheetApp.flush();
     return {id:meta.id,deleted:true};
   }
@@ -143,10 +147,14 @@ function route_(p){
   }
   if(p.action==='analysis'){
     if(!p.allStores)throw new Error('Análise não autorizada.');
-    const selected=list.filter(m=>m.status==='FINALIZADA'&&(!p.filterStore||m.store===p.filterStore)&&(!p.startDate||m.date>=p.startDate)&&(!p.endDate||m.date<=p.endDate));
+    const selected=list.filter(m=>m.kind!=='RECONTAGEM'&&m.status==='FINALIZADA'&&(!p.filterStore||m.store===p.filterStore)&&(!p.startDate||m.date>=p.startDate)&&(!p.endDate||m.date<=p.endDate));
     return selected.map(m=>state_(m));
   }
   const meta=permitted_(list.find(m=>m.id===p.id),p);
+  if(p.action==='openRecount'){
+    if(meta.kind!=='RECONTAGEM'||(!p.allStores&&meta.status==='FINALIZADA')||!list.some(m=>m.id===meta.sourceId&&m.store===meta.store))throw new Error('Recontagem indisponível.');
+    return state_(meta);
+  }
   if(p.action==='read')return state_(meta);
   if(!['save','finish'].includes(p.action))throw new Error('Ação inválida.');
   if(p.requestId&&meta.requestId===p.requestId)return state_(meta);
@@ -154,8 +162,59 @@ function route_(p){
   if(Number(p.version)!==meta.version)throw new Error('CONFLICT: Esta contagem foi alterada em outro acesso. Reabra a contagem antes de continuar.');
   const products=new Map(catalog_().map(r=>[r[0],r]));
   const counts=normalizeRows_(p.counts,products),defects=normalizeRows_(p.defects,products);
+  if(meta.kind==='RECONTAGEM'){
+    if(!list.some(m=>m.id===meta.sourceId&&m.store===meta.store))throw new Error('A contagem original foi excluída.');
+    validateRecount_(meta,counts,defects,p.zeroEans||[],p.action==='finish');
+  }
   writeState_(meta,counts,defects);
+  if(meta.kind==='RECONTAGEM'){writeRecountZeros_(meta,p.zeroEans||[]);if(p.action==='finish')applyRecount_(meta,counts,defects,list);}
   meta.version++;meta.updatedAt=new Date().toISOString();meta.requestId=String(p.requestId||'');if(p.action==='finish')meta.status='FINALIZADA';
   db_().getSheetByName('_Contagens').getRange(meta.row,5,1,7).setValues([[meta.status,meta.version,meta.sheet,meta.createdBy,meta.createdAt,meta.updatedAt,meta.requestId]]);
-  return Object.assign(publicMeta_(meta),{counts,defects});
+  return meta.kind==='RECONTAGEM'?state_(meta):Object.assign(publicMeta_(meta),{counts,defects});
+}
+
+// Recounts keep a separate audit worksheet and never expose the original quantities to stores.
+function requestRecount_(p,list){
+  if(!p.allStores)throw new Error('Solicitação restrita aos administradores.');
+  const source=list.find(m=>m.id===p.id);
+  if(!source||source.kind==='RECONTAGEM'||source.status!=='FINALIZADA')throw new Error('Selecione uma contagem finalizada.');
+  if(!p.requestId||!/^[a-zA-Z0-9-]{16,80}$/.test(p.requestId))throw new Error('Identificador da solicitação inválido.');
+  const previous=list.find(m=>m.createdRequestId===p.requestId&&m.sourceId===source.id);
+  if(previous)return publicMeta_(previous);
+  if(list.some(m=>m.kind==='RECONTAGEM'&&m.sourceId===source.id&&m.status!=='FINALIZADA'))throw new Error('Já existe uma recontagem pendente para esta contagem.');
+  if(!Array.isArray(p.eans)||!p.eans.length||p.eans.length>40000)throw new Error('Envie entre 1 e 40.000 EANs.');
+  const eans=Array.from(new Set(p.eans.map(e=>String(e).trim())));
+  if(eans.some(e=>!/^\d{1,30}$/.test(e)))throw new Error('TXT com EAN inválido. Use um código por linha.');
+  const original=state_(source),products=new Map(original.counts.concat(original.defects).map(r=>[r.ean,r]));
+  const now=new Date(),ss=db_(),base=source.store+'-'+source.date+'-R';let label=base,n=2;while(ss.getSheetByName(label))label=base+'-'+n++;
+  const sheet=ss.insertSheet(label),meta={id:Utilities.getUuid(),store:source.store,date:source.date,label,status:'EM ANDAMENTO',version:0,sheet:label,createdBy:p.userId,createdAt:now.toISOString(),updatedAt:now.toISOString(),requestId:'',kind:'RECONTAGEM',sourceId:source.id,createdRequestId:p.requestId};
+  if(sheet.getMaxColumns()<20)sheet.insertColumnsAfter(sheet.getMaxColumns(),20-sheet.getMaxColumns());
+  if(sheet.getMaxRows()<eans.length+4)sheet.insertRowsAfter(sheet.getMaxRows(),eans.length+4-sheet.getMaxRows());
+  sheet.getRange('A1:B2').setValues([['RECONTAGEM',source.label],['LOJA',source.store]]);
+  sheet.getRange(4,1,1,15).setValues([['EAN','QNTD','PRODUTO','MARCA','INEXISTENTE','','EAN','QNTD','PRODUTO','MARCA','INEXISTENTE','','EAN','QNTD','EAN,QNTD']]);
+  sheet.getRange('Q4:T4').setValues([['EAN SOLICITADO','PRODUTO','MARCA','NÃO LOCALIZADO']]);
+  sheet.getRange(5,17,eans.length,4).setNumberFormat('@').setValues(eans.map(e=>[e,products.get(e)?.description||'Consultar pelo EAN',products.get(e)?.brand||'','NÃO']));
+  sheet.getRange('A4:T4').setBackground('#ffda28').setFontWeight('bold');sheet.setFrozenRows(4);sheet.setColumnWidths(1,20,140);sheet.setColumnWidth(3,340);sheet.setColumnWidth(9,340);sheet.setColumnWidth(18,340);
+  ss.getSheetByName('_Contagens').getRange(1,1,1,META_HEADERS.length).setValues([META_HEADERS]);
+  ss.getSheetByName('_Contagens').appendRow([meta.id,meta.store,meta.date,meta.label,meta.status,0,meta.sheet,meta.createdBy,meta.createdAt,meta.updatedAt,'',meta.kind,meta.sourceId,meta.createdRequestId]);
+  SpreadsheetApp.flush();return publicMeta_(meta);
+}
+function validateRecount_(meta,counts,defects,zeros,finish){
+  const state=state_(meta),allowed=new Set(state.targets.map(r=>r.ean)),scanned=new Set(counts.concat(defects).map(r=>r.ean));
+  if(!Array.isArray(zeros)||zeros.length>allowed.size||zeros.some(e=>typeof e!=='string'||!allowed.has(e)))throw new Error('Lista de produtos não localizados inválida.');
+  if([...scanned].some(e=>!allowed.has(e)))throw new Error('Este EAN não está na solicitação de recontagem.');
+  if(zeros.some(e=>scanned.has(e)))throw new Error('Um produto bipado não pode estar marcado como não localizado.');
+  if(finish&&[...allowed].some(e=>!scanned.has(e)&&!zeros.includes(e)))throw new Error('Bipe ou marque como não localizado cada EAN solicitado antes de finalizar.');
+}
+function writeRecountZeros_(meta,zeros){
+  const state=state_(meta),set=new Set(zeros);if(state.targets.length)db_().getSheetByName(meta.sheet).getRange(5,20,state.targets.length,1).setValues(state.targets.map(r=>[set.has(r.ean)?'SIM':'NÃO']));
+}
+function applyRecount_(meta,counts,defects,list){
+  const source=list.find(m=>m.id===meta.sourceId&&m.store===meta.store);if(!source)throw new Error('A contagem original foi excluída.');
+  if(source.requestId==='recount-'+meta.id)return;
+  const original=state_(source),targets=new Set(state_(meta).targets.map(r=>r.ean));
+  const replace=(old,fresh)=>{const map=new Map(fresh.map(r=>[r.ean,r])),seen=new Set();const rows=[];old.forEach(r=>{const item=targets.has(r.ean)?map.get(r.ean):r;if(item){rows.push(item);seen.add(r.ean);}});fresh.forEach(r=>{if(!seen.has(r.ean))rows.push(r);});return rows;};
+  writeState_(source,replace(original.counts,counts),replace(original.defects,defects));
+  source.version++;source.updatedAt=new Date().toISOString();source.requestId='recount-'+meta.id;
+  db_().getSheetByName('_Contagens').getRange(source.row,5,1,7).setValues([[source.status,source.version,source.sheet,source.createdBy,source.createdAt,source.updatedAt,source.requestId]]);
 }

@@ -1,7 +1,7 @@
 'use strict';
 const $=s=>document.querySelector(s),BASE='https://rihvnshexilakojnltox.supabase.co',KEY='sb_publishable_7coOHeG2tOc9XfS0qeKvPg_z2fh0KWz',AUTH_KEY='tp-manuais-supabase-v1';
 let auth=null,user=null,stores=[],sessions=[],sessionsLoaded=false,loadingSessions=false,current=null,catalog=new Map(),mode='count',unknown=null,lookingUp=false;
-let serial=0,saved=0,inflight=null,timer=null,retry=null,conflict=false,xlsxPromise;
+let serial=0,saved=0,inflight=null,timer=null,retry=null,conflict=false,xlsxPromise,recounts=[],loadingRecounts=false,recountSourceId=null,recountPage=0;
 const uuid=()=>crypto.randomUUID?crypto.randomUUID():Array.from(crypto.getRandomValues(new Uint8Array(16)),v=>v.toString(16).padStart(2,'0')).join('');
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function note(s,error=false){$('#scan-message').textContent=s;$('#scan-message').className='scan-message '+(error?'error':'success');}
@@ -25,10 +25,13 @@ function picker(){
   $('#load-sessions').textContent=loadingSessions?'CARREGANDO…':sessionsLoaded?'ATUALIZAR CONTAGENS':'CARREGAR CONTAGENS';
   $('#delete-session').hidden=!user?.allStores||!$('#session-picker').value;
   $('#delete-session').disabled=loadingSessions;
+  const selected=sessions.find(s=>s.id===$('#session-picker').value);
+  $('#request-recount').hidden=!user?.allStores||!selected||selected.kind==='RECONTAGEM'||selected.status!=='FINALIZADA';
 }
 function render(){
-  $('#empty-state').hidden=!!current;$('#counting').hidden=!current;if(!current)return;
+  $('#empty-state').hidden=!!current;$('#counting').hidden=!current;renderRecount();updateInventoryHelp();if(!current)return;
   $('#session-title').textContent=current.label;
+  $('#reload-count').hidden=!user?.allStores&&current.kind!=='RECONTAGEM';
   const counts=current.counts,defects=current.defects,done=current.status==='FINALIZADA';
   $('#count-total').textContent=counts.reduce((n,r)=>n+r.quantity,0).toLocaleString('pt-BR');
   $('#defect-total').textContent=defects.reduce((n,r)=>n+r.quantity,0).toLocaleString('pt-BR');
@@ -49,6 +52,8 @@ async function boot(){
   $('#catalog-status').textContent='Cadastro do Drive · consulta por EAN';
   $('#filter-store').innerHTML='<option value="">Todas as lojas</option>'+stores.map(s=>'<option>'+esc(s)+'</option>').join('');
   $('#filter-brand').innerHTML='<option value="">Todas as marcas</option>';
+  $('#register-gama').hidden=!user.allStores||stores.includes('GAMA');
+  $('#recount-inbox').hidden=false;loadRecounts();updateInventoryHelp();
 }
 async function loadSessions(){
   if(!user?.allStores)return;
@@ -59,7 +64,7 @@ async function loadSessions(){
     const r=await api('list');
     const latest=current;
     sessions=r.data||[];
-    if(latest&&!sessions.some(s=>s.id===latest.id))sessions.push(latest);
+    if(latest&&!sessions.some(s=>s.id===latest.id)){current=null;serial=0;saved=0;retry=null;conflict=false;render();}
     else if(latest)sessions=sessions.map(s=>s.id===latest.id?latest:s);
     sessionsLoaded=true;picker();
   }catch(e){$('#app-error').textContent=e.message;}
@@ -75,11 +80,11 @@ async function deleteSession(){
     await api('delete',{id});
     sessions=sessions.filter(s=>s.id!==id);
     if(current?.id===id){localStorage.removeItem(draftKey());current=null;serial=0;saved=0;retry=null;conflict=false;}
-    picker();render();$('#app-error').textContent='';sync('Contagem excluída do Drive');
+    picker();render();$('#app-error').textContent='';sync('Contagem excluída do Drive');loadRecounts();
   }catch(e){$('#app-error').textContent=e.message;}
 }
 function draftKey(){return 'tp-stockcount-draft-'+user.id+'-'+current.id;}
-function persistDraft(){try{localStorage.setItem(draftKey(),JSON.stringify({version:current.version,inflightId:retry?.body.requestId||null,counts:current.counts,defects:current.defects}));}catch(_){sync('Não foi possível criar o rascunho local. Aguarde o Drive.','error');}}
+function persistDraft(){try{localStorage.setItem(draftKey(),JSON.stringify({version:current.version,inflightId:retry?.body.requestId||null,counts:current.counts,defects:current.defects,zeroEans:current.zeroEans||[]}));}catch(_){sync('Não foi possível criar o rascunho local. Aguarde o Drive.','error');}}
 function changed(){
   serial++;persistDraft();
   sync('Salvamento pendente…','pending');render();clearTimeout(timer);timer=setTimeout(flush,800);
@@ -88,7 +93,7 @@ async function flush(){
   if(inflight)return inflight;
   if(!current||serial===saved||conflict)return;
   const target=current;
-  retry=retry||{serial,body:{id:target.id,version:target.version,requestId:uuid(),counts:structuredClone(target.counts),defects:structuredClone(target.defects)}};
+  retry=retry||{serial,body:{id:target.id,version:target.version,requestId:uuid(),counts:structuredClone(target.counts),defects:structuredClone(target.defects),zeroEans:target.zeroEans||[]}};
   const packet=retry;
   persistDraft();
   inflight=(async()=>{
@@ -115,13 +120,14 @@ async function openCount(id){
   if(!id)return;
   if(conflict){if(!confirm('Reabrir a versão do Drive? O rascunho deste navegador será preservado para conferência.'))return;clearTimeout(timer);}
   else await ensureSaved();
-  current=(await api('read',{id})).data;serial=0;saved=0;retry=null;conflict=false;
+  const action=recounts.some(r=>r.id===id)||current?.id===id&&current.kind==='RECONTAGEM'?'openRecount':'read';
+  current=(await api(action,{id})).data;recountPage=0;$('#recount-search').value='';serial=0;saved=0;retry=null;conflict=false;
   let restored=false;
   try{
     const draft=JSON.parse(localStorage.getItem(draftKey())||'null');
     const sameVersion=draft&&draft.version===current.version;
     const ownRetry=draft?.inflightId&&current.lastRequestId===draft.inflightId&&current.version===draft.version+1;
-    if(draft&&(sameVersion||ownRetry)&&current.status!=='FINALIZADA'){current.counts=draft.counts;current.defects=draft.defects;changed();restored=true;}
+    if(draft&&(sameVersion||ownRetry)&&current.status!=='FINALIZADA'){current.counts=draft.counts;current.defects=draft.defects;current.zeroEans=draft.zeroEans||[];changed();restored=true;}
     else if(draft)note('Há um rascunho de outra versão neste navegador. A versão do Drive foi preservada.',true);
   }catch(_){}
   picker();render();if(!restored)sync(current.status==='FINALIZADA'?'Contagem finalizada no Drive':'Salvo no Google Drive');$('#ean-input').focus();
@@ -138,6 +144,9 @@ async function createCount(){
 }
 function addScan(ean,allowUnknown=false){
   if(!current||current.status==='FINALIZADA'||conflict)return;
+  if(current.kind==='RECONTAGEM'&&!current.targets.some(t=>t.ean===ean)){note('Este EAN não está na solicitação de recontagem.',true);return;}
+  current.zeroEans=(current.zeroEans||[]).filter(e=>e!==ean);
+  if(current.kind==='RECONTAGEM'){recountPage=Math.floor(current.targets.findIndex(r=>r.ean===ean)/80);$('#recount-search').value='';}
   const kind=mode==='count'?'counts':'defects',p=catalog.get(ean);
   let row=current[kind].find(r=>r.ean===ean);
   if(!row){row={ean,quantity:0,description:p?.description||'PRODUTO INEXISTENTE',brand:p?.brand||'NÃO CADASTRADA',unknown:allowUnknown};current[kind].push(row);}
@@ -147,6 +156,7 @@ async function scan(){
   if(!current||current.status==='FINALIZADA'||conflict||lookingUp)return;
   const ean=$('#ean-input').value.trim();
   if(!/^\d{1,30}$/.test(ean)){note('Confira o EAN informado: use apenas números.',true);$('#ean-input').select();return;}
+  if(current.kind==='RECONTAGEM'&&!current.targets.some(t=>t.ean===ean)){note('Este EAN não está na solicitação de recontagem.',true);$('#ean-input').select();return;}
   lookingUp=true;$('#catalog-status').textContent='Consultando EAN…';render();
   try{
     if(!catalog.has(ean)){
@@ -161,9 +171,11 @@ async function scan(){
 }
 async function finishCount(){
   try{
-    await ensureSaved();if(!confirm('Finalizar esta contagem? Ela aparecerá na análise e não receberá mais bipagens.'))return;
-    current=(await api('finish',{id:current.id,version:current.version,requestId:uuid(),counts:current.counts,defects:current.defects})).data;
-    sessions=sessions.map(s=>s.id===current.id?current:s);picker();render();sync('Contagem finalizada no Google Drive');
+    await ensureSaved();
+    if(current.kind==='RECONTAGEM'){const included=new Set(current.counts.concat(current.defects).map(r=>r.ean).concat(current.zeroEans||[]));if(current.targets.some(r=>!included.has(r.ean)))throw Error('Bipe ou marque como não localizado cada EAN solicitado.');}
+    if(!confirm(current.kind==='RECONTAGEM'?'Finalizar a recontagem? Os produtos solicitados serão atualizados na contagem original.':'Finalizar esta contagem? Ela aparecerá na análise e não receberá mais bipagens.'))return;
+    current=(await api('finish',{id:current.id,version:current.version,requestId:uuid(),counts:current.counts,defects:current.defects,zeroEans:current.zeroEans||[]})).data;
+    sessions=sessions.map(s=>s.id===current.id?current:s);picker();render();sync('Contagem finalizada no Google Drive');loadRecounts();
   }catch(e){note(e.message,true);}
 }
 function pivotAnalysis(data,brand=''){
@@ -204,6 +216,53 @@ async function exportExcel(){
     });XLSX.writeFile(wb,current.label+'.xlsx',{compression:true});
   }catch(e){note(e.message,true);}
 }
+function parseRecountTxt(text){
+  const lines=String(text).replace(/^\uFEFF/,'').split(/\r?\n/),result=[],seen=new Set(),invalid=[];
+  lines.forEach((line,index)=>{const value=line.trim();if(!value)return;if(index===0&&/^(EAN|CÓDIGO|CODIGO)([;,\t]|$)/i.test(value))return;const ean=value.split(/[;,\t]/)[0].trim().replace(/^"|"$/g,'');if(!/^\d{1,30}$/.test(ean)){invalid.push(index+1);return;}if(!seen.has(ean)){seen.add(ean);result.push(ean);}});
+  if(invalid.length)throw Error('Confira as linhas '+invalid.slice(0,8).join(', ')+'. Use um EAN por linha, sem descrição.');
+  if(!result.length||result.length>40000)throw Error('O TXT deve conter entre 1 e 40.000 EANs.');return result;
+}
+async function loadRecounts(){
+  if(!user||loadingRecounts)return;loadingRecounts=true;$('#refresh-recounts').disabled=true;$('#recount-inbox-status').textContent='Buscando solicitações…';
+  try{const r=await api('recountInbox');recounts=r.data||[];$('#recount-inbox-list').innerHTML=recounts.map(r=>'<article class="recount-inbox-item"><div><strong>'+esc(r.store)+' · '+esc(r.label)+'</strong><span>Recontagem solicitada para esta contagem</span></div><button class="button button-primary" data-open-recount="'+esc(r.id)+'">ABRIR RECONTAGEM</button></article>').join('');$('#recount-inbox-status').textContent=recounts.length?recounts.length+' solicitação(ões) pendente(s).':'Nenhuma recontagem pendente.';}
+  catch(e){$('#recount-inbox-status').textContent='Não foi possível buscar solicitações. Toque em Atualizar solicitações.';}
+  finally{loadingRecounts=false;$('#refresh-recounts').disabled=false;}
+}
+function renderRecount(){
+  const active=current?.kind==='RECONTAGEM';$('#recount-targets').hidden=!active;if(!active)return;
+  const scanned=new Set(current.counts.concat(current.defects).map(r=>r.ean)),zeros=new Set(current.zeroEans||[]),included=current.targets.filter(r=>scanned.has(r.ean)||zeros.has(r.ean)).length,done=current.status==='FINALIZADA';
+  $('#recount-progress').textContent=included+' de '+current.targets.length+' EANs incluídos';
+  const query=$('#recount-search').value.trim().toLowerCase(),targets=query?current.targets.filter(r=>r.ean.includes(query)||r.description.toLowerCase().includes(query)):current.targets,pages=Math.max(1,Math.ceil(targets.length/80));recountPage=Math.max(0,Math.min(recountPage,pages-1));
+  $('#recount-page').textContent='Página '+(recountPage+1)+' de '+pages;$('#recount-prev').disabled=recountPage===0;$('#recount-next').disabled=recountPage>=pages-1;
+  $('#recount-target-list').innerHTML=targets.slice(recountPage*80,(recountPage+1)*80).map(r=>'<article class="recount-target '+(scanned.has(r.ean)||zeros.has(r.ean)?'included':'')+'"><div><strong>'+esc(r.ean)+'</strong><span>'+esc(r.description)+'</span><small>'+(scanned.has(r.ean)?'INCLUÍDO NA RECONTAGEM':zeros.has(r.ean)?'NÃO LOCALIZADO · 0':'AGUARDANDO BIPAGEM')+'</small></div>'+(!scanned.has(r.ean)?'<button type="button" class="button button-quiet" data-zero-ean="'+esc(r.ean)+'" '+(done||conflict?'disabled':'')+'>'+(zeros.has(r.ean)?'DESFAZER':'NÃO LOCALIZADO (0)')+'</button>':'')+'</article>').join('');
+}
+function requestRecountDialog(){
+  const id=$('#session-picker').value,source=sessions.find(r=>r.id===id);if(!user?.allStores||!source||source.kind==='RECONTAGEM'||source.status!=='FINALIZADA')return;
+  recountSourceId=id;$('#recount-source-label').textContent='LOJA '+source.store+' · '+source.label;$('#recount-file').value='';$('#recount-file-status').textContent='';$('#recount-dialog').showModal();
+}
+async function submitRecount(event){
+  event.preventDefault();const file=$('#recount-file').files[0];if(!file)return;$('#send-recount').disabled=true;
+  try{if(file.size>1500000)throw Error('O TXT deve ter no máximo 1,5 MB.');const eans=parseRecountTxt(await file.text());$('#recount-file-status').textContent='Enviando '+eans.length+' EANs…';const r=await api('requestRecount',{id:recountSourceId,eans,requestId:uuid()});sessions.push(r.data);$('#recount-dialog').close();picker();$('#app-error').textContent='Recontagem enviada para a loja '+r.data.store+'.';loadRecounts();}
+  catch(e){$('#recount-file-status').textContent=e.message;}finally{$('#send-recount').disabled=false;}
+}
+function updateInventoryHelp(){
+  const context=!user?'inventory-login':!$('#analysis-view').hidden?'inventory-analysis':current?.kind==='RECONTAGEM'?'inventory-recount':!current?'inventory-start':mode==='defects'?'inventory-defects':'inventory-count';
+  window.dispatchEvent(new CustomEvent('tp-help',{detail:context}));
+}
+$('#recount-search').addEventListener('input',()=>{recountPage=0;renderRecount();});
+$('#recount-prev').addEventListener('click',()=>{recountPage--;renderRecount();});
+$('#recount-next').addEventListener('click',()=>{recountPage++;renderRecount();});
+$('#register-gama').addEventListener('click',async()=>{
+  if(!user?.allStores)return;$('#register-gama').disabled=true;
+  try{const r=await fetch(BASE+'/functions/v1/register-gama-admin',{method:'POST',headers:{apikey:KEY,Authorization:'Bearer '+auth.access_token,'Content-Type':'application/json'},body:'{}'});const result=await r.json();if(!r.ok||!result.ok)throw Error(result.error||'Não foi possível liberar a loja.');$('#app-error').textContent='Acesso GAMA liberado. Login: GAMA. Senha: CNPJ da loja, somente números.';$('#register-gama').hidden=true;if(!stores.includes('GAMA')){stores.push('GAMA');stores.sort();$('#store-code').insertAdjacentHTML('beforeend','<option value="GAMA">GAMA</option>');$('#filter-store').insertAdjacentHTML('beforeend','<option value="GAMA">GAMA</option>');}}
+  catch(e){$('#app-error').textContent=e.message;}finally{$('#register-gama').disabled=false;}
+});
+$('#request-recount').addEventListener('click',requestRecountDialog);
+$('#recount-request-form').addEventListener('submit',submitRecount);
+$('#cancel-recount').addEventListener('click',()=>$('#recount-dialog').close());
+$('#refresh-recounts').addEventListener('click',loadRecounts);
+$('#recount-inbox-list').addEventListener('click',event=>{const b=event.target.closest('[data-open-recount]');if(b)openCount(b.dataset.openRecount).catch(e=>{$('#app-error').textContent=e.message;});});
+$('#recount-target-list').addEventListener('click',event=>{const b=event.target.closest('[data-zero-ean]');if(!b||!current||current.status==='FINALIZADA'||conflict)return;const ean=b.dataset.zeroEan;current.zeroEans=current.zeroEans||[];current.zeroEans=current.zeroEans.includes(ean)?current.zeroEans.filter(e=>e!==ean):current.zeroEans.concat(ean);changed();});
 $('#login-form').addEventListener('submit',async event=>{
   event.preventDefault();$('#login-submit').disabled=true;$('#login-error').textContent='';
   try{
@@ -215,7 +274,7 @@ $('#login-form').addEventListener('submit',async event=>{
   }catch(e){$('#login-error').textContent=e.message;$('#app-error').textContent=e.message;}finally{$('#login-submit').disabled=false;}
 });
 $('#logout').addEventListener('click',async()=>{
-  try{await ensureSaved();saveAuth(null);user=null;current=null;catalog.clear();$('#app-main').hidden=true;$('#login-panel').hidden=false;$('#logout').hidden=true;$('#account-label').textContent='ACESSO TENNIS PLACE';}catch(e){note(e.message,true);}
+  try{await ensureSaved();saveAuth(null);user=null;current=null;recounts=[];$('#recount-inbox-list').innerHTML='';catalog.clear();updateInventoryHelp();$('#app-main').hidden=true;$('#login-panel').hidden=false;$('#logout').hidden=true;$('#account-label').textContent='ACESSO TENNIS PLACE';}catch(e){note(e.message,true);}
 });
 $('#new-count').addEventListener('click',createCount);
 $('#session-picker').addEventListener('change',event=>openCount(event.target.value).catch(e=>note(e.message,true)));
@@ -224,7 +283,7 @@ $('#delete-session').addEventListener('click',deleteSession);
 $('#scan-form').addEventListener('submit',event=>{event.preventDefault();scan();});
 $('#correct-ean').addEventListener('click',()=>{$('#unknown-dialog').close();unknown=null;$('#ean-input').focus();$('#ean-input').select();});
 $('#allow-ean').addEventListener('click',()=>{$('#unknown-dialog').close();addScan(unknown,true);unknown=null;});
-document.querySelectorAll('.mode-button').forEach(b=>b.addEventListener('click',()=>{mode=b.dataset.mode;document.querySelectorAll('.mode-button').forEach(x=>x.classList.toggle('active',x===b));$('#ean-input').focus();}));
+document.querySelectorAll('.mode-button').forEach(b=>b.addEventListener('click',()=>{mode=b.dataset.mode;updateInventoryHelp();document.querySelectorAll('.mode-button').forEach(x=>x.classList.toggle('active',x===b));$('#ean-input').focus();}));
 document.querySelectorAll('#count-body,#defect-body').forEach(body=>body.addEventListener('click',event=>{
   const b=event.target.closest('[data-delta],[data-remove]');if(!b||!current||current.status==='FINALIZADA'||conflict)return;
   const list=current[b.dataset.kind],row=list.find(r=>r.ean===b.dataset.ean);if(!row)return;
@@ -239,7 +298,7 @@ document.querySelectorAll('#count-body,#defect-body').forEach(body=>body.addEven
 $('#reload-count').addEventListener('click',()=>openCount(current?.id).catch(e=>note(e.message,true)));
 $('#finish-count').addEventListener('click',finishCount);$('#export-txt').addEventListener('click',exportCsv);$('#export-xlsx').addEventListener('click',exportExcel);
 $('#analysis-filters').addEventListener('submit',analyze);
-function showTab(analysis){$('#count-view').hidden=analysis;$('#analysis-view').hidden=!analysis;$('#tab-count').classList.toggle('active',!analysis);$('#tab-analysis').classList.toggle('active',analysis);}
+function showTab(analysis){$('#count-view').hidden=analysis;$('#analysis-view').hidden=!analysis;$('#tab-count').classList.toggle('active',!analysis);$('#tab-analysis').classList.toggle('active',analysis);updateInventoryHelp();}
 $('#tab-count').addEventListener('click',()=>showTab(false));$('#tab-analysis').addEventListener('click',()=>{showTab(true);analyze();});
 window.addEventListener('beforeunload',event=>{if(serial!==saved){event.preventDefault();event.returnValue='';}});
 window.addEventListener('online',()=>flush());
