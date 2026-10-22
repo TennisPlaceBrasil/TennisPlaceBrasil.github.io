@@ -20,6 +20,12 @@ All users can import a TXT into Contagem or Defeitos. Each line uses EAN,QNTDD; 
 
 An empty count is removed when it is finalized or replaced with a new count. Leaving the page triggers a best-effort cleanup request; if the browser is offline, an empty unfinished count is removed the next time that store starts a count after 12 hours. Spreadsheet tabs shrink to only the rows and columns actually used.
 
+## Read-only monitoring links
+
+Each new count receives a unique, read-only monitoring link. Administrators can regenerate a link for a saved count; regenerating revokes its previous link. Links expire after 30 days and are invalidated when the count is deleted. The lightweight dashboard polls the Google Drive bridge every 10 seconds and shows count status, totals, products, EAN, brand, quantity, and the last scan time per product. Session IP and device are shown once at the top, not repeated on each product row. The token is stored as a SHA-256 hash in Supabase; a dedicated public Edge Function can only read a count when presented with a valid share token.
+
+The dashboard reads the current row-level scan times from Google Sheets. Deploy the updated Apps Script source after changes to `Code.gs` so the sheet stores the per-product scan timestamp and session IP/device metadata.
+
 ## Recount workflow
 
 Administrators select a finalized original count, choose Solicitar recontagem and upload a TXT. The first column of each nonempty line is read as an EAN; leading zeros are preserved and duplicate codes are removed. The store sees only its pending requests. The separate recount sheet has no original quantities.
