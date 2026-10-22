@@ -107,4 +107,4 @@ if(savedSession?.access_token&&savedSession?.refresh_token){
 
 function editDistance(a,b){if(Math.abs(a.length-b.length)>2)return 3;let prev=Array.from({length:b.length+1},(_,i)=>i),older=null;for(let i=1;i<=a.length;i++){const row=[i];for(let j=1;j<=b.length;j++){row[j]=Math.min(row[j-1]+1,prev[j]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1));if(older&&i>1&&j>1&&a[i-1]===b[j-2]&&a[i-2]===b[j-1])row[j]=Math.min(row[j],older[j-2]+1)}older=prev;prev=row}return prev[b.length]}
 function suggestionScore(query,name){const terms=query.split(/\s+/).filter(Boolean),words=name.split(/[^a-z0-9]+/).filter(Boolean);let score=0;for(const term of terms){if(words.includes(term))continue;if(words.some(w=>w.startsWith(term))){score+=0.15;continue}if(/\d/.test(term)||term.length<3)return Infinity;let best=Infinity;for(const word of words){if(/\d/.test(word))continue;best=Math.min(best,editDistance(term,word))}if(best>(term.length>=7?2:1))return Infinity;score+=best}return score}
-</script><script src="../../shared/tepe-help.js?v=1" defer></script></body></html>
+</script><script src="../../shared/tepe-help.js?v=2" defer></script></body></html>

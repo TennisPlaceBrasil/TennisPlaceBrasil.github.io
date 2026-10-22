@@ -63,4 +63,4 @@ $('export').onclick=()=>{if(!data.length)return $('notice').textContent='Carregu
 
 async function init(){try{const r=await fetch('./config.json',{cache:'no-store',signal:AbortSignal.timeout(5000)});if(r.ok){const c=await r.json();try{const u=new URL(c.marketEndpoint);if(u.protocol==='https:'&&!u.username&&!u.password)settings.marketEndpoint=u.href}catch{}}}catch{}$('analyze').disabled=!settings.marketEndpoint;if(settings.marketEndpoint)$('connectionInfo').textContent='A pesquisa consulta somente este modelo e mostra o resultado aqui. Até 2 anúncios por marketplace, 1 oferta oficial e 1 por concorrente, quando encontrados. Resultados reaproveitados por 24 horas.';await refresh()}
 window.TPAuth.boot({onLogin:init,onLogout:clearPrivateData});
-</script><script src="../../shared/tepe-help.js?v=1" defer></script></body></html>
+</script><script src="../../shared/tepe-help.js?v=2" defer></script></body></html>

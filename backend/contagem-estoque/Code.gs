@@ -12,7 +12,7 @@ function doPost(e) {
     const input = JSON.parse(e.postData.contents);
     const expected = PropertiesService.getScriptProperties().getProperty('BRIDGE_SECRET');
     if (!expected || !input.secret || input.secret !== expected) throw new Error('Acesso negado.');
-    if(['catalog','list','recountInbox'].includes(input.action))return json_({ok:true,data:route_(input)});
+    if(['catalog','list','recountInbox','checkCount'].includes(input.action))return json_({ok:true,data:route_(input)});
     const lock = LockService.getScriptLock();
     lock.waitLock(25000);
     try { return json_({ok:true,data:route_(input)}); }
@@ -39,13 +39,26 @@ function setup() {
   ss.setSpreadsheetTimeZone('America/Sao_Paulo');
 }
 function metadata_() {
-  const sheet=db_().getSheetByName('_Contagens');
+  const ss=db_(),sheet=ss.getSheetByName('_Contagens');
   if(!sheet)throw new Error('Execute a configuração inicial.');
   if(sheet.getLastRow()<2)return [];
-  return sheet.getRange(2,1,sheet.getLastRow()-1,META_HEADERS.length).getDisplayValues().map((r,i)=>({
+  const list=sheet.getRange(2,1,sheet.getLastRow()-1,META_HEADERS.length).getDisplayValues().map((r,i)=>({
     row:i+2,id:r[0],store:r[1],date:r[2],label:r[3],status:r[4],version:Number(r[5]),sheet:r[6],
     createdBy:r[7],createdAt:r[8],updatedAt:r[9],requestId:r[10],kind:r[11]||'CONTAGEM',sourceId:r[12]||'',createdRequestId:r[13]||''
   }));
+  const tabs=new Set(ss.getSheets().map(s=>s.getName())),sources=new Set(list.filter(m=>m.kind!=='RECONTAGEM'&&tabs.has(m.sheet)).map(m=>m.id));
+  // Deleting a tab manually must immediately remove it from all app results.
+  return list.filter(m=>tabs.has(m.sheet)&&(m.kind!=='RECONTAGEM'||sources.has(m.sourceId)));
+}
+function reconcileDeletedCounts(){
+  const lock=LockService.getScriptLock();lock.waitLock(25000);
+  try{
+    const ss=db_(),sheet=ss.getSheetByName('_Contagens');if(!sheet||sheet.getLastRow()<2)return 0;
+    const rows=sheet.getRange(2,1,sheet.getLastRow()-1,META_HEADERS.length).getDisplayValues(),tabs=new Set(ss.getSheets().map(s=>s.getName())),sourceIds=new Set(rows.filter(r=>r[11]!=='RECONTAGEM'&&tabs.has(r[6])).map(r=>r[0]));
+    const stale=rows.map((r,i)=>({r,row:i+2})).filter(({r})=>!tabs.has(r[6])||(r[11]==='RECONTAGEM'&&!sourceIds.has(r[12])));
+    stale.sort((a,b)=>b.row-a.row).forEach(({r,row})=>{if(r[11]==='RECONTAGEM'){const tab=ss.getSheetByName(r[6]);if(tab)ss.deleteSheet(tab);}sheet.deleteRow(row);});
+    SpreadsheetApp.flush();console.log('Referências removidas: '+stale.length);return stale.length;
+  }finally{lock.releaseLock();}
 }
 function permitted_(meta,p){if(!meta || (!p.allStores&&meta.store!==p.store))throw new Error('Contagem sem permissão.');return meta;}
 function publicMeta_(m){const result=Object.assign({},m,{lastRequestId:m.requestId});delete result.row;delete result.requestId;delete result.createdBy;return result;}
@@ -115,6 +128,7 @@ function countDate_(value,now){
 function route_(p){
   if(p.action==='catalog'){const products=catalog_();if(p.ean)return products.find(r=>r[0]===String(p.ean).trim())||null;return products;}
   let list=metadata_();
+  if(p.action==='checkCount')return {exists:list.some(m=>m.id===p.id&&(p.allStores||m.store===p.store))};
   if(p.action==='recountInbox')return list.filter(m=>m.kind==='RECONTAGEM'&&m.status!=='FINALIZADA'&&(p.allStores||m.store===p.store)&&list.some(source=>source.id===m.sourceId&&source.store===m.store)).map(publicMeta_);
   if(p.action==='requestRecount')return requestRecount_(p,list);
   if(p.action==='list'){
@@ -134,8 +148,8 @@ function route_(p){
   if(p.action==='create'){
     if(!/^[A-Z0-9]{2,24}$/.test(p.store))throw new Error('Loja inválida.');
     const now=new Date(),date=countDate_(p.date,now);
-    const base=p.store+'-'+date.slice(8,10)+'-'+date.slice(5,7)+'-'+date.slice(0,4);
-    let label=base,n=2;while(db_().getSheetByName(label))label=base+'-'+n++;
+    let number=nextCountNumber_(list,p.store,date),label=countLabel_(p.store,date,number);
+    while(db_().getSheetByName(label))label=countLabel_(p.store,date,++number);
     const sheet=db_().insertSheet(label),meta={id:Utilities.getUuid(),store:p.store,date,label,status:'EM ANDAMENTO',version:0,sheet:label,createdBy:p.userId,createdAt:now.toISOString(),updatedAt:now.toISOString(),requestId:''};
     sheet.getRange('A1:B2').setValues([['LOJA',p.store],['DATA',date]]);
     sheet.getRange('A3:E3').merge().setValue('CONTAGEM');sheet.getRange('G3:K3').merge().setValue('DEFEITOS');sheet.getRange('M3:O3').merge().setValue('IMPORTAÇÃO — DEFEITOS PRIMEIRO');
@@ -186,7 +200,7 @@ function requestRecount_(p,list){
   const eans=Array.from(new Set(p.eans.map(e=>String(e).trim())));
   if(eans.some(e=>!/^\d{1,30}$/.test(e)))throw new Error('TXT com EAN inválido. Use um código por linha.');
   const original=state_(source),products=new Map(original.counts.concat(original.defects).map(r=>[r.ean,r]));
-  const now=new Date(),ss=db_(),base=source.store+'-'+source.date+'-R';let label=base,n=2;while(ss.getSheetByName(label))label=base+'-'+n++;
+  const now=new Date(),ss=db_(),base=source.label+' RECONTAGEM';let number=1+Math.max(0,...list.filter(m=>m.kind==='RECONTAGEM'&&m.sourceId===source.id).map(m=>Number((m.label.match(/#(\d+)$/)||[])[1]||1))),label=base+' #'+number;while(ss.getSheetByName(label))label=base+' #'+(++number);
   const sheet=ss.insertSheet(label),meta={id:Utilities.getUuid(),store:source.store,date:source.date,label,status:'EM ANDAMENTO',version:0,sheet:label,createdBy:p.userId,createdAt:now.toISOString(),updatedAt:now.toISOString(),requestId:'',kind:'RECONTAGEM',sourceId:source.id,createdRequestId:p.requestId};
   if(sheet.getMaxColumns()<20)sheet.insertColumnsAfter(sheet.getMaxColumns(),20-sheet.getMaxColumns());
   if(sheet.getMaxRows()<eans.length+4)sheet.insertRowsAfter(sheet.getMaxRows(),eans.length+4-sheet.getMaxRows());
@@ -218,3 +232,26 @@ function applyRecount_(meta,counts,defects,list){
   source.version++;source.updatedAt=new Date().toISOString();source.requestId='recount-'+meta.id;
   db_().getSheetByName('_Contagens').getRange(source.row,5,1,7).setValues([[source.status,source.version,source.sheet,source.createdBy,source.createdAt,source.updatedAt,source.requestId]]);
 }
+
+function countBase_(store,date){return store+'-'+date.slice(8,10)+'-'+date.slice(5,7)+'-'+date.slice(0,4);}
+function countLabel_(store,date,number){return countBase_(store,date)+' #'+number;}
+function countNumber_(meta){
+  const numbered=meta.label.match(/#(\d+)$/);if(numbered)return Number(numbered[1]);
+  const base=countBase_(meta.store,meta.date);return meta.label===base?1:meta.label.startsWith(base+'-')?Number(meta.label.slice(base.length+1))||1:1;
+}
+function nextCountNumber_(list,store,date){return 1+Math.max(0,...list.filter(m=>m.kind!=='RECONTAGEM'&&m.store===store&&m.date===date).map(countNumber_));}
+// Run once when deploying numbering. Existing IDs, products and revisions are preserved.
+function migrateCountNames(){
+  const lock=LockService.getScriptLock();lock.waitLock(25000);
+  try{
+    const ss=db_(),list=metadata_(),metaSheet=ss.getSheetByName('_Contagens'),used=new Set(),renamed=[];
+    const ordinary=list.filter(m=>m.kind!=='RECONTAGEM').sort((a,b)=>a.createdAt.localeCompare(b.createdAt)||a.row-b.row);
+    function rename(m,label){const tab=ss.getSheetByName(m.sheet);if(!tab)return;const other=ss.getSheetByName(label);if(other&&other.getSheetId()!==tab.getSheetId())throw new Error('Nome de aba já utilizado: '+label);if(tab.getName()!==label)tab.setName(label);if(m.label!==label||m.sheet!==label){metaSheet.getRange(m.row,4).setValue(label);metaSheet.getRange(m.row,7).setValue(label);renamed.push(label);}m.label=label;m.sheet=label;}
+    ordinary.forEach(m=>{let n=countNumber_(m),key=m.store+'|'+m.date+'|'+n;while(used.has(key)){n++;key=m.store+'|'+m.date+'|'+n;}used.add(key);rename(m,countLabel_(m.store,m.date,n));});
+    const recounts=list.filter(m=>m.kind==='RECONTAGEM').sort((a,b)=>a.createdAt.localeCompare(b.createdAt)||a.row-b.row),numbers=new Map();
+    recounts.forEach(m=>{const source=list.find(s=>s.id===m.sourceId);if(!source)return;const n=(numbers.get(source.id)||0)+1;numbers.set(source.id,n);rename(m,source.label+' RECONTAGEM #'+n);const tab=ss.getSheetByName(m.sheet);if(tab)tab.getRange('B1').setValue(source.label);});
+    SpreadsheetApp.flush();console.log('Nomes atualizados: '+renamed.length);return renamed;
+  }finally{lock.releaseLock();}
+}
+
+function updateInventoryNamesAndCleanup(){reconcileDeletedCounts();return migrateCountNames();}

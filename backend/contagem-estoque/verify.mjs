@@ -4,7 +4,7 @@ import vm from 'node:vm';
 const root=new URL('../../',import.meta.url);
 const element=()=>({value:'',textContent:'',innerHTML:'',hidden:false,disabled:false,className:'',classList:{toggle(){},add(){},remove(){}},addEventListener(){},focus(){},select(){},showModal(){this.open=true;},close(){this.open=false;}});
 const elements=new Map();
-const context=vm.createContext({console,Map,Set,JSON,Number,String,Array,Error,crypto:globalThis.crypto,structuredClone,CustomEvent:globalThis.CustomEvent,localStorage:{setItem(){},getItem(){return null;},removeItem(){}},sessionStorage:{getItem(){return null;}},document:{querySelector(s){if(!elements.has(s))elements.set(s,element());return elements.get(s);},querySelectorAll(){return[];}},fetch:async()=>Response.json({data:null}),window:{addEventListener(){},dispatchEvent(){}},setTimeout(){return 1;},clearTimeout(){}});
+const context=vm.createContext({console,Map,Set,JSON,Number,String,Array,Error,crypto:globalThis.crypto,structuredClone,CustomEvent:globalThis.CustomEvent,localStorage:{setItem(){},getItem(){return null;},removeItem(){}},sessionStorage:{getItem(){return null;}},document:{addEventListener(){},querySelector(s){if(!elements.has(s))elements.set(s,element());return elements.get(s);},querySelectorAll(){return[];}},fetch:async()=>Response.json({data:null}),window:{addEventListener(){},dispatchEvent(){}},setTimeout(){return 1;},clearTimeout(){}});
 vm.runInContext(fs.readFileSync(new URL('../../dist/apps/contagem-estoque/app.js',import.meta.url),'utf8'),context);
 vm.runInContext("catalog=new Map([['1',{description:'Produto A',brand:'MARCA'}]]);",context);
 context.fixture=[

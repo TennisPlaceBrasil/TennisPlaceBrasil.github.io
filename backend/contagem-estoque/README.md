@@ -31,3 +31,9 @@ Run: node backend/contagem-estoque/verify.mjs and node backend/contagem-estoque/
 Tests cover unknown-EAN confirmation, quantity consolidation, zero for absent products, store isolation, revision conflicts, inactive users and server-side analyst restrictions. A browser preview also verified the unknown-product dialog and analysis matrix with explicit test data.
 
 Only finalized counts appear in the analysis. If a store has several finalized counts on one date, the latest is used for that date. Stock quantity is ordinary count plus defects.
+
+## Count names and manual deletion
+
+Count names end with a daily sequence for the store: LOJA-dd-MM-yyyy #1, #2, etc. Recount names reference the original numbered count and end with RECONTAGEM #1, #2. updateInventoryNamesAndCleanup migrates existing labels and sheet names while preserving IDs and quantities.
+
+metadata_ ignores tabs deleted manually in Google Sheets, including recounts whose source no longer exists. reconcileDeletedCounts cleans their stale metadata and dependent recount tabs. The website refreshes its visible state when the tab/window regains focus; store accounts can only check the existence of their known current count, without reading history.

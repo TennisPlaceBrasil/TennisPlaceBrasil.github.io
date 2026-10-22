@@ -30,7 +30,7 @@ Deno.serve(async req=>{
     let user:{id:string,email:string|null};
     try{user=verifiedClaims(auth.slice(7));}catch{return reply({error:"Sessão expirada. Entre novamente."},401);}
     const input=await req.json();
-    const actions=new Set(["bootstrap","catalog","list","create","read","save","finish","analysis","delete","recountInbox","requestRecount","openRecount"]);
+    const actions=new Set(["bootstrap","catalog","list","create","read","save","finish","analysis","delete","recountInbox","requestRecount","openRecount","checkCount"]);
     if(!actions.has(input.action))return reply({error:"Ação inválida."},400);
     const userId=encodeURIComponent(user.id);
     const [members,mapping]=await Promise.all([

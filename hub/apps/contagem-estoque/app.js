@@ -60,12 +60,11 @@ async function loadSessions(){
   if(loadingSessions)return;
   loadingSessions=true;picker();
   try{
-    if(current)await ensureSaved();
     const r=await api('list');
     const latest=current;
     sessions=r.data||[];
-    if(latest&&!sessions.some(s=>s.id===latest.id)){current=null;serial=0;saved=0;retry=null;conflict=false;render();}
-    else if(latest)sessions=sessions.map(s=>s.id===latest.id?latest:s);
+    if(latest&&!sessions.some(s=>s.id===latest.id)){clearTimeout(timer);current=null;serial=0;saved=0;retry=null;conflict=false;render();$('#app-error').textContent='Esta contagem foi excluída da planilha e removida do Inventário.';}
+    else if(latest){const metadata=sessions.find(s=>s.id===latest.id);latest.label=metadata.label;sessions=sessions.map(s=>s.id===latest.id?latest:s);render();}
     sessionsLoaded=true;picker();
   }catch(e){$('#app-error').textContent=e.message;}
   finally{loadingSessions=false;picker();}
@@ -104,6 +103,7 @@ async function flush(){
       if(serial===saved){localStorage.removeItem(draftKey());sync('Salvo no Google Drive');}
       else persistDraft();
     }catch(e){
+      if(/sem permissão|não foi encontrada|original foi excluída|já não existe/.test(e.message)){clearTimeout(timer);if(current===target){current=null;serial=0;saved=0;retry=null;conflict=false;picker();render();}$('#app-error').textContent='Esta contagem foi excluída da planilha. O rascunho local foi preservado.';return;}
       conflict=e.status===409;
       sync(conflict?'Alterada em outro acesso. Reabra a contagem.':'Salvamento pendente. Tentaremos novamente.','error');note(e.message,true);render();
     }finally{inflight=null;if(serial!==saved&&!conflict)timer=setTimeout(flush,3000);}
@@ -224,7 +224,7 @@ function parseRecountTxt(text){
 }
 async function loadRecounts(){
   if(!user||loadingRecounts)return;loadingRecounts=true;$('#refresh-recounts').disabled=true;$('#recount-inbox-status').textContent='Buscando solicitações…';
-  try{const r=await api('recountInbox');recounts=r.data||[];$('#recount-inbox-list').innerHTML=recounts.map(r=>'<article class="recount-inbox-item"><div><strong>'+esc(r.store)+' · '+esc(r.label)+'</strong><span>Recontagem solicitada para esta contagem</span></div><button class="button button-primary" data-open-recount="'+esc(r.id)+'">ABRIR RECONTAGEM</button></article>').join('');$('#recount-inbox-status').textContent=recounts.length?recounts.length+' solicitação(ões) pendente(s).':'Nenhuma recontagem pendente.';}
+  try{const r=await api('recountInbox');recounts=r.data||[];if(current?.kind==='RECONTAGEM'&&current.status!=='FINALIZADA'&&!recounts.some(item=>item.id===current.id)){clearTimeout(timer);current=null;serial=0;saved=0;retry=null;conflict=false;picker();render();}$('#recount-inbox-list').innerHTML=recounts.map(r=>'<article class="recount-inbox-item"><div><strong>'+esc(r.store)+' · '+esc(r.label)+'</strong><span>Recontagem solicitada para esta contagem</span></div><button class="button button-primary" data-open-recount="'+esc(r.id)+'">ABRIR RECONTAGEM</button></article>').join('');$('#recount-inbox-status').textContent=recounts.length?recounts.length+' solicitação(ões) pendente(s).':'Nenhuma recontagem pendente.';}
   catch(e){$('#recount-inbox-status').textContent='Não foi possível buscar solicitações. Toque em Atualizar solicitações.';}
   finally{loadingRecounts=false;$('#refresh-recounts').disabled=false;}
 }
@@ -246,7 +246,7 @@ async function submitRecount(event){
   catch(e){$('#recount-file-status').textContent=e.message;}finally{$('#send-recount').disabled=false;}
 }
 function updateInventoryHelp(){
-  const context=!user?'inventory-login':!$('#analysis-view').hidden?'inventory-analysis':current?.kind==='RECONTAGEM'?'inventory-recount':!current?'inventory-start':mode==='defects'?'inventory-defects':'inventory-count';
+  const context=!user?'inventory-login':!$('#analysis-view').hidden?'inventory-analysis':current?.status==='FINALIZADA'?(current.kind==='RECONTAGEM'?'inventory-recount-finished':'inventory-finished'):current?.kind==='RECONTAGEM'?'inventory-recount':!current?(user.allStores?'inventory-admin-start':'inventory-start'):mode==='defects'?'inventory-defects':'inventory-count';
   window.dispatchEvent(new CustomEvent('tp-help',{detail:context}));
 }
 $('#recount-search').addEventListener('input',()=>{recountPage=0;renderRecount();});
@@ -302,6 +302,17 @@ function showTab(analysis){$('#count-view').hidden=analysis;$('#analysis-view').
 $('#tab-count').addEventListener('click',()=>showTab(false));$('#tab-analysis').addEventListener('click',()=>{showTab(true);analyze();});
 window.addEventListener('beforeunload',event=>{if(serial!==saved){event.preventDefault();event.returnValue='';}});
 window.addEventListener('online',()=>flush());
+let lastReturnCheck=0;
+async function refreshAfterReturn(){
+ if(document.hidden||!user||Date.now()-lastReturnCheck<1500)return;lastReturnCheck=Date.now();
+ if(user.allStores&&(sessionsLoaded||current))loadSessions();
+ else if(current&&current.kind!=='RECONTAGEM'){
+  const target=current;
+  try{const result=await api('checkCount',{id:target.id});if(!result.data.exists&&current===target){clearTimeout(timer);current=null;serial=0;saved=0;retry=null;conflict=false;picker();render();$('#app-error').textContent='Esta contagem foi excluída da planilha e removida do Inventário.';}}catch(_){}
+ }
+ loadRecounts();
+}
+document.addEventListener('visibilitychange',refreshAfterReturn);window.addEventListener('focus',refreshAfterReturn);
 window.tpPrepareClose=ensureSaved;
 try{auth=JSON.parse(sessionStorage.getItem(AUTH_KEY)||'null');}catch(_){}
 if(auth?.access_token)boot().catch(e=>{$('#login-error').textContent=e.message;$('#app-error').textContent=e.message;});
