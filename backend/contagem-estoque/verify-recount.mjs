@@ -41,7 +41,7 @@ const save={action:'save',id:created.id,store:'APAR',allStores:false,version:0,r
 assert.throws(()=>call({...save,counts:[{ean:'002',quantity:1}]}),/solicitação/);
 assert.throws(()=>call({...save,zeroEans:['001']}),/bipado/);
 assert.throws(()=>call({...save,action:'finish'}),/cada EAN/);
-const saved=call({...save,zeroEans:['003']});assert.equal(saved.version,1);assert.equal(saved.zeroEans[0],'003');
+const saved=call({...save,zeroEans:['003']});assert.equal(saved.version,1);assert.equal(saved.zeroEans[0],'003');const recountSheet=sheets.get(created.sheet);assert.equal(recountSheet.getMaxColumns(),20,'Saving a recount must preserve its requested-EAN columns');assert.deepEqual(recountSheet.getRange(5,17,2,1).getDisplayValues().map(r=>r[0]),['001','003'],'Saving a recount must preserve its target list');
 assert.throws(()=>call({...save,requestId:'stale-save'}),/CONFLICT/);
 const finished=call({...save,action:'finish',version:1,requestId:'finish-1',zeroEans:['003']});assert.equal(finished.status,'FINALIZADA');
 const updated=call({action:'read',id:'source',allStores:true});assert.equal(updated.counts.find(r=>r.ean==='001').quantity,3);assert.equal(updated.counts.find(r=>r.ean==='002').quantity,5);assert.equal(updated.defects[0].quantity,2);assert.equal(updated.version,3);

@@ -118,14 +118,16 @@ function cleanupAbandonedEmpty_(list,store){
   const cutoff=Date.now()-12*60*60*1000,stale=list.filter(m=>m.kind!=='RECONTAGEM'&&m.store===store&&m.status!=='FINALIZADA'&&Date.parse(m.updatedAt||m.createdAt)<cutoff);
   stale.sort((a,b)=>b.row-a.row).forEach(m=>{const sheet=db_().getSheetByName(m.sheet);if(sheet&&sheet.getLastRow()>=5){const values=sheet.getRange(5,1,sheet.getLastRow()-4,8).getDisplayValues();if(values.some(r=>(r[0]&&Number(r[1])>0)||(r[6]&&Number(r[7])>0)))return;}const ss=db_(),tab=ss.getSheetByName(m.sheet),meta=ss.getSheetByName('_Contagens');if(tab)ss.deleteSheet(tab);meta.deleteRow(m.row);});
 }
-function writeState_(meta,counts,defects){
-  const sheet=db_().getSheetByName(meta.sheet);
+function writeState_(meta,counts,defects,previous){
+  const sheet=db_().getSheetByName(meta.sheet),isRecount=meta.kind==='RECONTAGEM';
+  previous=previous||state_(meta);
   const combined=defects.concat(counts);
   const size=Math.max(counts.length,defects.length,combined.length,1);
+  const oldSize=Math.max((previous.counts||[]).length,(previous.defects||[]).length,1),clearSize=Math.max(size,oldSize);
   if(sheet.getMaxRows()<size+4)sheet.insertRowsAfter(sheet.getMaxRows(),size+4-sheet.getMaxRows());
-  const last=sheet.getLastRow();
-  if(last>=5)sheet.getRange(5,1,last-4,15).clearContent();
-  if(sheet.getMaxRows()>size+4)sheet.setMaxRows(size+4);if(sheet.getMaxColumns()>15)sheet.setMaxColumns(15);
+  if(isRecount&&sheet.getMaxColumns()<20)sheet.insertColumnsAfter(sheet.getMaxColumns(),20-sheet.getMaxColumns());
+  sheet.getRange(5,1,clearSize,15).clearContent();
+  if(!isRecount){if(sheet.getMaxRows()>size+4)sheet.setMaxRows(size+4);if(sheet.getMaxColumns()>15)sheet.setMaxColumns(15);}
   const matrix=Array.from({length:size},()=>Array(15).fill(''));
   const fill=(list,col)=>list.forEach((r,i)=>{matrix[i][col]=r.ean;matrix[i][col+1]=r.quantity;matrix[i][col+2]=r.description;matrix[i][col+3]=r.brand;matrix[i][col+4]=r.unknown?'SIM':'NÃO';});
   fill(counts,0);fill(defects,6);
@@ -212,19 +214,19 @@ function route_(p){
     if(missing.length&&!p.includeUnknown)return {requiresConfirmation:true,unknown:missing.slice(0,100),unknownCount:missing.length};
     const current=state_(meta),incoming=normalizeRows_(p.rows.map(r=>Object.assign({},r,{unknown:!!p.includeUnknown})),products);
     const merged=mergeRows_(current[p.kind],incoming),counts=p.kind==='counts'?merged:current.counts,defects=p.kind==='defects'?merged:current.defects,zeroEans=(current.zeroEans||[]).filter(e=>!incoming.some(r=>r.ean===e));
-    if(meta.kind==='RECONTAGEM')validateRecount_(meta,counts,defects,zeroEans,false);
-    writeState_(meta,counts,defects);meta.version++;meta.updatedAt=new Date().toISOString();meta.requestId=String(p.requestId);
+    if(meta.kind==='RECONTAGEM')validateRecount_(meta,counts,defects,zeroEans,false,current);
+    writeState_(meta,counts,defects,current);meta.version++;meta.updatedAt=new Date().toISOString();meta.requestId=String(p.requestId);
     if(meta.kind==='RECONTAGEM')writeRecountZeros_(meta,zeroEans);
     db_().getSheetByName('_Contagens').getRange(meta.row,5,1,7).setValues([[meta.status,meta.version,meta.sheet,meta.createdBy,meta.createdAt,meta.updatedAt,meta.requestId]]);
     const result=state_(meta);result.imported=incoming.length;return result;
   }
-  const counts=normalizeRows_(p.counts,products),defects=normalizeRows_(p.defects,products);
+  const counts=normalizeRows_(p.counts,products),defects=normalizeRows_(p.defects,products),previous=state_(meta);
   if(meta.kind==='RECONTAGEM'){
     if(!list.some(m=>m.id===meta.sourceId&&m.store===meta.store))throw new Error('A contagem original foi excluída.');
-    validateRecount_(meta,counts,defects,p.zeroEans||[],p.action==='finish');
+    validateRecount_(meta,counts,defects,p.zeroEans||[],p.action==='finish',previous);
   }
   if(p.action==='finish'&&meta.kind!=='RECONTAGEM'&&!counts.length&&!defects.length)return deleteEmptyCount_(meta,list);
-  writeState_(meta,counts,defects);
+  writeState_(meta,counts,defects,previous);
   if(meta.kind==='RECONTAGEM'){writeRecountZeros_(meta,p.zeroEans||[]);if(p.action==='finish')applyRecount_(meta,counts,defects,list);}
   meta.version++;meta.updatedAt=new Date().toISOString();meta.requestId=String(p.requestId||'');if(p.action==='finish')meta.status='FINALIZADA';
   db_().getSheetByName('_Contagens').getRange(meta.row,5,1,7).setValues([[meta.status,meta.version,meta.sheet,meta.createdBy,meta.createdAt,meta.updatedAt,meta.requestId]]);
@@ -257,8 +259,8 @@ function requestRecount_(p,list){
   ss.getSheetByName('_Contagens').appendRow([meta.id,meta.store,meta.date,meta.label,meta.status,0,meta.sheet,meta.createdBy,meta.createdAt,meta.updatedAt,'',meta.kind,meta.sourceId,meta.createdRequestId]);
   SpreadsheetApp.flush();return publicMeta_(meta);
 }
-function validateRecount_(meta,counts,defects,zeros,finish){
-  const state=state_(meta),allowed=new Set(state.targets.map(r=>r.ean)),scanned=new Set(counts.concat(defects).map(r=>r.ean));
+function validateRecount_(meta,counts,defects,zeros,finish,state){
+  state=state||state_(meta);const allowed=new Set(state.targets.map(r=>r.ean)),scanned=new Set(counts.concat(defects).map(r=>r.ean));
   if(!Array.isArray(zeros)||zeros.length>allowed.size||zeros.some(e=>typeof e!=='string'||!allowed.has(e)))throw new Error('Lista de produtos não localizados inválida.');
   if([...scanned].some(e=>!allowed.has(e)))throw new Error('Este EAN não está na solicitação de recontagem.');
   if(zeros.some(e=>scanned.has(e)))throw new Error('Um produto bipado não pode estar marcado como não localizado.');
@@ -272,7 +274,7 @@ function applyRecount_(meta,counts,defects,list){
   if(source.requestId==='recount-'+meta.id)return;
   const original=state_(source),targets=new Set(state_(meta).targets.map(r=>r.ean));
   const replace=(old,fresh)=>{const map=new Map(fresh.map(r=>[r.ean,r])),seen=new Set();const rows=[];old.forEach(r=>{const item=targets.has(r.ean)?map.get(r.ean):r;if(item){rows.push(item);seen.add(r.ean);}});fresh.forEach(r=>{if(!seen.has(r.ean))rows.push(r);});return rows;};
-  writeState_(source,replace(original.counts,counts),replace(original.defects,defects));
+  writeState_(source,replace(original.counts,counts),replace(original.defects,defects),original);
   source.version++;source.updatedAt=new Date().toISOString();source.requestId='recount-'+meta.id;
   db_().getSheetByName('_Contagens').getRange(source.row,5,1,7).setValues([[source.status,source.version,source.sheet,source.createdBy,source.createdAt,source.updatedAt,source.requestId]]);
 }
