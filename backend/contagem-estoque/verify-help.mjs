@@ -15,6 +15,8 @@ assert.equal(context('/hub/apps/precificador/index.html'),'pricing');
 assert.equal(context('/hub/apps/analise-precos/index.html',{'#password':shown()}),'analysis-login');
 assert.equal(context('/hub/apps/analise-precos/index.html',{'#detail':shown(),'#accessCode':shown()}),'analysis-detail','Market access code must not be mistaken for login');
 assert.equal(context('/hub/apps/contagem-estoque/index.html',{'#unknown-dialog[open]':shown()}),'inventory-unknown');
+assert.equal(context('/hub/apps/contagem-estoque/index.html',{'#camera-dialog[open]':shown()}),'inventory-camera');
+assert.equal(context('/hub/apps/contagem-estoque/index.html',{'#import-unknown-dialog[open]':shown()}),'inventory-import-unknown');
 assert.equal(context('/hub/apps/contagem-estoque/index.html',{'#recount-dialog[open]':shown()}),'inventory-request');
 assert.equal(context('/hub/apps/contagem-estoque/index.html',{'#counting':shown(),'#finish-count':shown({textContent:'CONTAGEM FINALIZADA'})}),'inventory-finished');
 assert.equal(context('/hub/apps/contagem-estoque/index.html',{'#counting':shown(),'#recount-targets':shown(),'#finish-count':shown({textContent:'CONTAGEM FINALIZADA'})}),'inventory-recount-finished');

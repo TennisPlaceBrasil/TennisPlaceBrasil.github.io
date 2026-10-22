@@ -12,7 +12,7 @@ function doPost(e) {
     const input = JSON.parse(e.postData.contents);
     const expected = PropertiesService.getScriptProperties().getProperty('BRIDGE_SECRET');
     if (!expected || !input.secret || input.secret !== expected) throw new Error('Acesso negado.');
-    if(['catalog','list','recountInbox','checkCount'].includes(input.action))return json_({ok:true,data:route_(input)});
+    if(['catalog','list','recountInbox','checkCount','analysis'].includes(input.action))return json_({ok:true,data:route_(input)});
     const lock = LockService.getScriptLock();
     lock.waitLock(25000);
     try { return json_({ok:true,data:route_(input)}); }
@@ -78,8 +78,8 @@ function catalog_(){
   cache.putAll(parts,300);cache.put(key,JSON.stringify(keys),300);
   return products;
 }
-function state_(meta){
-  const sheet=db_().getSheetByName(meta.sheet);
+function state_(meta,spreadsheet){
+  const sheet=(spreadsheet||db_()).getSheetByName(meta.sheet);
   if(!sheet)throw new Error('A aba desta contagem não foi encontrada.');
   const last=sheet.getLastRow();
   const values=last>=5?sheet.getRange(5,1,last-4,11).getDisplayValues():[];
@@ -103,6 +103,21 @@ function normalizeRows_(rows,products){
   });
   return Array.from(result.values());
 }
+function mergeRows_(existing,incoming){
+  const rows=existing.map(r=>Object.assign({},r)),byEan=new Map(rows.map((r,i)=>[r.ean,i]));
+  incoming.forEach(r=>{const i=byEan.get(r.ean);if(i===undefined){byEan.set(r.ean,rows.length);rows.push(Object.assign({},r));}else{const quantity=rows[i].quantity+r.quantity;if(quantity>1000000)throw new Error('A quantidade total do EAN '+r.ean+' ultrapassa 1.000.000.');rows[i].quantity=quantity;}});
+  return rows;
+}
+function deleteEmptyCount_(meta,list){
+  if(meta.kind==='RECONTAGEM')throw new Error('Uma recontagem não pode ser removida como vazia.');
+  const sheet=db_().getSheetByName(meta.sheet),counts=sheet&&sheet.getLastRow()>=5?sheet.getRange(5,1,sheet.getLastRow()-4,2).getDisplayValues().some(r=>r[0]&&Number(r[1])>0):false,defects=sheet&&sheet.getLastRow()>=5?sheet.getRange(5,7,sheet.getLastRow()-4,2).getDisplayValues().some(r=>r[0]&&Number(r[1])>0):false;
+  if(counts||defects)throw new Error('Esta contagem já possui produtos.');
+  const ss=db_(),metadata=ss.getSheetByName('_Contagens');if(sheet)ss.deleteSheet(sheet);metadata.deleteRow(meta.row);SpreadsheetApp.flush();return {id:meta.id,label:meta.label,deleted:true,empty:true};
+}
+function cleanupAbandonedEmpty_(list,store){
+  const cutoff=Date.now()-12*60*60*1000,stale=list.filter(m=>m.kind!=='RECONTAGEM'&&m.store===store&&m.status!=='FINALIZADA'&&Date.parse(m.updatedAt||m.createdAt)<cutoff);
+  stale.sort((a,b)=>b.row-a.row).forEach(m=>{const sheet=db_().getSheetByName(m.sheet);if(sheet&&sheet.getLastRow()>=5){const values=sheet.getRange(5,1,sheet.getLastRow()-4,8).getDisplayValues();if(values.some(r=>(r[0]&&Number(r[1])>0)||(r[6]&&Number(r[7])>0)))return;}const ss=db_(),tab=ss.getSheetByName(m.sheet),meta=ss.getSheetByName('_Contagens');if(tab)ss.deleteSheet(tab);meta.deleteRow(m.row);});
+}
 function writeState_(meta,counts,defects){
   const sheet=db_().getSheetByName(meta.sheet);
   const combined=defects.concat(counts);
@@ -110,6 +125,7 @@ function writeState_(meta,counts,defects){
   if(sheet.getMaxRows()<size+4)sheet.insertRowsAfter(sheet.getMaxRows(),size+4-sheet.getMaxRows());
   const last=sheet.getLastRow();
   if(last>=5)sheet.getRange(5,1,last-4,15).clearContent();
+  if(sheet.getMaxRows()>size+4)sheet.setMaxRows(size+4);if(sheet.getMaxColumns()>15)sheet.setMaxColumns(15);
   const matrix=Array.from({length:size},()=>Array(15).fill(''));
   const fill=(list,col)=>list.forEach((r,i)=>{matrix[i][col]=r.ean;matrix[i][col+1]=r.quantity;matrix[i][col+2]=r.description;matrix[i][col+3]=r.brand;matrix[i][col+4]=r.unknown?'SIM':'NÃO';});
   fill(counts,0);fill(defects,6);
@@ -129,6 +145,11 @@ function route_(p){
   if(p.action==='catalog'){const products=catalog_();if(p.ean)return products.find(r=>r[0]===String(p.ean).trim())||null;return products;}
   let list=metadata_();
   if(p.action==='checkCount')return {exists:list.some(m=>m.id===p.id&&(p.allStores||m.store===p.store))};
+  if(p.action==='discardEmpty'){
+    const meta=permitted_(list.find(m=>m.id===p.id),p);
+    if(meta.status==='FINALIZADA')throw new Error('Contagem finalizada não pode ser removida como vazia.');
+    return deleteEmptyCount_(meta,list);
+  }
   if(p.action==='recountInbox')return list.filter(m=>m.kind==='RECONTAGEM'&&m.status!=='FINALIZADA'&&(p.allStores||m.store===p.store)&&list.some(source=>source.id===m.sourceId&&source.store===m.store)).map(publicMeta_);
   if(p.action==='requestRecount')return requestRecount_(p,list);
   if(p.action==='list'){
@@ -147,10 +168,11 @@ function route_(p){
   if(p.action==='read'&&!p.allStores)throw new Error('Histórico restrito aos administradores.');
   if(p.action==='create'){
     if(!/^[A-Z0-9]{2,24}$/.test(p.store))throw new Error('Loja inválida.');
+    cleanupAbandonedEmpty_(list,p.store);list=metadata_();
     const now=new Date(),date=countDate_(p.date,now);
     let number=nextCountNumber_(list,p.store,date),label=countLabel_(p.store,date,number);
     while(db_().getSheetByName(label))label=countLabel_(p.store,date,++number);
-    const sheet=db_().insertSheet(label),meta={id:Utilities.getUuid(),store:p.store,date,label,status:'EM ANDAMENTO',version:0,sheet:label,createdBy:p.userId,createdAt:now.toISOString(),updatedAt:now.toISOString(),requestId:''};
+    const sheet=db_().insertSheet(label),meta={id:Utilities.getUuid(),store:p.store,date,label,status:'EM ANDAMENTO',version:0,sheet:label,createdBy:p.userId,createdAt:now.toISOString(),updatedAt:now.toISOString(),requestId:''};sheet.setMaxRows(4);if(sheet.getMaxColumns()>15)sheet.setMaxColumns(15);
     sheet.getRange('A1:B2').setValues([['LOJA',p.store],['DATA',date]]);
     sheet.getRange('A3:E3').merge().setValue('CONTAGEM');sheet.getRange('G3:K3').merge().setValue('DEFEITOS');sheet.getRange('M3:O3').merge().setValue('IMPORTAÇÃO — DEFEITOS PRIMEIRO');
     sheet.getRange(4,1,1,15).setValues([['EAN','QNTD','PRODUTO','MARCA','INEXISTENTE','','EAN','QNTD','PRODUTO','MARCA','INEXISTENTE','','EAN','QNTD','EAN,QNTD']]);
@@ -161,8 +183,14 @@ function route_(p){
   }
   if(p.action==='analysis'){
     if(!p.allStores)throw new Error('Análise não autorizada.');
+    const start=p.startDate||'',end=p.endDate||'';
+    if(!start||!end)throw new Error('Informe uma data inicial e final para limitar a análise.');
+    countDate_(start,new Date());countDate_(end,new Date());
+    if(end<start)throw new Error('A data final deve ser igual ou posterior à inicial.');
+    if(Date.parse(end+'T00:00:00Z')-Date.parse(start+'T00:00:00Z')>366*86400000)throw new Error('Analise no máximo 12 meses por vez.');
     const selected=list.filter(m=>m.kind!=='RECONTAGEM'&&m.status==='FINALIZADA'&&(!p.filterStore||m.store===p.filterStore)&&(!p.startDate||m.date>=p.startDate)&&(!p.endDate||m.date<=p.endDate));
-    return selected.map(m=>state_(m));
+    const offset=Math.max(0,Number(p.offset)||0),limit=Math.min(40,Math.max(1,Number(p.limit)||40)),ss=db_(),page=selected.slice(offset,offset+limit).map(m=>state_(m,ss));
+    return {data:page,total:selected.length,nextOffset:offset+page.length<selected.length?offset+page.length:null};
   }
   const meta=permitted_(list.find(m=>m.id===p.id),p);
   if(p.action==='openRecount'){
@@ -170,16 +198,30 @@ function route_(p){
     return state_(meta);
   }
   if(p.action==='read')return state_(meta);
-  if(!['save','finish'].includes(p.action))throw new Error('Ação inválida.');
+  if(!['save','finish','importRows'].includes(p.action))throw new Error('Ação inválida.');
   if(p.requestId&&meta.requestId===p.requestId)return state_(meta);
   if(meta.status==='FINALIZADA')throw new Error('Contagem finalizada. Abra uma nova contagem.');
   if(Number(p.version)!==meta.version)throw new Error('CONFLICT: Esta contagem foi alterada em outro acesso. Reabra a contagem antes de continuar.');
   const products=new Map(catalog_().map(r=>[r[0],r]));
+  if(p.action==='importRows'){
+    if(meta.status==='FINALIZADA')throw new Error('Contagem finalizada. Abra uma nova contagem.');
+    if(!['counts','defects'].includes(p.kind))throw new Error('Escolha Contagem ou Defeitos.');
+    if(!p.requestId||!/^[a-zA-Z0-9-]{16,80}$/.test(p.requestId))throw new Error('Identificador de importação inválido.');
+    if(!Array.isArray(p.rows)||!p.rows.length||p.rows.length>40000)throw new Error('O TXT deve conter entre 1 e 40.000 linhas.');
+    const missing=Array.from(new Set(p.rows.map(r=>String(r.ean||'').trim()).filter(e=>/^\d{1,30}$/.test(e)&&!products.has(e))));
+    if(missing.length&&!p.includeUnknown)return {requiresConfirmation:true,unknown:missing.slice(0,100),unknownCount:missing.length};
+    const incoming=normalizeRows_(p.rows.map(r=>Object.assign({},r,{unknown:!!p.includeUnknown})),products);
+    const current=state_(meta),merged=mergeRows_(current[p.kind],incoming),counts=p.kind==='counts'?merged:current.counts,defects=p.kind==='defects'?merged:current.defects;
+    writeState_(meta,counts,defects);meta.version++;meta.updatedAt=new Date().toISOString();meta.requestId=String(p.requestId);
+    db_().getSheetByName('_Contagens').getRange(meta.row,5,1,7).setValues([[meta.status,meta.version,meta.sheet,meta.createdBy,meta.createdAt,meta.updatedAt,meta.requestId]]);
+    return Object.assign(publicMeta_(meta),{counts,defects,imported:incoming.length,version:meta.version});
+  }
   const counts=normalizeRows_(p.counts,products),defects=normalizeRows_(p.defects,products);
   if(meta.kind==='RECONTAGEM'){
     if(!list.some(m=>m.id===meta.sourceId&&m.store===meta.store))throw new Error('A contagem original foi excluída.');
     validateRecount_(meta,counts,defects,p.zeroEans||[],p.action==='finish');
   }
+  if(p.action==='finish'&&meta.kind!=='RECONTAGEM'&&!counts.length&&!defects.length)return deleteEmptyCount_(meta,list);
   writeState_(meta,counts,defects);
   if(meta.kind==='RECONTAGEM'){writeRecountZeros_(meta,p.zeroEans||[]);if(p.action==='finish')applyRecount_(meta,counts,defects,list);}
   meta.version++;meta.updatedAt=new Date().toISOString();meta.requestId=String(p.requestId||'');if(p.action==='finish')meta.status='FINALIZADA';
@@ -202,8 +244,8 @@ function requestRecount_(p,list){
   const original=state_(source),products=new Map(original.counts.concat(original.defects).map(r=>[r.ean,r]));
   const now=new Date(),ss=db_(),base=source.label+' RECONTAGEM';let number=1+Math.max(0,...list.filter(m=>m.kind==='RECONTAGEM'&&m.sourceId===source.id).map(m=>Number((m.label.match(/#(\d+)$/)||[])[1]||1))),label=base+' #'+number;while(ss.getSheetByName(label))label=base+' #'+(++number);
   const sheet=ss.insertSheet(label),meta={id:Utilities.getUuid(),store:source.store,date:source.date,label,status:'EM ANDAMENTO',version:0,sheet:label,createdBy:p.userId,createdAt:now.toISOString(),updatedAt:now.toISOString(),requestId:'',kind:'RECONTAGEM',sourceId:source.id,createdRequestId:p.requestId};
-  if(sheet.getMaxColumns()<20)sheet.insertColumnsAfter(sheet.getMaxColumns(),20-sheet.getMaxColumns());
-  if(sheet.getMaxRows()<eans.length+4)sheet.insertRowsAfter(sheet.getMaxRows(),eans.length+4-sheet.getMaxRows());
+  if(sheet.getMaxColumns()<20)sheet.insertColumnsAfter(sheet.getMaxColumns(),20-sheet.getMaxColumns());if(sheet.getMaxColumns()>20)sheet.setMaxColumns(20);
+  if(sheet.getMaxRows()<eans.length+4)sheet.insertRowsAfter(sheet.getMaxRows(),eans.length+4-sheet.getMaxRows());if(sheet.getMaxRows()>eans.length+4)sheet.setMaxRows(eans.length+4);
   sheet.getRange('A1:B2').setValues([['RECONTAGEM',source.label],['LOJA',source.store]]);
   sheet.getRange(4,1,1,15).setValues([['EAN','QNTD','PRODUTO','MARCA','INEXISTENTE','','EAN','QNTD','PRODUTO','MARCA','INEXISTENTE','','EAN','QNTD','EAN,QNTD']]);
   sheet.getRange('Q4:T4').setValues([['EAN SOLICITADO','PRODUTO','MARCA','NÃO LOCALIZADO']]);

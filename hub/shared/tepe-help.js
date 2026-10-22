@@ -24,8 +24,10 @@ const content={
  'inventory-login':['Entrar no Inventário','Loja: digite a sigla e use o CNPJ, só com números, como senha. Administrativo: use seu e-mail e senha ou seu acesso habitual.'],
  'inventory-start':['Começar uma contagem','Confira a loja e a data e toque em “Nova contagem”. Se houver um pedido para sua loja, toque em “Abrir recontagem”.'],
  'inventory-admin-start':['Contagens e recontagens','Escolha a loja e a data para criar uma contagem. Para consultar uma já salva, toque em “Carregar contagens” e selecione a desejada. Em uma contagem finalizada, você pode solicitar a recontagem por TXT.'],
- 'inventory-count':['Contar os produtos','Bipe ou digite o EAN e pressione Enter ou “Registrar”. Cada bipagem soma uma unidade. Ajuste a quantidade no campo ou em + e −. Aguarde “Salvo no Google Drive” antes de sair. Ao terminar, finalize.'],
- 'inventory-defects':['Registrar defeitos','Selecione “Defeitos” e bipe os produtos com defeito. Ajuste a quantidade se precisar. Conte cada unidade uma só vez: os defeitos são somados à contagem na saída.'],
+ 'inventory-count':['Contar os produtos','Bipe, digite ou leia pela câmera. Cada bipagem soma uma unidade. Você também pode importar um TXT EAN,QNTDD; as quantidades são somadas ao que já foi lançado. Confira os EANs não cadastrados antes de confirmar. Aguarde “Salvo no Google Drive” e finalize quando terminar.'],
+ 'inventory-defects':['Registrar defeitos','Selecione “Defeitos” e bipe, digite, use a câmera ou importe um TXT EAN,QNTDD. Os valores importados se somam ao que já foi lançado. Conte cada unidade uma só vez: defeitos são somados à contagem na saída.'],
+ 'inventory-camera':['Ler pela câmera','Permita o acesso à câmera no Chrome e aponte para o código de barras. A leitura acontece neste dispositivo. Toque em “Fechar” para desligar a câmera.'],
+ 'inventory-import-unknown':['Conferir EANs importados','Estes códigos não aparecem no cadastro. Toque em “Corrigir arquivo” para cancelar e ajustar o TXT, ou em “Lançar mesmo assim” para incluir os itens como inexistentes.'],
  'inventory-recount':['Fazer a recontagem','Bipe os EANs solicitados. Amarelo significa apenas que o produto foi incluído; confira a quantidade por sua conta. Se não encontrar o item, marque “Não localizado (0)”. Finalize após conferir todos.'],
  'inventory-finished':['Contagem finalizada','Esta contagem está salva e não aceita novas bipagens. Você pode baixar o Excel ou o CSV. Para contar novamente os produtos, abra uma nova contagem.'],
  'inventory-recount-finished':['Recontagem finalizada','As quantidades dos EANs solicitados foram atualizadas na contagem original. Os outros produtos foram mantidos. Esta recontagem está salva e não aceita novas bipagens.'],
@@ -41,6 +43,8 @@ function infer(){
  const path=location.pathname.toLowerCase();
  if(path.includes('contagem-estoque')){
   if(visible('#login-panel'))send('inventory-login');
+  else if(visible('#camera-dialog[open]'))send('inventory-camera');
+  else if(visible('#import-unknown-dialog[open]'))send('inventory-import-unknown');
   else if(visible('#unknown-dialog[open]'))send('inventory-unknown');
   else if(visible('#recount-dialog[open]'))send('inventory-request');
   else if(visible('#analysis-view'))send('inventory-analysis');
@@ -59,7 +63,7 @@ let inferenceTimer;
 const scheduleInfer=()=>{clearTimeout(inferenceTimer);inferenceTimer=setTimeout(infer,80);};
 document.addEventListener('click',scheduleInfer,{passive:true});
 window.addEventListener('hashchange',infer);
-const watched=['#login-panel','#app-main','#analysis-view','#counting','#recount-targets','#recount-dialog','#unknown-dialog','#loginPanel','#appMain','#detail','#secure-frame','#user-password','#password'];
+const watched=['#login-panel','#app-main','#analysis-view','#counting','#recount-targets','#recount-dialog','#unknown-dialog','#camera-dialog','#import-unknown-dialog','#loginPanel','#appMain','#detail','#secure-frame','#user-password','#password'];
 if('MutationObserver'in window){const observer=new MutationObserver(scheduleInfer);watched.forEach(selector=>{const el=document.querySelector(selector);if(el)observer.observe(el,{attributes:true,attributeFilter:['hidden','class','open','style']});});const finish=document.querySelector('#finish-count');if(finish)observer.observe(finish,{childList:true});}
 if(location.pathname.includes('estoquevendas')&&'IntersectionObserver'in window){const observer=new IntersectionObserver(entries=>{const entry=entries.filter(e=>e.isIntersecting).sort((a,b)=>a.boundingClientRect.top-b.boundingClientRect.top)[0];if(entry){const key=entry.target.id.replace('modulo-','');send(key==='validacao'?'dashboard-validacao':'dashboard-'+key);}},{rootMargin:'-12% 0px -62% 0px'});document.querySelectorAll('.analysis-module').forEach(el=>observer.observe(el));}
 if(remote){infer();return;}

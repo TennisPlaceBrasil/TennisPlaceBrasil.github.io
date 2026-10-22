@@ -1,11 +1,16 @@
+Warning: truncated output (original token count: 10086)
+Total output lines: 368
+
 'use strict';
 const $=s=>document.querySelector(s),BASE='https://rihvnshexilakojnltox.supabase.co',KEY='sb_publishable_7coOHeG2tOc9XfS0qeKvPg_z2fh0KWz',AUTH_KEY='tp-manuais-supabase-v1';
 let auth=null,user=null,stores=[],sessions=[],sessionsLoaded=false,loadingSessions=false,current=null,catalog=new Map(),mode='count',unknown=null,lookingUp=false;
-let serial=0,saved=0,inflight=null,timer=null,retry=null,conflict=false,xlsxPromise,recounts=[],loadingRecounts=false,recountSourceId=null,recountPage=0;
+let serial=0,saved=0,inflight=null,timer=null,retry=null,conflict=false,xlsxPromise,recounts=[],loadingRecounts=false,recountSourceId=null,recountPage=0,pendingImport=null,cameraStream=null,cameraControls=null,cameraFrame=0,cameraActive=false,zxingPromise=null;
 const uuid=()=>crypto.randomUUID?crypto.randomUUID():Array.from(crypto.getRandomValues(new Uint8Array(16)),v=>v.toString(16).padStart(2,'0')).join('');
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function note(s,error=false){$('#scan-message').textContent=s;$('#scan-message').className='scan-message '+(error?'error':'success');}
 function sync(s,type=''){$('#sync-status').textContent=s;$('#sync-status').className='sync-status '+type;}
+function cacheCatalog(ean,value){catalog.set(ean,value);try{const db=JSON.parse(localStorage.getItem('tp-stock-catalog-v1')||'{}');db[ean]={value,expires:Date.now()+240000};const keys=Object.keys(db);if(keys.length>5000)keys.slice(0,keys.length-5000).forEach(k=>delete db[k]);localStorage.setItem('tp-stock-catalog-v1',JSON.stringify(db));}catch(_){}}
+function restoreCatalog(){try{const db=JSON.parse(localStorage.getItem('tp-stock-catalog-v1')||'{}'),now=Date.now();Object.entries(db).forEach(([ean,item])=>{if(item.expires>now)catalog.set(ean,item.value);else delete db[ean];});localStorage.setItem('tp-stock-catalog-v1',JSON.stringify(db));}catch(_){}}
 function saveAuth(a){auth=a;if(a)sessionStorage.setItem(AUTH_KEY,JSON.stringify(a));else sessionStorage.removeItem(AUTH_KEY);}
 async function refresh(){
   const r=await fetch(BASE+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{apikey:KEY,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:auth?.refresh_token})});
@@ -40,14 +45,17 @@ function render(){
   function table(rows,kind){return rows.map(r=>'<tr><td>'+esc(r.ean)+'</td><td><span class="product-name">'+esc(r.description)+'</span>'+(r.unknown?'<span class="product-sub">Lançado mesmo assim</span>':'')+'</td><td>'+esc(r.brand)+'</td><td><div class="qty-actions"><button type="button" data-kind="'+kind+'" data-ean="'+esc(r.ean)+'" data-delta="-1" aria-label="Diminuir">−</button><input class="quantity-input" type="number" min="1" max="1000000" step="1" inputmode="numeric" value="'+r.quantity+'" data-quantity="1" data-list="'+kind+'" data-ean="'+esc(r.ean)+'" aria-label="Quantidade"><button type="button" data-kind="'+kind+'" data-ean="'+esc(r.ean)+'" data-delta="1" aria-label="Aumentar">+</button></div></td><td><button type="button" class="remove-row" data-kind="'+kind+'" data-ean="'+esc(r.ean)+'" data-remove="1" aria-label="Remover">×</button></td></tr>').join('');}
   $('#count-body').innerHTML=table(counts,'counts');$('#defect-body').innerHTML=table(defects,'defects');
   $('#ean-input').disabled=done||conflict||lookingUp;
+  ['#open-camera','#import-count','#import-defects'].forEach(id=>{if($(id))$(id).disabled=done||conflict;});
   $('#finish-count').disabled=done||conflict;$('#finish-count').textContent=done?'CONTAGEM FINALIZADA':'FINALIZAR CONTAGEM';
   document.querySelectorAll('.qty-actions button,.quantity-input,.remove-row').forEach(b=>b.disabled=done||conflict);
 }
 async function boot(){
   const r=await api('bootstrap');user=r.user;stores=r.stores;sessions=[];sessionsLoaded=false;
+  restoreCatalog();
   $('#login-panel').hidden=true;$('#app-main').hidden=false;$('#logout').hidden=false;
   $('#account-label').textContent=user.allStores?'ACESSO ADMINISTRATIVO':user.store;
   $('#store-code').innerHTML=(user.allStores?'<option value="">Selecione a loja</option>':'')+stores.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('');$('#store-code').value=user.store||'';$('#store-code').disabled=!user.allStores;$('#count-date').value=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());$('#tab-analysis').hidden=!user.allStores;
+  const today=$('#count-date').value,from=new Date(today+'T12:00:00-03:00');from.setDate(from.getDate()-89);$('#filter-end').value=today;$('#filter-start').value=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(from);
   picker();render();
   $('#catalog-status').textContent='Cadastro do Drive · consulta por EAN';
   $('#filter-store').innerHTML='<option value="">Todas as lojas</option>'+stores.map(s=>'<option>'+esc(s)+'</option>').join('');
@@ -86,7 +94,7 @@ function draftKey(){return 'tp-stockcount-draft-'+user.id+'-'+current.id;}
 function persistDraft(){try{localStorage.setItem(draftKey(),JSON.stringify({version:current.version,inflightId:retry?.body.requestId||null,counts:current.counts,defects:current.defects,zeroEans:current.zeroEans||[]}));}catch(_){sync('Não foi possível criar o rascunho local. Aguarde o Drive.','error');}}
 function changed(){
   serial++;persistDraft();
-  sync('Salvamento pendente…','pending');render();clearTimeout(timer);timer=setTimeout(flush,800);
+  sync('Salvamento pendente…','pending');render();clearTimeout(timer);timer=setTimeout(flush,2000);
 }
 async function flush(){
   if(inflight)return inflight;
@@ -136,7 +144,8 @@ async function openCount(id){
 async function createCount(){
   $('#new-count').disabled=true;
   try{
-    await ensureSaved();const store=$('#store-code').value.trim().toUpperCase();
+    if(current){const previous=current;await ensureSaved();if(!previous.counts.length&&!previous.defects.length&&previous.kind!=='RECONTAGEM'){await api('discardEmpty',{id:previous.id});localStorage.removeItem('tp-stockcount-draft-'+user.id+'-'+previous.id);sessions=sessions.filter(s=>s.id!==previous.id);current=null;serial=0;saved=0;retry=null;conflict=false;}}
+    const store=$('#store-code').value.trim().toUpperCase();
     if(!stores.includes(store))throw Error('Informe uma sigla de loja válida.');
     const date=$('#count-date').value;if(!date||!$('#count-date').checkValidity())throw Error('Selecione uma data válida para a contagem.');
     current=(await api('create',{store,date})).data;sessions.push(current);serial=0;saved=0;retry=null;conflict=false;
@@ -163,7 +172,7 @@ async function scan(){
     if(!catalog.has(ean)){
       const result=await api('catalog',{ean});
       const product=result.data;
-      catalog.set(ean,product?{ean:String(product[0]),description:product[1],brand:product[2]}:null);
+      cacheCatalog(ean,product?{ean:String(product[0]),description:product[1],brand:product[2]}:null);
     }
     if(!catalog.get(ean)){unknown=ean;$('#unknown-ean').textContent=ean;$('#unknown-dialog').showModal();return;}
     addScan(ean);
@@ -174,8 +183,10 @@ async function finishCount(){
   try{
     await ensureSaved();
     if(current.kind==='RECONTAGEM'){const included=new Set(current.counts.concat(current.defects).map(r=>r.ean).concat(current.zeroEans||[]));if(current.targets.some(r=>!included.has(r.ean)))throw Error('Bipe ou marque como não localizado cada EAN solicitado.');}
-    if(!confirm(current.kind==='RECONTAGEM'?'Finalizar a recontagem? Os produtos solicitados serão atualizados na contagem original.':'Finalizar esta contagem? Ela aparecerá na análise e não receberá mais bipagens.'))return;
-    current=(await api('finish',{id:current.id,version:current.version,requestId:uuid(),counts:current.counts,defects:current.defects,zeroEans:current.zeroEans||[]})).data;
+    const empty=current.kind!=='RECONTAGEM'&&!current.counts.length&&!current.defects.length,question=current.kind==='RECONTAGEM'?'Finalizar a recontagem? Os produtos solicitados serão atualizados na contagem original.':empty?'Esta contagem não tem produtos. Ao confirmar, sua aba será excluída automaticamente do Drive e do Inventário.':'Finalizar esta contagem? Ela aparecerá na análise e não receberá mais bipagens.';if(!confirm(question))return;
+    const result=(await api('finish',{id:current.id,version:current.version,requestId:uuid(),counts:current.counts,defects:current.defects,zeroEans:current.zeroEans||[]})).data;
+    if(result.empty){sessions=sessions.filter(s=>s.id!==result.id);clearTimeout(timer);localStorage.removeItem(draftKey());current=null;serial=0;saved=0;retry=null;conflict=false;picker();render();sync('Contagem vazia excluída automaticamente');$('#app-error').textContent='A contagem sem produtos foi excluída do Drive e do Inventário.';return;}
+    current=result;
     sessions=sessions.map(s=>s.id===current.id?current:s);picker();render();sync('Contagem finalizada no Google Drive');loadRecounts();
   }catch(e){note(e.message,true);}
 }
@@ -193,13 +204,13 @@ function pivotAnalysis(data,brand=''){
 async function analyze(event){
   event?.preventDefault();$('#analysis-status').textContent='Carregando contagens finalizadas do Drive…';
   try{
-    const r=await api('analysis',{filterStore:$('#filter-store').value,startDate:$('#filter-start').value,endDate:$('#filter-end').value});
-    const previousBrand=$('#filter-brand').value,brands=[...new Set(r.data.flatMap(s=>s.counts.concat(s.defects).map(item=>item.brand).filter(Boolean)))].sort();
+    const all=[];let offset=0,total=0;do{const r=await api('analysis',{filterStore:$('#filter-store').value,startDate:$('#filter-start').value,endDate:$('#filter-end').value,offset,limit:40});all.push(...r.data.data);total=r.data.total;offset=r.data.nextOffset??0;$('#analysis-status').textContent='Carregando contagens… '+all.length+' de '+total;}while(offset);
+    const previousBrand=$('#filter-brand').value,brands=[...new Set(all.flatMap(s=>s.counts.concat(s.defects).map(item=>item.brand).filter(Boolean)))].sort();
     $('#filter-brand').innerHTML='<option value="">Todas as marcas</option>'+brands.map(b=>'<option>'+esc(b)+'</option>').join('');if(brands.includes(previousBrand))$('#filter-brand').value=previousBrand;
-    const result=pivotAnalysis(r.data,$('#filter-brand').value);
+    const result=pivotAnalysis(all,$('#filter-brand').value);
     $('#analysis-head').innerHTML='<tr><th>LOJA</th><th>EAN</th><th>PRODUTO</th><th>MARCA</th>'+result.dates.map(d=>'<th>'+esc(d.split('-').reverse().join('/'))+'</th>').join('')+'</tr>';
     $('#analysis-body').innerHTML=result.rows.map(r=>'<tr><td>'+esc(r.store)+'</td><td>'+esc(r.ean)+'</td><td>'+esc(r.description)+'</td><td>'+esc(r.brand)+'</td>'+result.dates.map(d=>'<td class="'+(r.values[d]?'':'zero')+'">'+(r.values[d]||0)+'</td>').join('')+'</tr>').join('');
-    $('#analysis-status').textContent=result.rows.length+' produtos · '+result.dates.length+' datas. Última contagem finalizada de cada loja em cada data.';
+    $('#analysis-status').textContent=result.rows.length+' produtos · '+result.dates.length+' datas · '+all.length+' contagens consultadas. Última contagem finalizada de cada loja em cada data.';
   }catch(e){$('#analysis-status').textContent=e.message;}
 }
 function imports(){return current.defects.concat(current.counts).map(r=>({EAN:r.ean,QNTD:r.quantity,'CÓDIGO IMPORTAÇÃO':r.ean+','+r.quantity}));}
@@ -209,11 +220,7 @@ function exportCsv(){
 }
 async function exportExcel(){
   try{
-    if(!window.XLSX){xlsxPromise=xlsxPromise||new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';s.onload=resolve;s.onerror=()=>reject(Error('A exportação Excel não carregou. Use o CSV ou tente novamente.'));document.head.append(s);});await xlsxPromise;}
-    const wb=XLSX.utils.book_new();
-    [['CONTAGEM',current.counts],['DEFEITOS',current.defects],['IMPORTAÇÃO',imports()]].forEach(([name,list])=>{
-      const rows=name==='IMPORTAÇÃO'?list:list.map(r=>({EAN:r.ean,QNTD:r.quantity}));
-      XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows,{header:name==='IMPORTAÇÃO'?['EAN','QNTD','CÓDIGO IMPORTAÇÃO']:['EAN','QNTD']}),name);
+    if(!window.XLSX){xlsxPromise=xlsxPromise||new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';s.onload=resolve;s.onerror=()=>reject(Error('A exportaç…86 tokens truncated…     XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows,{header:name==='IMPORTAÇÃO'?['EAN','QNTD','CÓDIGO IMPORTAÇÃO']:['EAN','QNTD']}),name);
     });XLSX.writeFile(wb,current.label+'.xlsx',{compression:true});
   }catch(e){note(e.message,true);}
 }
@@ -222,6 +229,38 @@ function parseRecountTxt(text){
   lines.forEach((line,index)=>{const value=line.trim();if(!value)return;if(index===0&&/^(EAN|CÓDIGO|CODIGO)([;,\t]|$)/i.test(value))return;const ean=value.split(/[;,\t]/)[0].trim().replace(/^"|"$/g,'');if(!/^\d{1,30}$/.test(ean)){invalid.push(index+1);return;}if(!seen.has(ean)){seen.add(ean);result.push(ean);}});
   if(invalid.length)throw Error('Confira as linhas '+invalid.slice(0,8).join(', ')+'. Use um EAN por linha, sem descrição.');
   if(!result.length||result.length>40000)throw Error('O TXT deve conter entre 1 e 40.000 EANs.');return result;
+}
+function parseImportTxt(text){
+  const lines=String(text).replace(/^\uFEFF/,'').split(/\r?\n/),items=new Map(),invalid=[];
+  lines.forEach((line,index)=>{const value=line.trim();if(!value)return;if(index===0&&/^(EAN|CÓDIGO|CODIGO)([,;\t]|$)/i.test(value))return;const parts=value.split(/[,;\t]/).map(v=>v.trim().replace(/^"|"$/g,''));const ean=parts[0]||'',quantity=Number(parts[1]);if(!/^\d{1,30}$/.test(ean)||parts.length!==2||!/^\d+$/.test(parts[1]||'')||!Number.isSafeInteger(quantity)||quantity<1||quantity>1000000){invalid.push(index+1);return;}const total=(items.get(ean)||0)+quantity;if(total>1000000){invalid.push(index+1);return;}items.set(ean,total);});
+  if(invalid.length)throw Error('Revise as linhas '+invalid.slice(0,8).join(', ')+'. Use EAN,QNTDD, com quantidades inteiras positivas.');
+  if(!items.size||items.size>40000)throw Error('O TXT deve conter entre 1 e 40.000 EANs.');return [...items].map(([ean,quantity])=>({ean,quantity}));
+}
+async function importFile(kind,input){
+  const file=input.files?.[0];if(!file)return;input.value='';if(!current)throw Error('Crie ou abra uma contagem antes de importar.');if(file.size>3000000)throw Error('O TXT deve ter no máximo 3 MB.');
+  const rows=parseImportTxt(await file.text());await ensureSaved();pendingImport={id:current.id,kind,rows,requestId:uuid()};$('#import-file-status').textContent='Validando '+rows.length+' EANs…';await sendImport(false);
+}
+async function sendImport(includeUnknown){
+  if(!pendingImport||!current||pendingImport.id!==current.id)throw Error('A contagem mudou. Escolha o arquivo novamente.');
+  const p=pendingImport;$('#import-confirm-unknown').disabled=true;
+  try{
+    const r=await api('importRows',{id:p.id,version:current.version,kind:p.kind,rows:p.rows,requestId:p.requestId,includeUnknown});
+    if(r.data.requiresConfirmation){$('#import-unknown-list').textContent=r.data.unknown.slice(0,16).join(', ')+(r.data.unknownCount>16?' e mais '+(r.data.unknownCount-16):'');$('#import-unknown-count').textContent=r.data.unknownCount+' EAN(s) não constam no cadastro. Deseja lançar mesmo assim?';$('#import-unknown-dialog').showModal();window.dispatchEvent(new CustomEvent('tp-help',{detail:'inventory-import-unknown'}));return;}
+    current=r.data;serial=0;saved=0;retry=null;conflict=false;localStorage.removeItem(draftKey());if(user.allStores)sessions=sessions.map(s=>s.id===current.id?current:s);render();picker();sync('Arquivo importado e salvo no Google Drive');note(p.rows.length+' linhas do arquivo importadas para '+(p.kind==='counts'?'Contagem':'Defeitos')+'.');pendingImport=null;$('#import-file-status').textContent='';
+  }catch(e){if(e.status===409){conflict=true;render();}throw e;}finally{$('#import-confirm-unknown').disabled=false;}
+}
+async function importWithFeedback(kind,input){try{await importFile(kind,input);}catch(e){$('#import-file-status').textContent=e.message;}}
+function loadZxing(){if(window.ZXingBrowser)return Promise.resolve(window.ZXingBrowser);if(zxingPromise)return zxingPromise;zxingPromise=new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='../../shared/zxing-browser.min.js';s.onload=()=>window.ZXingBrowser?resolve(window.ZXingBrowser):reject(Error('Leitor de câmera indisponível.'));s.onerror=()=>reject(Error('Não foi possível carregar o leitor local.'));document.head.append(s);});return zxingPromise;}
+function stopCamera(close=true){cameraActive=false;if(cameraFrame)cancelAnimationFrame(cameraFrame);cameraFrame=0;try{cameraControls?.stop();}catch(_){}cameraControls=null;cameraStream?.getTracks().forEach(t=>t.stop());cameraStream=null;const video=$('#camera-video');if(video)video.srcObject=null;if(close&&$('#camera-dialog')?.open)$('#camera-dialog').close();}
+async function cameraDetected(value){if(!cameraActive)return;const ean=String(value||'').replace(/\D/g,'');if(!/^\d{8,14}$/.test(ean))return;stopCamera();$('#ean-input').value=ean;await scan();}
+async function startCamera(){
+  stopCamera(false);$('#camera-status').textContent='Solicitando acesso à câmera…';
+  try{
+    cameraStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});const video=$('#camera-video');video.srcObject=cameraStream;await video.play();cameraActive=true;$('#camera-status').textContent='Aponte a câmera para o código de barras.';
+    let detector=null,formats=[];if('BarcodeDetector'in window){try{formats=await BarcodeDetector.getSupportedFormats();const supported=['ean_13','ean_8','upc_a','upc_e'].filter(f=>formats.includes(f));if(supported.length)detector=new BarcodeDetector({formats:supported});}catch(_){}}
+    if(detector){let busy=false,last=0;const tick=async now=>{if(!cameraActive)return;cameraFrame=requestAnimationFrame(tick);if(busy||now-last<220||video.readyState<2)return;last=now;busy=true;try{const found=await detector.detect(video);if(found.length)await cameraDetected(found[0].rawValue);}catch(_){}finally{busy=false;}};cameraFrame=requestAnimationFrame(tick);}
+    else{const ZX=await loadZxing();if(!cameraActive)return;const Reader=ZX.BrowserMultiFormatOneDReader||ZX.BrowserMultiFormatReader,reader=new Reader();cameraControls=await reader.decodeFromVideoDevice(undefined,video,(result)=>{if(result&&cameraActive)cameraDetected(result.getText());});}
+  }catch(e){stopCamera(false);$('#camera-status').textContent=e.name==='NotAllowedError'?'Permita o acesso à câmera nas configurações do Chrome e tente novamente.':e.name==='NotFoundError'?'Não encontramos uma câmera disponível neste dispositivo.':e.message||'Não foi possível iniciar a câmera.';}
 }
 async function loadRecounts(){
   if(!user||loadingRecounts)return;loadingRecounts=true;$('#refresh-recounts').disabled=true;$('#recount-inbox-status').textContent='Buscando solicitações…';
@@ -275,13 +314,20 @@ $('#login-form').addEventListener('submit',async event=>{
   }catch(e){$('#login-error').textContent=e.message;$('#app-error').textContent=e.message;}finally{$('#login-submit').disabled=false;}
 });
 $('#logout').addEventListener('click',async()=>{
-  try{await ensureSaved();saveAuth(null);user=null;current=null;recounts=[];$('#recount-inbox-list').innerHTML='';catalog.clear();updateInventoryHelp();$('#app-main').hidden=true;$('#login-panel').hidden=false;$('#logout').hidden=true;$('#account-label').textContent='ACESSO TENNIS PLACE';}catch(e){note(e.message,true);}
+  try{await ensureSaved();if(current&&!current.counts.length&&!current.defects.length&&current.kind!=='RECONTAGEM'){await api('discardEmpty',{id:current.id});localStorage.removeItem(draftKey());}stopCamera();saveAuth(null);user=null;current=null;recounts=[];$('#recount-inbox-list').innerHTML='';updateInventoryHelp();$('#app-main').hidden=true;$('#login-panel').hidden=false;$('#logout').hidden=true;$('#account-label').textContent='ACESSO TENNIS PLACE';}catch(e){note(e.message,true);}
 });
 $('#new-count').addEventListener('click',createCount);
 $('#session-picker').addEventListener('change',event=>openCount(event.target.value).catch(e=>note(e.message,true)));
 $('#load-sessions').addEventListener('click',loadSessions);
 $('#delete-session').addEventListener('click',deleteSession);
 $('#scan-form').addEventListener('submit',event=>{event.preventDefault();scan();});
+$('#import-count').addEventListener('click',()=>$('#import-count-file').click());$('#import-defects').addEventListener('click',()=>$('#import-defects-file').click());
+$('#import-count-file').addEventListener('change',event=>importWithFeedback('counts',event.target));$('#import-defects-file').addEventListener('change',event=>importWithFeedback('defects',event.target));
+$('#import-confirm-unknown').addEventListener('click',()=>{if($('#import-unknown-dialog').open)$('#import-unknown-dialog').close();sendImport(true).catch(e=>$('#import-file-status').textContent=e.message);});
+$('#import-cancel-unknown').addEventListener('click',()=>{$('#import-unknown-dialog').close();pendingImport=null;$('#import-file-status').textContent='Importação cancelada para corrigir os EANs.';});
+$('#import-unknown-dialog').addEventListener('close',()=>{$('#import-confirm-unknown').disabled=false;updateInventoryHelp();});
+$('#open-camera').addEventListener('click',()=>{if(!current||current.status==='FINALIZADA')return;$('#camera-dialog').showModal();window.dispatchEvent(new CustomEvent('tp-help',{detail:'inventory-camera'}));startCamera();});
+$('#camera-close').addEventListener('click',()=>stopCamera());$('#camera-dialog').addEventListener('close',()=>{stopCamera(false);updateInventoryHelp();});
 $('#correct-ean').addEventListener('click',()=>{$('#unknown-dialog').close();unknown=null;$('#ean-input').focus();$('#ean-input').select();});
 $('#allow-ean').addEventListener('click',()=>{$('#unknown-dialog').close();addScan(unknown,true);unknown=null;});
 document.querySelectorAll('.mode-button').forEach(b=>b.addEventListener('click',()=>{mode=b.dataset.mode;updateInventoryHelp();document.querySelectorAll('.mode-button').forEach(x=>x.classList.toggle('active',x===b));$('#ean-input').focus();}));
@@ -301,7 +347,8 @@ $('#finish-count').addEventListener('click',finishCount);$('#export-txt').addEve
 $('#analysis-filters').addEventListener('submit',analyze);
 function showTab(analysis){$('#count-view').hidden=analysis;$('#analysis-view').hidden=!analysis;$('#tab-count').classList.toggle('active',!analysis);$('#tab-analysis').classList.toggle('active',analysis);updateInventoryHelp();}
 $('#tab-count').addEventListener('click',()=>showTab(false));$('#tab-analysis').addEventListener('click',()=>{showTab(true);analyze();});
-window.addEventListener('beforeunload',event=>{if(serial!==saved){event.preventDefault();event.returnValue='';}});
+window.addEventListener('pagehide',()=>{stopCamera(false);if(current&&!current.counts.length&&!current.defects.length&&current.kind!=='RECONTAGEM'&&auth?.access_token){const headers={'apikey':KEY,'Authorization':'Bearer '+auth.access_token,'Content-Type':'application/json'};fetch(BASE+'/functions/v1/stockcount-api',{method:'POST',headers,body:JSON.stringify({action:'discardEmpty',id:current.id}),keepalive:true}).catch(()=>{});}});
+window.addEventListener('beforeunload',event=>{if(serial!==saved&&!(current&&!current.counts.length&&!current.defects.length)){event.preventDefault();event.returnValue='';}});
 window.addEventListener('online',()=>flush());
 let lastReturnCheck=0;
 async function refreshAfterReturn(){

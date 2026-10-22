@@ -28,6 +28,8 @@ vm.runInContext("catalog.set('2',{description:'Produto B',brand:'MARCA'});addSca
 assert.deepEqual(JSON.parse(JSON.stringify(vm.runInContext("current.counts.map(r=>r.ean)",context))),['999','2','1'],'Scanned products must keep first-scan order');
 assert.deepEqual(JSON.parse(JSON.stringify(vm.runInContext("parseRecountTxt('EAN\\n001\\n001\\n002,500')",context))),['001','002']);
 assert.throws(()=>vm.runInContext("parseRecountTxt('1.23E+12')",context),/linhas/);
+assert.deepEqual(JSON.parse(JSON.stringify(vm.runInContext("parseImportTxt('EAN,QNTDD\\n001,2\\n001,3\\n002,1')",context))),[{ean:'001',quantity:5},{ean:'002',quantity:1}]);
+assert.throws(()=>vm.runInContext("parseImportTxt('EAN,QNTDD\\n001,2.5')",context),/linhas/);
 vm.runInContext("current={id:'recount',kind:'RECONTAGEM',status:'EM ANDAMENTO',version:0,targets:[{ean:'1',description:'Produto A'}],counts:[],defects:[],zeroEans:[]};addScan('2');",context);
 assert.equal(vm.runInContext('current.counts.length',context),0);
 vm.runInContext("addScan('1');",context);
@@ -73,6 +75,8 @@ response=await handler(jwtRequest({action:'requestRecount',id:'known-count',eans
 response=await handler(jwtRequest({action:'read',id:'known-count'}));assert.equal(response.status,403);
 response=await handler(jwtRequest({action:'delete',id:'known-count'}));assert.equal(response.status,403);
 response=await handler(jwtRequest({action:'analysis',allStores:true}));assert.equal(response.status,403);
+response=await handler(jwtRequest({action:'importRows',id:'known-count',version:0,kind:'counts',rows:[{ean:'1',quantity:2}]}));assert.equal(response.status,200,'Stores can import TXT rows through the authenticated bridge');assert.equal(outbound.action,'importRows');
+response=await handler(jwtRequest({action:'discardEmpty',id:'known-count'}));assert.equal(response.status,200,'Stores can discard their empty current count');assert.equal(outbound.action,'discardEmpty');
 active=false;response=await handler(jwtRequest({action:'list'}));assert.equal(response.status,403);
 active=true;actor='admin';response=await handler(jwtRequest({action:'analysis'}));assert.equal(response.status,200);assert.equal(outbound.allStores,true);
 console.log('Verified: unknown-EAN confirmation; quantity consolidation; stock pivot; version conflicts; store history/read/delete restrictions; admin deletion of spreadsheet tab and history row.');
