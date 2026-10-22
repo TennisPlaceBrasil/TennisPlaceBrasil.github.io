@@ -306,6 +306,7 @@ window.addEventListener('online',()=>flush());
 let lastReturnCheck=0;
 async function refreshAfterReturn(){
  if(document.hidden||!user||Date.now()-lastReturnCheck<1500)return;lastReturnCheck=Date.now();
+ if(user.allStores&&!$('#analysis-view').hidden)analyze();
  if(user.allStores&&(sessionsLoaded||current))loadSessions();
  else if(current&&current.kind!=='RECONTAGEM'){
   const target=current;
