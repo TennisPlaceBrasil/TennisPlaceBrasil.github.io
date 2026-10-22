@@ -210,11 +210,13 @@ function route_(p){
     if(!Array.isArray(p.rows)||!p.rows.length||p.rows.length>40000)throw new Error('O TXT deve conter entre 1 e 40.000 linhas.');
     const missing=Array.from(new Set(p.rows.map(r=>String(r.ean||'').trim()).filter(e=>/^\d{1,30}$/.test(e)&&!products.has(e))));
     if(missing.length&&!p.includeUnknown)return {requiresConfirmation:true,unknown:missing.slice(0,100),unknownCount:missing.length};
-    const incoming=normalizeRows_(p.rows.map(r=>Object.assign({},r,{unknown:!!p.includeUnknown})),products);
-    const current=state_(meta),merged=mergeRows_(current[p.kind],incoming),counts=p.kind==='counts'?merged:current.counts,defects=p.kind==='defects'?merged:current.defects;
+    const current=state_(meta),incoming=normalizeRows_(p.rows.map(r=>Object.assign({},r,{unknown:!!p.includeUnknown})),products);
+    const merged=mergeRows_(current[p.kind],incoming),counts=p.kind==='counts'?merged:current.counts,defects=p.kind==='defects'?merged:current.defects,zeroEans=(current.zeroEans||[]).filter(e=>!incoming.some(r=>r.ean===e));
+    if(meta.kind==='RECONTAGEM')validateRecount_(meta,counts,defects,zeroEans,false);
     writeState_(meta,counts,defects);meta.version++;meta.updatedAt=new Date().toISOString();meta.requestId=String(p.requestId);
+    if(meta.kind==='RECONTAGEM')writeRecountZeros_(meta,zeroEans);
     db_().getSheetByName('_Contagens').getRange(meta.row,5,1,7).setValues([[meta.status,meta.version,meta.sheet,meta.createdBy,meta.createdAt,meta.updatedAt,meta.requestId]]);
-    return Object.assign(publicMeta_(meta),{counts,defects,imported:incoming.length,version:meta.version});
+    const result=state_(meta);result.imported=incoming.length;return result;
   }
   const counts=normalizeRows_(p.counts,products),defects=normalizeRows_(p.defects,products);
   if(meta.kind==='RECONTAGEM'){

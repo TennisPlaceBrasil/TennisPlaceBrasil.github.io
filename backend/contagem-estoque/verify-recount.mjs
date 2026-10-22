@@ -36,6 +36,7 @@ assert.equal(call({action:'recountInbox',store:'APAR',allStores:false}).length,1
 assert.throws(()=>call({action:'openRecount',id:created.id,store:'JOIN',allStores:false}),/permissão/);
 const pending=call({action:'openRecount',id:created.id,store:'APAR',allStores:false});
 assert.equal(pending.counts.length,0);assert.equal(pending.defects.length,0);assert.equal(pending.targets.length,2);assert.ok(pending.targets.every(r=>r.quantity===undefined),'Never show original quantities to a store');
+assert.throws(()=>call({action:'importRows',id:created.id,store:'APAR',allStores:false,version:0,kind:'counts',rows:[{ean:'002',quantity:1}],requestId:'recount-import-123456'}),/solicitação/,'TXT imports into a recount must stay within requested EANs');
 const save={action:'save',id:created.id,store:'APAR',allStores:false,version:0,requestId:'save-1',counts:[{ean:'001',quantity:3}],defects:[{ean:'001',quantity:2}],zeroEans:[]};
 assert.throws(()=>call({...save,counts:[{ean:'002',quantity:1}]}),/solicitação/);
 assert.throws(()=>call({...save,zeroEans:['001']}),/bipado/);

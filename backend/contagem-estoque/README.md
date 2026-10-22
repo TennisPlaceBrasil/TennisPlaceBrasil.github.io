@@ -16,7 +16,7 @@ Status: Google Apps Script version 5 and authenticated Edge API deployed. Recoun
 
 The camera reader is opened only on request. Chrome uses the native Barcode Detection API where it supports EAN formats; otherwise a locally hosted, MIT-licensed ZXing bundle is loaded only while needed. Video processing remains on the device and camera tracks stop when the dialog closes. HTTPS and camera permission are required.
 
-All users can import a TXT into Contagem or Defeitos. Each line uses EAN,QNTDD; duplicates in a file are summed, and imported quantities are added to existing rows. Unknown EANs are listed and require explicit confirmation. Imports are validated and written in a single request.
+All users can import a TXT into Contagem or Defeitos. Each line uses EAN,QNTDD; duplicates in a file are summed, and imported quantities are added to existing rows. Unknown EANs are listed and require explicit confirmation. Imports are validated and written in a single request. In a recount, the server rejects EANs that were not requested for that recount.
 
 An empty count is removed when it is finalized, replaced with a new count, or the user leaves the page. A stale unfinished count with no products is also removed the next time that store starts a count after 12 hours. Spreadsheet tabs shrink to only the rows and columns actually used.
 
