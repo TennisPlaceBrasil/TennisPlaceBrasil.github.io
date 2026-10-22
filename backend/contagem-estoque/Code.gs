@@ -87,7 +87,7 @@ function state_(meta,spreadsheet){
   const sheet=(spreadsheet||db_()).getSheetByName(meta.sheet);
   if(!sheet)throw new Error('A aba desta contagem não foi encontrada.');
   const last=sheet.getLastRow();
-  const values=last>=5?sheet.getRange(5,1,last-4,11).getDisplayValues():[];
+  const values=last>=5?sheet.getRange(5,1,last-4,12).getDisplayValues():[];
   const parse=(offset)=>values.filter(r=>r[offset]&&Number(r[offset+1])>0).map(r=>({
     ean:String(r[offset]),quantity:Number(r[offset+1]),description:r[offset+2],brand:r[offset+3],unknown:r[offset+4]==='SIM',lastScannedAt:r[offset+5]||''
   }));
