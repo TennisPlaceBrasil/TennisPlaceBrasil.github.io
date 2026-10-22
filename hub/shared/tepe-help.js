@@ -26,7 +26,7 @@ const content={
  'inventory-admin-start':['Contagens e recontagens','Escolha a loja e a data para criar uma contagem. Para consultar uma já salva, toque em “Carregar contagens” e selecione a desejada. Em uma contagem finalizada, você pode solicitar a recontagem por TXT.'],
  'inventory-count':['Contar os produtos','Confira “Pronto para contar sem internet” antes de começar. Bipe, digite, use a câmera ou importe TXT EAN,QNTDD. Cada bipagem é salva neste dispositivo. Sem conexão, continue contando e baixe os arquivos. O envio ao Drive fica pendente até a conexão voltar.'],
  'inventory-defects':['Registrar defeitos','Selecione “Defeitos” e bipe, digite, use a câmera ou importe um TXT EAN,QNTDD. Os valores importados se somam ao que já foi lançado. Conte cada unidade uma só vez: defeitos são somados à contagem na saída.'],
- 'inventory-camera':['Ler pela câmera','Permita o acesso à câmera no Chrome e aponte para o código de barras. A leitura acontece neste dispositivo. Toque em “Fechar” para desligar a câmera.'],
+ 'inventory-camera':['Ler pela câmera','Permita o acesso à câmera no Chrome e aponte para o código de barras. Confira o produto em verde e toque em “Lançar” para registrar uma unidade. A câmera continua aberta e mostra os últimos três lançamentos. Toque em “Fechar” para desligar.'],
  'inventory-import-unknown':['Conferir EANs importados','Estes códigos não aparecem no cadastro. Toque em “Corrigir arquivo” para cancelar e ajustar o TXT, ou em “Lançar mesmo assim” para incluir os itens como inexistentes.'],
  'inventory-recount':['Fazer a recontagem','Bipe os EANs solicitados. Amarelo significa apenas que o produto foi incluído; confira a quantidade por sua conta. Se não encontrar o item, marque “Não localizado (0)”. Finalize após conferir todos.'],
  'inventory-local-finished':['Finalizada neste dispositivo','A contagem está salva neste dispositivo e aguarda envio ao Drive. Você já pode baixar o Excel ou os arquivos TXT. Quando a conexão voltar, toque em Sincronizar.'],
@@ -36,7 +36,7 @@ const content={
  'inventory-delete-inbox':['Pedidos de exclusão','Abra um pedido em “Ver produtos”. Confira os itens da contagem antes de aprovar ou recusar.'],
  'inventory-recount-finished':['Recontagem finalizada','As quantidades dos EANs solicitados foram atualizadas na contagem original. Os outros produtos foram mantidos. Esta recontagem está salva e não aceita novas bipagens.'],
  'inventory-request':['Solicitar recontagem','Confira a loja e a contagem selecionada. Escolha um TXT com um EAN por linha e toque em “Enviar à loja”. A loja receberá os códigos, sem ver as quantidades anteriores.'],
- 'inventory-unknown':['EAN não encontrado','Confira o código. Toque em “Corrigir” para tentar novamente. Se quiser registrar esse código mesmo sem cadastro, escolha “Lançar mesmo assim”.'],
+ 'inventory-unknown':['EAN não encontrado','Confira o código. Toque em “Corrigir” para tentar novamente. Para registrar sem cadastro, preencha produto e marca e escolha “Lançar mesmo assim”.'],
  'inventory-analysis':['Analisar o estoque','Escolha a loja e o período e toque em “Analisar”. Depois, se quiser, filtre a marca e analise de novo. Cada coluna usa a última contagem finalizada da data. Produto ausente naquela contagem aparece com zero.']
 };
 let context='hub',remote=false;

@@ -32,5 +32,6 @@ window.TPInventoryLocal=(()=>{
   return state;
  }
  function remove(owner,id){return ordered(()=>transaction(['counts','rows','settings'],t=>{const k=key(owner,id);t.objectStore('counts').delete(k);t.objectStore('rows').delete(IDBKeyRange.bound(k+'|',k+'|\uffff'));const p=t.objectStore('settings').get('active:'+owner);p.onsuccess=()=>{if(p.result?.value===id)t.objectStore('settings').delete('active:'+owner);};}));}
- return {ready:db,save,restore,remove,read,setting,drain:()=>queue};
+ async function list(owner){await queue;const d=await db();return new Promise((resolve,reject)=>{const r=d.transaction('counts').objectStore('counts').getAll();r.onsuccess=()=>resolve(r.result.map(r=>r.value).filter(r=>r.owner===owner).sort((a,b)=>String(b.localUpdatedAt).localeCompare(String(a.localUpdatedAt))));r.onerror=()=>reject(r.error);});}
+ return {list,ready:db,save,restore,remove,read,setting,drain:()=>queue};
 })();

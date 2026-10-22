@@ -106,7 +106,7 @@ function normalizeRows_(rows,products){
     const product=products.get(ean);
     if(!product&&!r.unknown)throw new Error('Produto inexistente: '+ean);
     const inputTime=String(r.lastScannedAt||'').trim(),inputMs=Date.parse(inputTime),safeTime=inputTime&&!isNaN(inputMs)?new Date(inputMs).toISOString():'';
-    const item=result.get(ean)||{ean,quantity:0,description:product?product[1]:'PRODUTO INEXISTENTE',brand:product?product[2]:'NÃO CADASTRADA',unknown:!product,lastScannedAt:safeTime};
+    const item=result.get(ean)||{ean,quantity:0,description:product?product[1]:String(r.description||'PRODUTO INEXISTENTE').trim().slice(0,180),brand:product?product[2]:String(r.brand||'NÃO CADASTRADA').trim().slice(0,80),unknown:!product,lastScannedAt:safeTime};
     item.quantity+=quantity;if(Date.parse(safeTime)>Date.parse(item.lastScannedAt||0))item.lastScannedAt=safeTime;result.set(ean,item);
   });
   return Array.from(result.values());
@@ -136,7 +136,7 @@ function writeState_(meta,counts,defects,previous){
   resizeColumns_(sheet,isRecount?20:15);
   sheet.getRange(5,1,clearSize,15).clearContent();
   const matrix=Array.from({length:size},()=>Array(15).fill(''));
-  const fill=(list,col)=>list.forEach((r,i)=>{matrix[i][col]=r.ean;matrix[i][col+1]=r.quantity;matrix[i][col+2]=r.description;matrix[i][col+3]=r.brand;matrix[i][col+4]=r.unknown?'SIM':'NÃO';matrix[i][col+5]=r.lastScannedAt||'';});
+  const fill=(list,col)=>list.forEach((r,i)=>{matrix[i][col]=r.ean;matrix[i][col+1]=r.quantity;matrix[i][col+2]=String(r.description||'').startsWith('=')?"'"+r.description:r.description;matrix[i][col+3]=String(r.brand||'').startsWith('=')?"'"+r.brand:r.brand;matrix[i][col+4]=r.unknown?'SIM':'NÃO';matrix[i][col+5]=r.lastScannedAt||'';});
   fill(counts,0);fill(defects,6);
   combined.forEach((r,i)=>{matrix[i][12]=r.ean;matrix[i][13]=r.quantity;matrix[i][14]=r.ean+','+r.quantity;});
   sheet.getRange(5,1,size,15).setNumberFormat('@').setValues(matrix);
@@ -344,3 +344,11 @@ function verifyInventoryRuntime(){
   }
 }
 
+
+function verifyInventoryProductIdentification(){
+ const rows=normalizeRows_([{ean:'0000000000001',quantity:2,unknown:true,description:'PRODUTO PARA CADASTRAR',brand:'MARCA NOVA',lastScannedAt:'2026-10-22T12:00:00.000Z'}],new Map());
+ if(rows[0].description!=='PRODUTO PARA CADASTRAR'||rows[0].brand!=='MARCA NOVA'||!rows[0].unknown||rows[0].ean!=='0000000000001')throw Error('Identificação perdida');
+ const known=normalizeRows_([{ean:'123',quantity:1,description:'ALTERADO',brand:'ALTERADA'}],new Map([['123',['123','PRODUTO OFICIAL','MARCA OFICIAL']]]));
+ if(known[0].description!=='PRODUTO OFICIAL'||known[0].brand!=='MARCA OFICIAL')throw Error('Cadastro oficial alterado');
+ console.log('OK: produto e marca informados preservados; EAN com zeros preservado; cadastro oficial prioritário.');
+}

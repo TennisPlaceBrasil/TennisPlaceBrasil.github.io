@@ -1,6 +1,7 @@
 'use strict';
 const $=s=>document.querySelector(s),BASE='https://rihvnshexilakojnltox.supabase.co',KEY='sb_publishable_7coOHeG2tOc9XfS0qeKvPg_z2fh0KWz',AUTH_KEY='tp-manuais-supabase-v1';
 let auth=null,user=null,stores=[],sessions=[],sessionsLoaded=false,loadingSessions=false,current=null,catalog=new Map(),mode='count',unknown=null,lookingUp=false;
+let inventoryHome=false,openingCount=false,cameraCandidate=null,cameraLookup=false,cameraGeneration=0,cameraLastEan='',cameraLastAt=0,scanAudio=null;
 let serial=0,saved=0,inflight=null,timer=null,retry=null,conflict=false,xlsxPromise,recounts=[],loadingRecounts=false,recountSourceId=null,recountPage=0,pendingImport=null,cameraStream=null,cameraControls=null,cameraFrame=0,cameraActive=false,zxingPromise=null,deletionRequests=[],loadingDeletions=false,activeDeletionReviewId=null,unknownOrigin='LEITOR / DIGITAÇÃO',auditSessionPromise=null;
 const uuid=()=>crypto.randomUUID?crypto.randomUUID():Array.from(crypto.getRandomValues(new Uint8Array(16)),v=>v.toString(16).padStart(2,'0')).join('');
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -11,6 +12,31 @@ let localReady=false,shellReady=false,catalogComplete=false,catalogUpdated='',lo
 const listPage={counts:0,defects:0},PAGE_SIZE=100;
 function cacheCatalog(ean,value){catalog.set(ean,value);}
 function restoreCatalog(){} // The durable catalogue is restored asynchronously from IndexedDB.
+// Short oscillator tones need no audio files or network requests.
+function unlockScanAudio(){try{const Audio=window.AudioContext||window.webkitAudioContext;if(!Audio)return;scanAudio=scanAudio||new Audio();if(scanAudio.state==='suspended')scanAudio.resume().catch(()=>{});}catch(_){}}
+function scanSound(positive){try{unlockScanAudio();if(!scanAudio||scanAudio.state!=='running')return;const t=scanAudio.currentTime,osc=scanAudio.createOscillator(),gain=scanAudio.createGain();osc.type=positive?'sine':'triangle';osc.frequency.setValueAtTime(positive?880:220,t);osc.frequency.setValueAtTime(positive?1174:145,t+.085);gain.gain.setValueAtTime(0,t);gain.gain.linearRampToValueAtTime(.13,t+.012);gain.gain.exponentialRampToValueAtTime(.001,t+.19);osc.connect(gain);gain.connect(scanAudio.destination);osc.start(t);osc.stop(t+.20);osc.onended=()=>{osc.disconnect();gain.disconnect();};}catch(_){}}
+document.addEventListener('pointerdown',unlockScanAudio,{passive:true});document.addEventListener('keydown',unlockScanAudio,{passive:true});
+function showUnknown(ean,origin,reason){
+ const previous=current.counts.concat(current.defects).find(r=>r.ean===ean&&r.unknown);
+ unknown=ean;unknownOrigin=origin;$('#unknown-ean').textContent=ean;$('#unknown-reason').textContent=reason;
+ $('#unknown-description').value=previous?.description==='PRODUTO INEXISTENTE'?'':previous?.description||'';
+ $('#unknown-brand').value=previous?.brand==='NÃO CADASTRADA'?'':previous?.brand||'';
+ scanSound(false);$('#unknown-dialog').showModal();
+}
+async function showInventoryHome(){
+ stopCamera();await persistDraft();await TPInventoryLocal.drain();inventoryHome=true;render();await renderDeviceDrafts();
+ $('#count-view').scrollIntoView({block:'start'});if(navigator.onLine&&auth)loadRecounts();
+}
+async function renderDeviceDrafts(){
+ const list=await TPInventoryLocal.list(user.id);const drafts=list.filter(r=>r.status!=='FINALIZADA'||r.serial!==r.saved);
+ $('#device-drafts').hidden=!inventoryHome||!drafts.length;
+ $('#device-draft-list').innerHTML=drafts.map(r=>'<article class="recount-inbox-item"><div><strong>'+esc(r.label)+'</strong><span>'+(r.serial!==r.saved?'Há dados locais aguardando envio':'Contagem em andamento neste dispositivo')+'</span></div><button class="button button-primary" data-resume-draft="'+esc(r.id)+'">CONTINUAR</button></article>').join('');
+}
+async function resumeDeviceDraft(id){
+ if(openingCount)return;openingCount=true;
+ try{await persistDraft();await TPInventoryLocal.drain();if(inflight)await inflight;const record=await TPInventoryLocal.restore(user.id,id);if(!record)throw Error('Cópia local não encontrada.');clearTimeout(timer);timer=null;adoptLocal(record);inventoryHome=false;picker();render();sync(serial!==saved?'Salvo neste dispositivo · envio pendente':'Contagem recuperada deste dispositivo',serial!==saved?'pending':'');if(navigator.onLine&&auth){flush();validateActiveCount();}}
+ finally{openingCount=false;}
+}
 function updateOfflineStatus(){
  const box=$('#offline-status');if(!box)return;
  box.textContent=localError?'ATENÇÃO: '+localError:!navigator.onLine?'Sem conexão — '+(localReady?'bipagens salvas neste dispositivo.':'aguarde a preparação local.'):(localReady&&shellReady&&catalogComplete?'Pronto para contar sem internet.':'Preparando uso sem internet…');
@@ -100,7 +126,7 @@ function picker(){
   $('#share-count').disabled=loadingSessions||!selected;
 }
 function render(){
-  $('#empty-state').hidden=!!current;$('#counting').hidden=!current;$('#counting').dataset.localFinished=String(!!current?.localFinished&&current.status!=='FINALIZADA');$('#share-link-panel').hidden=!(current&&current.shareUrl);if(current?.shareUrl)$('#share-link-value').value=current.shareUrl;renderRecount();updateInventoryHelp();if(!current){$('#delete-review-actions').hidden=true;$('#request-delete-session').hidden=true;return;}
+  $('#empty-state').hidden=!!current&&!inventoryHome;$('#counting').hidden=!current||inventoryHome;$('#back-inventory-home').hidden=!current||inventoryHome;$('#device-drafts').hidden=!inventoryHome;$('#counting').dataset.localFinished=String(!!current?.localFinished&&current.status!=='FINALIZADA');$('#share-link-panel').hidden=inventoryHome||!(current&&current.shareUrl);if(current?.shareUrl)$('#share-link-value').value=current.shareUrl;renderRecount();updateInventoryHelp();if(!current){$('#delete-review-actions').hidden=true;$('#request-delete-session').hidden=true;return;}
   $('#session-title').textContent=current.label;
   $('#reload-count').hidden=!user?.allStores&&current.kind!=='RECONTAGEM';
   const counts=current.counts,defects=current.defects,done=current.status==='FINALIZADA'||current.localFinished,deletePending=current.deleteStatus==='PENDENTE';
@@ -243,12 +269,17 @@ async function ensureSaved(){
     if(saved===previous)throw Error('Aguarde o salvamento no Google Drive antes de continuar.');
   }
 }
-async function openCount(id){
-  if(!id)return;
-  if(conflict){note('Exporte a cópia local para conferência antes de substituir esta contagem. As bipagens foram preservadas.',true);return;}
-  else await ensureSaved();
-  const action=recounts.some(r=>r.id===id)||current?.id===id&&current.kind==='RECONTAGEM'?'openRecount':'read';
-  current=(await api(action,{id})).data;recountPage=0;$('#recount-search').value='';serial=0;saved=0;retry=null;conflict=false;
+async function openCount(id,requestedAction){
+  if(!id||openingCount)return;openingCount=true;
+  try{
+  // Persist the outgoing session independently; another draft must not block a recount.
+  await persistDraft();await TPInventoryLocal.drain();if(inflight)await inflight;
+  const action=requestedAction||(recounts.some(r=>r.id===id)||current?.id===id&&current.kind==='RECONTAGEM'?'openRecount':'read');
+  const local=await TPInventoryLocal.restore(user.id,id);let remote;
+  try{remote=(await api(action,{id})).data;}catch(e){if(local&&(!navigator.onLine||!e.status||e.status>=500)){clearTimeout(timer);timer=null;adoptLocal(local);inventoryHome=false;picker();render();sync('Cópia local preservada · envio pendente','pending');return;}throw e;}
+  clearTimeout(timer);timer=null;
+  if(local&&local.serial!==local.saved){adoptLocal(local);if(remote.version!==local.version&&remote.lastRequestId!==local.retry?.body?.requestId){conflict=true;current.orphaned=true;}inventoryHome=false;picker();render();sync(conflict?'Drive alterado. Exporte a cópia local para conferência.':'Cópia local recuperada · sincronizando','pending');if(!conflict)flush();return;}
+  current=remote;inventoryHome=false;recountPage=0;$('#recount-search').value='';serial=0;saved=0;retry=null;conflict=false;
   let restored=false;
   try{
     const draft=JSON.parse(localStorage.getItem(draftKey())||'null');
@@ -257,51 +288,48 @@ async function openCount(id){
     if(draft&&(sameVersion||ownRetry)&&current.status!=='FINALIZADA'){current.counts=draft.counts;current.defects=draft.defects;current.zeroEans=draft.zeroEans||[];changed();restored=true;}
     else if(draft)note('Há um rascunho de outra versão neste navegador. A versão do Drive foi preservada.',true);
   }catch(_){}
-  await persistDraft();picker();render();if(!restored)sync(current.status==='FINALIZADA'?'Contagem finalizada no Drive':'Salvo no Google Drive');$('#ean-input').focus();
+  await persistDraft();picker();render();if(!restored)sync(current.status==='FINALIZADA'?'Contagem finalizada no Drive':'Salvo no Google Drive');$('#ean-input').focus();$('#counting').scrollIntoView({block:'start'});
+  }finally{openingCount=false;}
 }
 async function createCount(){
   $('#new-count').disabled=true;
   try{
     if(!navigator.onLine)throw Error('Para criar outra contagem, conecte à internet. A contagem preparada neste dispositivo pode continuar normalmente.');
-    if(current){const previous=current;await ensureSaved();if(!previous.counts.length&&!previous.defects.length&&previous.kind!=='RECONTAGEM'){await api('discardEmpty',{id:previous.id});await TPInventoryLocal.remove(user.id,previous.id);localStorage.removeItem('tp-stockcount-draft-'+user.id+'-'+previous.id);sessions=sessions.filter(s=>s.id!==previous.id);current=null;serial=0;saved=0;retry=null;conflict=false;}}
+    if(current){const previous=current;await persistDraft();await TPInventoryLocal.drain();if(inflight)await inflight;if(!previous.counts.length&&!previous.defects.length&&previous.kind!=='RECONTAGEM'&&!previous.localFinished&&previous.deleteStatus!=='PENDENTE'){await api('discardEmpty',{id:previous.id});await TPInventoryLocal.remove(user.id,previous.id);localStorage.removeItem('tp-stockcount-draft-'+user.id+'-'+previous.id);sessions=sessions.filter(s=>s.id!==previous.id);current=null;serial=0;saved=0;retry=null;conflict=false;}}
     const store=$('#store-code').value.trim().toUpperCase();
     if(!stores.includes(store))throw Error('Informe uma sigla de loja válida.');
     const date=$('#count-date').value;if(!date||!$('#count-date').checkValidity())throw Error('Selecione uma data válida para a contagem.');
-    current=(await api('create',{store,date,auditSession:await auditSession()})).data;sessions.push(current);serial=0;saved=0;retry=null;conflict=false;
+    inventoryHome=false;current=(await api('create',{store,date,auditSession:await auditSession()})).data;sessions.push(current);serial=0;saved=0;retry=null;conflict=false;
     await persistDraft();listPage.counts=0;listPage.defects=0;picker();render();sync(current.shareUrl?'Nova contagem criada · link de acompanhamento disponível':'Nova contagem criada no Drive');if(current.shareError)note('Contagem criada, mas não foi possível gerar o link: '+current.shareError,true);$('#ean-input').focus();
   }catch(e){alert(e.message);}finally{$('#new-count').disabled=false;}
 }
-function addScan(ean,allowUnknown=false,origin='LEITOR / DIGITAÇÃO'){
+function addScan(ean,allowUnknown=false,origin='LEITOR / DIGITAÇÃO',metadata=null){
   if(!current||current.status==='FINALIZADA'||current.localFinished||current.deleteStatus==='PENDENTE')return;
   if(current.kind==='RECONTAGEM'&&!current.targets.some(t=>t.ean===ean)){note('Este EAN não está na solicitação de recontagem.',true);return;}
   current.zeroEans=(current.zeroEans||[]).filter(e=>e!==ean);
   if(current.kind==='RECONTAGEM'){recountPage=Math.floor(current.targets.findIndex(r=>r.ean===ean)/80);$('#recount-search').value='';}
   const kind=mode==='count'?'counts':'defects',p=catalog.get(ean);
   let row=current[kind].find(r=>r.ean===ean);
-  if(!row){row={ean,quantity:0,description:p?.description||'PRODUTO INEXISTENTE',brand:p?.brand||'NÃO CADASTRADA',unknown:allowUnknown,origin,lastScannedAt:new Date().toISOString()};current[kind].push(row);}else{row.origin=origin;row.lastScannedAt=new Date().toISOString();}
-  if(row.quantity>=1000000){note('Quantidade máxima atingida para este EAN.',true);return;}row.quantity++;listPage[kind]=Math.floor(current[kind].indexOf(row)/PAGE_SIZE);changed({kind,ean});note(row.description);$('#ean-input').value='';$('#ean-input').focus();
+  if(!row){row={ean,quantity:0,description:p?.description||metadata?.description||'PRODUTO INEXISTENTE',brand:p?.brand||metadata?.brand||'NÃO CADASTRADA',unknown:allowUnknown,origin,lastScannedAt:new Date().toISOString()};current[kind].push(row);}else{row.origin=origin;row.lastScannedAt=new Date().toISOString();}
+  if(allowUnknown&&metadata){row.description=metadata.description;row.brand=metadata.brand;row.unknown=true;}
+  if(row.quantity>=1000000){note('Quantidade máxima atingida para este EAN.',true);return;}row.quantity++;if(origin==='CÂMERA')current.recentCamera=[{ean:row.ean,description:row.description,brand:row.brand,mode,at:row.lastScannedAt},...(current.recentCamera||[])].slice(0,3);listPage[kind]=Math.floor(current[kind].indexOf(row)/PAGE_SIZE);changed({kind,ean});note(row.description);scanSound(true);$('#ean-input').value='';if(!$('#camera-dialog').open)$('#ean-input').focus();return row;
 }
 async function scan(origin='LEITOR / DIGITAÇÃO'){
   if(!current||current.status==='FINALIZADA'||current.localFinished||current.deleteStatus==='PENDENTE'||lookingUp)return;
   const ean=$('#ean-input').value.trim();
-  if(!/^\d{1,30}$/.test(ean)){note('Confira o EAN informado: use apenas números.',true);$('#ean-input').select();return;}
-  if(current.kind==='RECONTAGEM'&&!current.targets.some(t=>t.ean===ean)){note('Este EAN não está na solicitação de recontagem.',true);$('#ean-input').select();return;}
+  if(!/^\d{1,30}$/.test(ean)){note('Confira o EAN informado: use apenas números.',true);scanSound(false);$('#ean-input').select();return;}
+  if(current.kind==='RECONTAGEM'&&!current.targets.some(t=>t.ean===ean)){note('Este EAN não está na solicitação de recontagem.',true);scanSound(false);$('#ean-input').select();return;}
   if(catalogComplete||catalog.has(ean)||!navigator.onLine){
     if(catalog.get(ean)){addScan(ean,false,origin);return;}
-    unknown=ean;unknownOrigin=origin;$('#unknown-ean').textContent=ean;$('#unknown-reason').textContent=catalogComplete?'O código não foi encontrado no cadastro deste dispositivo.':'O cadastro completo ainda não está disponível. Confira o EAN ou lance mesmo assim para conferência.';$('#unknown-dialog').showModal();return;
+    showUnknown(ean,origin,catalogComplete?'O código não foi encontrado no cadastro deste dispositivo.':'O cadastro completo ainda não está disponível. Confira o EAN e informe produto e marca para conferência.');return;
   }
-  lookingUp=true;$('#catalog-status').textContent='Consultando EAN…';render();
+  lookingUp=true;$('#catalog-status').textContent='Consultando EAN…';
   try{
-    if(!catalog.has(ean)&&!catalogComplete){
-      if(!navigator.onLine)throw Error('Sem acesso ao cadastro completo. Confira o EAN ou lance mesmo assim.');
-      const result=await api('catalog',{ean});
-      const product=result.data;
-      cacheCatalog(ean,product?{ean:String(product[0]),description:product[1],brand:product[2]}:null);
-    }
-    if(!catalog.get(ean)){$('#unknown-reason').textContent='O código não foi encontrado no cadastro de produtos deste dispositivo.';unknown=ean;unknownOrigin=origin;$('#unknown-ean').textContent=ean;$('#unknown-dialog').showModal();return;}
+    const result=await api('catalog',{ean}),product=result.data;cacheCatalog(ean,product?{ean:String(product[0]),description:product[1],brand:product[2]}:null);
+    if(!catalog.get(ean)){showUnknown(ean,origin,'O código não foi encontrado no cadastro de produtos.');return;}
     addScan(ean,false,origin);
-  }catch(e){unknown=ean;unknownOrigin=origin;$('#unknown-ean').textContent=ean;$('#unknown-reason').textContent='Não foi possível consultar o cadastro. Confira o EAN ou escolha lançar mesmo assim; o produto ficará marcado para conferência.';$('#unknown-dialog').showModal();}
-  finally{lookingUp=false;updateOfflineStatus();render();}
+  }catch(e){showUnknown(ean,origin,'Não foi possível consultar o cadastro. Confira o EAN e informe produto e marca para conferência.');}
+  finally{lookingUp=false;updateOfflineStatus();}
 }
 async function finishCount(){
  try{
@@ -363,24 +391,48 @@ async function importFile(kind,input){
 async function sendImport(includeUnknown){
  if(!pendingImport||!current||pendingImport.id!==current.id)throw Error('A contagem mudou. Escolha o arquivo novamente.');
  const p=pendingImport,missing=p.rows.filter(r=>!catalog.get(r.ean));
- if(missing.length&&!includeUnknown){$('#import-unknown-list').textContent=missing.slice(0,16).map(r=>r.ean).join(', ');$('#import-unknown-count').textContent=missing.length+' EAN(s) não reconhecidos no cadastro local. Deseja lançar mesmo assim?';$('#import-unknown-dialog').showModal();return;}
+ if(missing.length&&!includeUnknown){$('#import-unknown-list').textContent=missing.slice(0,16).map(r=>r.ean).join(', ');$('#import-unknown-count').textContent=missing.length+' EAN(s) não reconhecidos no cadastro local. Deseja lançar mesmo assim?';$('#import-unknown-fields').innerHTML=missing.map(r=>'<fieldset><legend>'+esc(r.ean)+'</legend><label>PRODUTO<input data-import-ean="'+esc(r.ean)+'" data-field="description" required maxlength="180"></label><label>MARCA<input data-import-ean="'+esc(r.ean)+'" data-field="brand" required maxlength="80"></label></fieldset>').join('');$('#import-unknown-dialog').showModal();return;}
  if(current.kind==='RECONTAGEM'&&p.rows.some(r=>!current.targets.some(t=>t.ean===r.ean)))throw Error('O TXT contém EAN fora da solicitação de recontagem.');
+ if(includeUnknown){if(!$('#import-unknown-form').reportValidity())return;const identities=new Map();for(const field of $('#import-unknown-fields').querySelectorAll('input')){if(!identities.has(field.dataset.importEan))identities.set(field.dataset.importEan,{});identities.get(field.dataset.importEan)[field.dataset.field]=field.value.trim();}for(const r of missing){r.metadata=identities.get(r.ean)||{};if(!r.metadata.description||!r.metadata.brand)throw Error('Preencha produto e marca de todos os EANs desconhecidos.');}}
  const existing=new Map(current[p.kind].map(r=>[r.ean,r]));for(const r of p.rows)if((existing.get(r.ean)?.quantity||0)+r.quantity>1000000)throw Error('Quantidade ultrapassa 1.000.000 para '+r.ean);
- const now=new Date().toISOString();for(const r of p.rows){let row=existing.get(r.ean);if(!row){const product=catalog.get(r.ean);row={ean:r.ean,quantity:0,description:product?.description||'PRODUTO INEXISTENTE',brand:product?.brand||'NÃO CADASTRADA',unknown:!product};current[p.kind].push(row);existing.set(r.ean,row);}row.quantity+=r.quantity;row.lastScannedAt=now;row.origin='IMPORTAÇÃO TXT';}
+ const now=new Date().toISOString();for(const r of p.rows){let row=existing.get(r.ean);if(!row){const product=catalog.get(r.ean);row={ean:r.ean,quantity:0,description:product?.description||r.metadata?.description||'PRODUTO INEXISTENTE',brand:product?.brand||r.metadata?.brand||'NÃO CADASTRADA',unknown:!product};current[p.kind].push(row);existing.set(r.ean,row);}if(r.metadata&&row.unknown){row.description=r.metadata.description;row.brand=r.metadata.brand;}row.quantity+=r.quantity;row.lastScannedAt=now;row.origin='IMPORTAÇÃO TXT';}
  const imported=new Set(p.rows.map(r=>r.ean));current.zeroEans=(current.zeroEans||[]).filter(e=>!imported.has(e));changed();await persistDraft();note(p.rows.length+' linhas importadas neste dispositivo.');pendingImport=null;$('#import-file-status').textContent='Importado localmente; será enviado ao Drive com os demais lançamentos.';
 }
 
 async function importWithFeedback(kind,input){try{await importFile(kind,input);}catch(e){$('#import-file-status').textContent=e.message;}}
 function loadZxing(){if(window.ZXingBrowser)return Promise.resolve(window.ZXingBrowser);if(zxingPromise)return zxingPromise;zxingPromise=new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='../../shared/zxing-browser.min.js';s.onload=()=>window.ZXingBrowser?resolve(window.ZXingBrowser):reject(Error('Leitor de câmera indisponível.'));s.onerror=()=>reject(Error('Não foi possível carregar o leitor local.'));document.head.append(s);});return zxingPromise;}
-function stopCamera(close=true){cameraActive=false;if(cameraFrame)cancelAnimationFrame(cameraFrame);cameraFrame=0;try{cameraControls?.stop();}catch(_){}cameraControls=null;cameraStream?.getTracks().forEach(t=>t.stop());cameraStream=null;const video=$('#camera-video');if(video)video.srcObject=null;if(close&&$('#camera-dialog')?.open)$('#camera-dialog').close();}
-async function cameraDetected(value){if(!cameraActive)return;const ean=String(value||'').replace(/\D/g,'');if(!/^\d{8,14}$/.test(ean))return;stopCamera();$('#ean-input').value=ean;await scan('CÂMERA');}
+function stopCamera(close=true){cameraGeneration++;cameraActive=false;cameraLookup=false;if(cameraFrame)cancelAnimationFrame(cameraFrame);cameraFrame=0;try{cameraControls?.stop();}catch(_){}cameraControls=null;cameraStream?.getTracks().forEach(t=>t.stop());cameraStream=null;const video=$('#camera-video');if(video)video.srcObject=null;if(close&&$('#camera-dialog')?.open)$('#camera-dialog').close();}
+function clearCameraCandidate(){cameraCandidate=null;$('#camera-product').hidden=true;$('#camera-launch').disabled=true;}
+function renderCameraRecent(){
+ const rows=current?.recentCamera||[];$('#camera-recent').hidden=!rows.length;
+ $('#camera-recent-list').innerHTML=rows.slice(0,3).map(r=>'<li><strong>'+esc(r.description)+'</strong><span>'+esc(r.brand)+' · '+esc(r.ean)+' · '+esc(r.mode==='defects'?'DEFEITOS':'CONTAGEM')+' · '+esc(new Date(r.at).toLocaleTimeString('pt-BR'))+'</span></li>').join('');
+}
+async function cameraDetected(value){
+ if(!cameraActive||cameraLookup||cameraCandidate)return;
+ const ean=String(value||'').trim();if(!/^\d{8,14}$/.test(ean))return;
+ if(ean===cameraLastEan&&Date.now()-cameraLastAt<1800)return;cameraLastEan=ean;cameraLastAt=Date.now();cameraLookup=true;const session=current?.id,generation=cameraGeneration;
+ try{
+  let product=catalog.get(ean);
+  if(!product&&!catalogComplete&&navigator.onLine){const r=await api('catalog',{ean});if(r.data){product={ean:String(r.data[0]),description:r.data[1],brand:r.data[2]};cacheCatalog(ean,product);}}
+  if(!cameraActive||generation!==cameraGeneration||current?.id!==session)return;
+  if(!product){scanSound(false);return;}
+  if(current.kind==='RECONTAGEM'&&!current.targets.some(t=>t.ean===ean)){scanSound(false);return;}
+  cameraCandidate={...product,session,mode};$('#camera-product-name').textContent=product.description;$('#camera-product-meta').textContent=product.brand+' · '+ean;$('#camera-product').hidden=false;$('#camera-launch').disabled=false;$('#camera-status').textContent='Confira o produto e toque em LANÇAR para registrar uma unidade.';
+ }catch(_){if(cameraActive)scanSound(false);}finally{if(generation===cameraGeneration)cameraLookup=false;}
+}
+function launchCameraProduct(){
+ const candidate=cameraCandidate;if(!candidate||candidate.session!==current?.id||!cameraActive)return;
+ $('#camera-launch').disabled=true;const row=addScan(candidate.ean,false,'CÂMERA');if(!row)return;
+ renderCameraRecent();clearCameraCandidate();
+ cameraLastEan=candidate.ean;cameraLastAt=Date.now();$('#camera-status').textContent='Lançado. Aponte para o próximo produto.';
+}
 async function startCamera(){
-  stopCamera(false);$('#camera-status').textContent='Solicitando acesso à câmera…';
+  stopCamera(false);clearCameraCandidate();renderCameraRecent();cameraLastEan='';$('#camera-status').textContent='Solicitando acesso à câmera…';
   try{
     cameraStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});const video=$('#camera-video');video.srcObject=cameraStream;await video.play();cameraActive=true;$('#camera-status').textContent='Aponte a câmera para o código de barras.';
     let detector=null,formats=[];if('BarcodeDetector'in window){try{formats=await BarcodeDetector.getSupportedFormats();const supported=['ean_13','ean_8','upc_a','upc_e'].filter(f=>formats.includes(f));if(supported.length)detector=new BarcodeDetector({formats:supported});}catch(_){}}
     if(detector){let busy=false,last=0;const tick=async now=>{if(!cameraActive)return;cameraFrame=requestAnimationFrame(tick);if(busy||now-last<220||video.readyState<2)return;last=now;busy=true;try{const found=await detector.detect(video);if(found.length)await cameraDetected(found[0].rawValue);}catch(_){}finally{busy=false;}};cameraFrame=requestAnimationFrame(tick);}
-    else{const ZX=await loadZxing();if(!cameraActive)return;const Reader=ZX.BrowserMultiFormatOneDReader||ZX.BrowserMultiFormatReader,reader=new Reader();cameraControls=await reader.decodeFromVideoDevice(undefined,video,(result)=>{if(result&&cameraActive)cameraDetected(result.getText());});}
+    else{const ZX=await loadZxing();if(!cameraActive)return;const Reader=ZX.BrowserMultiFormatOneDReader||ZX.BrowserMultiFormatReader,reader=new Reader();cameraControls=await reader.decodeFromStream(cameraStream,video,(result)=>{if(result&&cameraActive)cameraDetected(result.getText());});}
   }catch(e){stopCamera(false);$('#camera-status').textContent=e.name==='NotAllowedError'?'Permita o acesso à câmera nas configurações do Chrome e tente novamente.':e.name==='NotFoundError'?'Não encontramos uma câmera disponível neste dispositivo.':e.message||'Não foi possível iniciar a câmera.';}
 }
 async function loadRecounts(){
@@ -422,7 +474,7 @@ $('#request-recount').addEventListener('click',requestRecountDialog);
 $('#recount-request-form').addEventListener('submit',submitRecount);
 $('#cancel-recount').addEventListener('click',()=>$('#recount-dialog').close());
 $('#refresh-recounts').addEventListener('click',loadRecounts);
-$('#recount-inbox-list').addEventListener('click',event=>{const b=event.target.closest('[data-open-recount]');if(b)openCount(b.dataset.openRecount).catch(e=>{$('#app-error').textContent=e.message;});});
+$('#recount-inbox-list').addEventListener('click',event=>{const b=event.target.closest('[data-open-recount]');if(b){b.disabled=true;$('#recount-inbox-status').textContent='Abrindo recontagem…';openCount(b.dataset.openRecount,'openRecount').then(()=>{$('#recount-inbox-status').textContent='Recontagem aberta. Confira os produtos solicitados abaixo.';}).catch(e=>{$('#recount-inbox-status').textContent=e.message;}).finally(()=>{b.disabled=false;});}});
 $('#refresh-deletions').addEventListener('click',loadDeletionRequests);
 $('#deletion-inbox-list').addEventListener('click',event=>{const b=event.target.closest('[data-review-delete]');if(b)reviewDeletion(b.dataset.reviewDelete);});
 $('#request-delete-session').addEventListener('click',requestDeletion);
@@ -455,13 +507,13 @@ $('#delete-session').addEventListener('click',deleteSession);
 $('#scan-form').addEventListener('submit',event=>{event.preventDefault();scan();});
 $('#import-count').addEventListener('click',()=>$('#import-count-file').click());$('#import-defects').addEventListener('click',()=>$('#import-defects-file').click());
 $('#import-count-file').addEventListener('change',event=>importWithFeedback('counts',event.target));$('#import-defects-file').addEventListener('change',event=>importWithFeedback('defects',event.target));
-$('#import-confirm-unknown').addEventListener('click',()=>{if($('#import-unknown-dialog').open)$('#import-unknown-dialog').close();sendImport(true).catch(e=>$('#import-file-status').textContent=e.message);});
+$('#import-unknown-form').addEventListener('submit',event=>{event.preventDefault();sendImport(true).then(()=>{if(!pendingImport)$('#import-unknown-dialog').close();}).catch(e=>$('#import-file-status').textContent=e.message);});
 $('#import-cancel-unknown').addEventListener('click',()=>{$('#import-unknown-dialog').close();pendingImport=null;$('#import-file-status').textContent='Importação cancelada para corrigir os EANs.';});
 $('#import-unknown-dialog').addEventListener('close',()=>{$('#import-confirm-unknown').disabled=false;updateInventoryHelp();});
 $('#open-camera').addEventListener('click',()=>{if(!current||current.status==='FINALIZADA')return;$('#camera-dialog').showModal();window.dispatchEvent(new CustomEvent('tp-help',{detail:'inventory-camera'}));startCamera();});
 $('#camera-close').addEventListener('click',()=>stopCamera());$('#camera-dialog').addEventListener('close',()=>{stopCamera(false);updateInventoryHelp();});
 $('#correct-ean').addEventListener('click',()=>{$('#unknown-dialog').close();unknown=null;$('#ean-input').focus();$('#ean-input').select();});
-$('#allow-ean').addEventListener('click',()=>{$('#unknown-dialog').close();addScan(unknown,true,unknownOrigin);unknown=null;});
+$('#unknown-form').addEventListener('submit',event=>{event.preventDefault();const description=$('#unknown-description').value.trim(),brand=$('#unknown-brand').value.trim();if(!description||!brand){$('#unknown-description').value=description;$('#unknown-brand').value=brand;$('#unknown-form').reportValidity();return;}const row=addScan(unknown,true,unknownOrigin,{description,brand});if(row){$('#unknown-dialog').close();unknown=null;}});
 document.querySelectorAll('.mode-button').forEach(b=>b.addEventListener('click',()=>{mode=b.dataset.mode;updateInventoryHelp();document.querySelectorAll('.mode-button').forEach(x=>x.classList.toggle('active',x===b));$('#ean-input').focus();}));
 document.querySelectorAll('#count-body,#defect-body').forEach(body=>body.addEventListener('click',event=>{
   const b=event.target.closest('[data-delta],[data-remove]');if(!b||!current||current.status==='FINALIZADA'||current.localFinished||current.deleteStatus==='PENDENTE')return;
@@ -505,3 +557,8 @@ $('#sync-now').addEventListener('click',()=>{if(!auth?.access_token){$('#login-p
 for(const kind of ['counts','defects'])for(const direction of ['prev','next'])$('#'+kind+'-'+direction).addEventListener('click',()=>{listPage[kind]+=direction==='next'?1:-1;render();});
 $('#export-count-txt').addEventListener('click',()=>{if(current)TPInventoryExport.txt(current.counts,'CONTAGEM_'+current.label+'.txt');});
 $('#export-defects-txt').addEventListener('click',()=>{if(current)TPInventoryExport.txt(current.defects,'DEFEITOS_'+current.label+'.txt');});
+
+$('#camera-launch').addEventListener('click',launchCameraProduct);
+$('#camera-rescan').addEventListener('click',()=>{clearCameraCandidate();cameraLastEan='';$('#camera-status').textContent='Aponte para o código de barras.';});
+$('#back-inventory-home').addEventListener('click',()=>showInventoryHome().catch(e=>$('#app-error').textContent=e.message));
+$('#device-draft-list').addEventListener('click',event=>{const b=event.target.closest('[data-resume-draft]');if(b)resumeDeviceDraft(b.dataset.resumeDraft).catch(e=>$('#app-error').textContent=e.message);});

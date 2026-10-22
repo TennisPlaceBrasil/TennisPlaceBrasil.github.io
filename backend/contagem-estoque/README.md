@@ -70,3 +70,12 @@ A sincronização transmite snapshots versionados em lotes com identificador est
 Validado em Chrome com 5.000 EANs distintos, defeitos, horas de bipagem, fechamento/reabertura, resposta perdida, conflito de versão e exclusão de contagem vazia. A tabela renderiza 100 produtos por página, mantendo a ordem original. Arquivos/exportações sempre incluem todos os itens. O primeiro acesso e a criação de contagem exigem internet. Sincronizar após perder a sessão exige novo login. Limpar os dados do navegador, modo anônimo e perda do dispositivo podem remover a cópia local; preserve os arquivos exportados.
 
 Teste de exportação/cache: `node backend/contagem-estoque/verify-offline.mjs`. O arquivo XLSX de teste contém 5.000 produtos e pode ser aberto para conferência.
+
+
+## Confirmed camera entry and product identification
+
+Camera recognition only prepares a green product card. LANÇAR commits one unit and keeps the camera open; an explicit rescan button discards the preview. Only the three most recent confirmed camera entries are displayed. Unknown camera EANs do not open a card or commit anything. Recognition uses one existing stream, including the ZXing fallback; closing the dialog invalidates outstanding lookups and stops all tracks.
+
+Positive/negative tones use a shared Web Audio context without downloaded audio assets. Unknown typed/scanned EANs require description and brand before confirmation. TXT imports require those fields per missing EAN. Apps Script preserves this metadata while keeping canonical catalog descriptions for known EANs. User descriptions beginning with equals are written as literal sheet text.
+
+The store can return to the inventory start screen without leaving its session or losing local work. This screen lists only unfinished device drafts and pending uploads, never the administrative cloud history. Opening a recount uses its explicit authorized endpoint and preserves the outgoing device draft, even if that draft has pending uploads or conflicts.
