@@ -87,8 +87,12 @@ Deno.serve(async req=>{
     const result=await response.json();
     if(!result.ok)return reply({error:result.error||"Não foi possível salvar no Drive."},result.error?.startsWith("CONFLICT:")?409:400);
     if(input.action==="create"&&result.data?.id){
-      const share=await createSharedCount(String(result.data.id),String(result.data.store||input.store||store),user.id,config[0]);
-      return reply({data:{...result.data,shareUrl:share.url,shareExpiresAt:share.expiresAt}});
+      try{
+        const share=await createSharedCount(String(result.data.id),String(result.data.store||input.store||store),user.id,config[0]);
+        return reply({data:{...result.data,shareUrl:share.url,shareExpiresAt:share.expiresAt}});
+      }catch(error){
+        return reply({data:{...result.data,shareError:error instanceof Error?error.message:"Link não gerado."}});
+      }
     }
     return reply({data:result.data});
   }catch(error){return reply({error:error instanceof Error?error.message:"Não foi possível concluir a operação."},500);}
