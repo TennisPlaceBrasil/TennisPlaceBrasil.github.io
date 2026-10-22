@@ -39,9 +39,11 @@ function picker(){
   const selected=sessions.find(s=>s.id===$('#session-picker').value);
   $('#request-recount').hidden=!user?.allStores||!selected||selected.kind==='RECONTAGEM'||selected.status!=='FINALIZADA';
   $('#request-delete-session').hidden=!!user?.allStores||!current||current.deleteStatus==='PENDENTE';
+  $('#share-count').hidden=!user?.allStores||!selected;
+  $('#share-count').disabled=loadingSessions||!selected;
 }
 function render(){
-  $('#empty-state').hidden=!!current;$('#counting').hidden=!current;renderRecount();updateInventoryHelp();if(!current){$('#delete-review-actions').hidden=true;$('#request-delete-session').hidden=true;return;}
+  $('#empty-state').hidden=!!current;$('#counting').hidden=!current;$('#share-link-panel').hidden=!(current&&current.shareUrl);if(current?.shareUrl)$('#share-link-value').value=current.shareUrl;renderRecount();updateInventoryHelp();if(!current){$('#delete-review-actions').hidden=true;$('#request-delete-session').hidden=true;return;}
   $('#session-title').textContent=current.label;
   $('#reload-count').hidden=!user?.allStores&&current.kind!=='RECONTAGEM';
   const counts=current.counts,defects=current.defects,done=current.status==='FINALIZADA',deletePending=current.deleteStatus==='PENDENTE';
@@ -192,7 +194,7 @@ async function createCount(){
     if(!stores.includes(store))throw Error('Informe uma sigla de loja válida.');
     const date=$('#count-date').value;if(!date||!$('#count-date').checkValidity())throw Error('Selecione uma data válida para a contagem.');
     current=(await api('create',{store,date,auditSession:await auditSession()})).data;sessions.push(current);serial=0;saved=0;retry=null;conflict=false;
-    picker();render();sync('Nova contagem criada no Drive');$('#ean-input').focus();
+    picker();render();sync(current.shareUrl?'Nova contagem criada · link de acompanhamento disponível':'Nova contagem criada no Drive');if(current.shareError)note('Contagem criada, mas não foi possível gerar o link: '+current.shareError,true);$('#ean-input').focus();
   }catch(e){alert(e.message);}finally{$('#new-count').disabled=false;}
 }
 function addScan(ean,allowUnknown=false,origin='LEITOR / DIGITAÇÃO'){
@@ -202,7 +204,7 @@ function addScan(ean,allowUnknown=false,origin='LEITOR / DIGITAÇÃO'){
   if(current.kind==='RECONTAGEM'){recountPage=Math.floor(current.targets.findIndex(r=>r.ean===ean)/80);$('#recount-search').value='';}
   const kind=mode==='count'?'counts':'defects',p=catalog.get(ean);
   let row=current[kind].find(r=>r.ean===ean);
-  if(!row){row={ean,quantity:0,description:p?.description||'PRODUTO INEXISTENTE',brand:p?.brand||'NÃO CADASTRADA',unknown:allowUnknown,origin};current[kind].push(row);}else row.origin=origin;
+  if(!row){row={ean,quantity:0,description:p?.description||'PRODUTO INEXISTENTE',brand:p?.brand||'NÃO CADASTRADA',unknown:allowUnknown,origin,lastScannedAt:new Date().toISOString()};current[kind].push(row);}else{row.origin=origin;row.lastScannedAt=new Date().toISOString();}
   row.quantity++;changed();note(row.description);$('#ean-input').value='';$('#ean-input').focus();
 }
 async function scan(origin='LEITOR / DIGITAÇÃO'){
@@ -367,6 +369,13 @@ $('#login-form').addEventListener('submit',async event=>{
 $('#logout').addEventListener('click',async()=>{
   try{await ensureSaved();if(current&&!current.counts.length&&!current.defects.length&&current.kind!=='RECONTAGEM'){await api('discardEmpty',{id:current.id});localStorage.removeItem(draftKey());}stopCamera();saveAuth(null);user=null;current=null;recounts=[];$('#recount-inbox-list').innerHTML='';updateInventoryHelp();$('#app-main').hidden=true;$('#login-panel').hidden=false;$('#logout').hidden=true;$('#account-label').textContent='ACESSO TENNIS PLACE';}catch(e){note(e.message,true);}
 });
+$('#share-count').addEventListener('click',async()=>{
+  const selected=sessions.find(s=>s.id===$('#session-picker').value);if(!selected)return;
+  $('#share-count').disabled=true;const original=$('#share-count').textContent;$('#share-count').textContent='GERANDO…';
+  try{const response=await api('shareCreate',{id:selected.id,store:selected.store});selected.shareUrl=response.data.url;if(current?.id===selected.id)current.shareUrl=response.data.url;render();$('#share-count').textContent='LINK COPIADO';try{await navigator.clipboard.writeText(response.data.url);}catch(_){$('#share-link-value').focus();$('#share-link-value').select();}setTimeout(()=>{$('#share-count').textContent=original;},1800);}
+  catch(e){note(e.message,true);$('#share-count').textContent=original;}finally{$('#share-count').disabled=false;}
+});
+$('#copy-share-link').addEventListener('click',async()=>{const value=$('#share-link-value').value;if(!value)return;try{await navigator.clipboard.writeText(value);$('#copy-share-link').textContent='LINK COPIADO';setTimeout(()=>$('#copy-share-link').textContent='COPIAR LINK',1600);}catch(_){$('#share-link-value').focus();$('#share-link-value').select();document.execCommand('copy');$('#copy-share-link').textContent='LINK COPIADO';}});
 $('#new-count').addEventListener('click',createCount);
 $('#session-picker').addEventListener('change',event=>openCount(event.target.value).catch(e=>note(e.message,true)));
 $('#load-sessions').addEventListener('click',loadSessions);
