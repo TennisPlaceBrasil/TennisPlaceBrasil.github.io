@@ -63,6 +63,8 @@ function reconcileDeletedCounts(){
   }finally{lock.releaseLock();}
 }
 function ensureMetaColumns_(sheet){if(sheet.getMaxColumns()<META_HEADERS.length)sheet.insertColumnsAfter(sheet.getMaxColumns(),META_HEADERS.length-sheet.getMaxColumns());sheet.getRange(1,1,1,META_HEADERS.length).setValues([META_HEADERS]);}
+function resizeRows_(sheet,target){const current=sheet.getMaxRows();if(current<target)sheet.insertRowsAfter(current,target-current);else if(current>target)sheet.deleteRows(target+1,current-target);}
+function resizeColumns_(sheet,target){const current=sheet.getMaxColumns();if(current<target)sheet.insertColumnsAfter(current,target-current);else if(current>target)sheet.deleteColumns(target+1,current-target);}
 function sessionAudit_(value){const audit=value&&typeof value==='object'?value:{};const ip=String(audit.ip||'IP não capturado').trim().slice(0,80),device=String(audit.device||'Dispositivo não identificado').trim().slice(0,100),id=String(audit.id||'').trim().slice(0,80);return {ip,device,sessionId:id};}
 function saveMeta_(meta){db_().getSheetByName('_Contagens').getRange(meta.row,5,1,13).setValues([[meta.status,meta.version,meta.sheet,meta.createdBy,meta.createdAt,meta.updatedAt,meta.requestId,meta.kind||'CONTAGEM',meta.sourceId||'',meta.createdRequestId||'',meta.ip||'Não registrado',meta.device||'Não registrado',meta.sessionId||'']]);}
 function permitted_(meta,p){if(!meta || (!p.allStores&&meta.store!==p.store))throw new Error('Contagem sem permissão.');return meta;}
@@ -130,16 +132,16 @@ function writeState_(meta,counts,defects,previous){
   const combined=defects.concat(counts);
   const size=Math.max(counts.length,defects.length,combined.length,1);
   const oldSize=Math.max((previous.counts||[]).length,(previous.defects||[]).length,1),clearSize=Math.max(size,oldSize);
-  if(sheet.getMaxRows()<size+4)sheet.insertRowsAfter(sheet.getMaxRows(),size+4-sheet.getMaxRows());
-  if(isRecount&&sheet.getMaxColumns()<20)sheet.insertColumnsAfter(sheet.getMaxColumns(),20-sheet.getMaxColumns());
+  resizeRows_(sheet,Math.max(clearSize,isRecount?(previous.targets||[]).length:0)+4);
+  resizeColumns_(sheet,isRecount?20:15);
   sheet.getRange(5,1,clearSize,15).clearContent();
-  if(!isRecount){if(sheet.getMaxRows()>size+4)sheet.setMaxRows(size+4);if(sheet.getMaxColumns()>15)sheet.setMaxColumns(15);}
   const matrix=Array.from({length:size},()=>Array(15).fill(''));
   const fill=(list,col)=>list.forEach((r,i)=>{matrix[i][col]=r.ean;matrix[i][col+1]=r.quantity;matrix[i][col+2]=r.description;matrix[i][col+3]=r.brand;matrix[i][col+4]=r.unknown?'SIM':'NÃO';matrix[i][col+5]=r.lastScannedAt||'';});
   fill(counts,0);fill(defects,6);
   combined.forEach((r,i)=>{matrix[i][12]=r.ean;matrix[i][13]=r.quantity;matrix[i][14]=r.ean+','+r.quantity;});
   sheet.getRange(5,1,size,15).setNumberFormat('@').setValues(matrix);
   sheet.getRange(5,2,size,1).setNumberFormat('0');sheet.getRange(5,8,size,1).setNumberFormat('0');sheet.getRange(5,14,size,1).setNumberFormat('0');
+  resizeRows_(sheet,Math.max(size,isRecount?(previous.targets||[]).length:0)+4);
   SpreadsheetApp.flush();
 }
 function countDate_(value,now){
@@ -180,7 +182,7 @@ function route_(p){
     const now=new Date(),date=countDate_(p.date,now);
     let number=nextCountNumber_(list,p.store,date),label=countLabel_(p.store,date,number);
     while(db_().getSheetByName(label))label=countLabel_(p.store,date,++number);
-    const sheet=db_().insertSheet(label),meta={id:Utilities.getUuid(),store:p.store,date,label,status:'EM ANDAMENTO',version:0,sheet:label,createdBy:p.userId,createdAt:now.toISOString(),updatedAt:now.toISOString(),requestId:'',...sessionAudit_(p.auditSession)};sheet.setMaxRows(4);if(sheet.getMaxColumns()>15)sheet.setMaxColumns(15);
+    const sheet=db_().insertSheet(label),meta={id:Utilities.getUuid(),store:p.store,date,label,status:'EM ANDAMENTO',version:0,sheet:label,createdBy:p.userId,createdAt:now.toISOString(),updatedAt:now.toISOString(),requestId:'',...sessionAudit_(p.auditSession)};resizeRows_(sheet,4);resizeColumns_(sheet,15);
     sheet.getRange('A1:B2').setValues([['LOJA',p.store],['DATA',date]]);
     sheet.getRange('A3:E3').merge().setValue('CONTAGEM');sheet.getRange('G3:K3').merge().setValue('DEFEITOS');sheet.getRange('M3:O3').merge().setValue('IMPORTAÇÃO — DEFEITOS PRIMEIRO');
     sheet.getRange(4,1,1,15).setValues([['EAN','QNTD','PRODUTO','MARCA','INEXISTENTE','ÚLTIMA BIPAGEM','EAN','QNTD','PRODUTO','MARCA','INEXISTENTE','ÚLTIMA BIPAGEM','EAN','QNTD','EAN,QNTD']]);
@@ -254,8 +256,7 @@ function requestRecount_(p,list){
   const original=state_(source),products=new Map(original.counts.concat(original.defects).map(r=>[r.ean,r]));
   const now=new Date(),ss=db_(),base=source.label+' RECONTAGEM';let number=1+Math.max(0,...list.filter(m=>m.kind==='RECONTAGEM'&&m.sourceId===source.id).map(m=>Number((m.label.match(/#(\d+)$/)||[])[1]||1))),label=base+' #'+number;while(ss.getSheetByName(label))label=base+' #'+(++number);
   const sheet=ss.insertSheet(label),meta={id:Utilities.getUuid(),store:source.store,date:source.date,label,status:'EM ANDAMENTO',version:0,sheet:label,createdBy:p.userId,createdAt:now.toISOString(),updatedAt:now.toISOString(),requestId:'',kind:'RECONTAGEM',sourceId:source.id,createdRequestId:p.requestId};
-  if(sheet.getMaxColumns()<20)sheet.insertColumnsAfter(sheet.getMaxColumns(),20-sheet.getMaxColumns());if(sheet.getMaxColumns()>20)sheet.setMaxColumns(20);
-  if(sheet.getMaxRows()<eans.length+4)sheet.insertRowsAfter(sheet.getMaxRows(),eans.length+4-sheet.getMaxRows());if(sheet.getMaxRows()>eans.length+4)sheet.setMaxRows(eans.length+4);
+  resizeColumns_(sheet,20);resizeRows_(sheet,eans.length+4);
   sheet.getRange('A1:B2').setValues([['RECONTAGEM',source.label],['LOJA',source.store]]);
   sheet.getRange(4,1,1,15).setValues([['EAN','QNTD','PRODUTO','MARCA','INEXISTENTE','','EAN','QNTD','PRODUTO','MARCA','INEXISTENTE','','EAN','QNTD','EAN,QNTD']]);
   sheet.getRange('Q4:T4').setValues([['EAN SOLICITADO','PRODUTO','MARCA','NÃO LOCALIZADO']]);
