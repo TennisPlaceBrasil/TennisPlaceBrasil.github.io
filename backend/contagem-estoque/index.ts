@@ -1,4 +1,4 @@
-import {handleTeam,teamRPC,teamRecord,scheduleTeamMirror,validResponsible} from './team.ts';
+import {handleTeam,teamRPC,teamRecord,scheduleTeamMirror,reconcileTeamMirrors,validResponsible} from './team.ts';
 const cors = {
   "Access-Control-Allow-Origin": "https://tennisplacebrasil.github.io",
   "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
@@ -86,6 +86,7 @@ Deno.serve(async req=>{
       const recovered=await teamRPC('stockcount_team',{p_action:'find',p_user:user.id,p_person:input.participantId});
       if(recovered)return reply({data:recovered});
     }
+    if(['teamList','list','deletionInbox','recountInbox','analysis'].includes(input.action))await reconcileTeamMirrors(config[0],allStores?null:allowedStores);
     const team=await handleTeam(input,user,allStores,store,config[0],allowedStores);
     if(team.handled)return reply({data:team.data});
     if(["list","read"].includes(input.action)&&!allStores&&!allowedStores.length)return reply({error:"Histórico sem loja autorizada."},403);
@@ -119,22 +120,36 @@ Deno.serve(async req=>{
     }
     if(input.action==='list'){
       const live=await teamRPC('stockcount_team',{p_action:'list',p_user:user.id,p_payload:{history:true,store:requestedStore}});
+      const known=await rows('stockcount_team_counts','select=id,deleted,meta,store,revision,mirrored_revision,mirror_error');
+      // Remove every central ID from the Sheets list before adding authorized live rows.
+      // Hidden pending requests must not reappear from an older Sheets projection.
+      const centralIds=new Set(known.map((r:any)=>r.id));
+      const deletedIds=new Set(known.filter((r:any)=>r.deleted).map((r:any)=>r.id));
+      const sheetIds=new Set((result.data||[]).map((r:any)=>r.id));
+      const mapped=new Map((result.data||[]).filter((r:any)=>!centralIds.has(r.id)&&!deletedIds.has(r.sourceId)).map((r:any)=>[r.id,r]));
+      for(const row of live)mapped.set(row.id,{...row,sheetMissing:!sheetIds.has(row.id)});
+      result.data=Array.from(mapped.values());
+      result.deletionSync=known.filter((r:any)=>r.deleted&&r.mirrored_revision<r.revision&&(allStores||allowedStores.includes(r.store))).map((r:any)=>({id:r.id,label:r.meta?.label,store:r.store,mirrorError:r.mirror_error}));
+
+    }
+    if(input.action==='recountInbox'){
       const known=await rows('stockcount_team_counts','select=id,deleted');
-      const deleted=new Set(known.filter((r:{deleted:boolean})=>r.deleted).map((r:{id:string})=>r.id));
-      const pendingForStore=new Set(allStores?[]:live.filter((r:any)=>r.deleteStatus==='PENDENTE').map((r:any)=>r.id));
-      const mapped=new Map((result.data||[]).filter((r:{id:string})=>!deleted.has(r.id)).map((r:{id:string})=>[r.id,r]));
-      for(const row of live)mapped.set(row.id,row);
-      result.data=Array.from(mapped.values()).filter((r:any)=>!pendingForStore.has(r.id));
+      const deletedIds=new Set(known.filter((r:any)=>r.deleted).map((r:any)=>r.id));
+      result.data=(result.data||[]).filter((r:any)=>!deletedIds.has(r.id)&&!deletedIds.has(r.sourceId));
     }
     if(input.action==='analysis'){
       const live=await teamRPC('stockcount_team',{p_action:'list',p_user:user.id,p_payload:{history:true}});
       const relevant=live.filter((r:any)=>r.status==='FINALIZADA'&&(!input.filterStore||r.store===input.filterStore)&&r.date>=input.startDate&&r.date<=input.endDate);
-      const ids=new Set(relevant.map((r:any)=>r.id));result.data.data=(result.data.data||[]).filter((r:any)=>!ids.has(r.id));
+      const known=await rows('stockcount_team_counts','select=id');
+      const ids=new Set(known.map((r:any)=>r.id));result.data.data=(result.data.data||[]).filter((r:any)=>!ids.has(r.id));
       if(!input.offset)for(const row of relevant)result.data.data.push(await teamRPC('stockcount_team_snapshot',{p_id:row.id}));
     }
     if(input.action==='deletionInbox'){
       const live=await teamRPC('stockcount_team',{p_action:'list',p_user:user.id,p_payload:{history:true}});
-      result.data=[...(result.data||[]),...live.filter((r:{deleteStatus:string})=>r.deleteStatus==='PENDENTE')];
+      const known=await rows('stockcount_team_counts','select=id');
+      const ids=new Set(known.map((r:any)=>r.id));
+      const requests=[...(result.data||[]).filter((r:any)=>!ids.has(r.id)),...live.filter((r:{deleteStatus:string})=>r.deleteStatus==='PENDENTE')];
+      result.data=Array.from(new Map(requests.map((r:any)=>[r.id,r])).values());
     }
     if(input.action==='finish'&&result.data?.kind==='RECONTAGEM'&&result.data?.sourceId){
       const source=await teamRecord(result.data.sourceId);
@@ -144,7 +159,7 @@ Deno.serve(async req=>{
         await teamRPC('stockcount_team',{p_action:'adjustRecount',p_user:user.id,p_id:source.id,p_payload:original.data});
       }
     }
-    return reply({data:result.data});
+    return reply({data:result.data,...(result.deletionSync?{deletionSync:result.deletionSync}:{})});
   }catch(error){const message=error instanceof Error?error.message:"Não foi possível concluir a operação.";return reply({error:message},message.startsWith('CONFLICT:')?409:/permissão|restrit|inativo/.test(message)?403:/RESPONSÁVEL|inválid|finaliz|bloquead|Aguarde|Reabra|Atualize|Use ENTRAR|Identifica/.test(message)?400:500);}
 });
 

@@ -18,6 +18,13 @@ export async function mirrorTeam(id:string,config:Config){
  const lease=crypto.randomUUID();const snapshot=await teamRPC('stockcount_team_mirror',{p_id:id,p_action:'claim',p_lease:lease});if(!snapshot)return false;
  let error:string|null=null;
  try{
+  if(snapshot.deleted){
+   // The tombstone is durable. A timeout or lost response is retried under the same lease.
+   const before=await bridge(config,{action:'checkCount',id,store:snapshot.store,allStores:true,userId:'team-mirror'});
+   if(before.exists)await bridge(config,{action:'delete',id,store:snapshot.store,allStores:true,userId:'team-mirror'});
+   const after=await bridge(config,{action:'checkCount',id,store:snapshot.store,allStores:true,userId:'team-mirror'});
+   if(after.exists)throw Error('Exclusão registrada no Hub; remoção da aba ainda pendente.');
+  }else{
   const current=await bridge(config,{action:'read',id,store:snapshot.store,allStores:true,userId:'team-mirror'});
   const requestId='team-'+id+'-'+snapshot.version;
   if(current.lastRequestId!==requestId){
@@ -34,13 +41,23 @@ export async function mirrorTeam(id:string,config:Config){
    await bridge(config,{action,id,store:snapshot.store,allStores:true,userId:'team-mirror',version:current.version,requestId,counts:snapshot.counts,defects:snapshot.defects,
     auditSession:{device:'Responsáveis: '+snapshot.participants.map((p:{responsible:string})=>p.responsible).join(', ').slice(0,80),ip:'Consulte o painel por responsável'}});
   }
+  }
  }catch(e){error=e instanceof Error?e.message:'Espelhamento pendente.';}
  await teamRPC('stockcount_team_mirror',{p_id:id,p_action:'complete',p_lease:lease,p_revision:snapshot.version,p_error:error});return true;
 }
 export function scheduleTeamMirror(id:string,config:Config){
- const task=(async()=>{for(let i=0;i<3;i++){if(!await mirrorTeam(id,config))return;const record=await teamRecord(id);if(!record||record.deleted||record.mirrored_revision>=record.revision||record.mirror_error)return;}})().catch(()=>{});
+ const task=(async()=>{for(let i=0;i<3;i++){if(!await mirrorTeam(id,config))return;const record=await teamRecord(id);if(!record||record.mirrored_revision>=record.revision||record.mirror_error)return;}})().catch(()=>{});
  const runtime=(globalThis as unknown as {EdgeRuntime?:{waitUntil:(p:Promise<unknown>)=>void}}).EdgeRuntime;
  if(runtime)runtime.waitUntil(task);return task;
+}
+export async function reconcileTeamMirrors(config:Config,stores:string[]|null){
+ const pending=await teamRPC('stockcount_team_pending_mirrors',{p_stores:stores,p_limit:3});
+ for(const row of pending||[])scheduleTeamMirror(row.id,config);
+}
+async function deletionResult(id:string,config:Config){
+ await mirrorTeam(id,config);
+ const record=await teamRecord(id);
+ return {id,deleted:true,deletionPending:!!record&&record.mirrored_revision<record.revision,mirrorError:record?.mirror_error||null};
 }
 export async function handleTeam(input:Record<string,any>,user:{id:string},allStores:boolean,store:string|undefined,config:Config,allowedStores:string[]=[]){
  const call=(action:string,id=input.id,person=input.participantId||null,payload:Record<string,unknown>=input)=>teamRPC('stockcount_team',{p_action:action,p_user:user.id,p_id:id||null,p_person:person,p_payload:payload});
@@ -53,6 +70,7 @@ export async function handleTeam(input:Record<string,any>,user:{id:string},allSt
  if(!record){if(['teamJoin','teamRead'].includes(input.action))throw Error('Esta contagem não está disponível para participação.');return {handled:false};}
  if(!allStores&&!allowedStores.includes(record.store))throw Error('Contagem sem permissão.');
  if(input.action==='checkCount')return {handled:true,data:{exists:!record.deleted}};
+ if(record.deleted&&allStores&&(input.action==='delete'||input.action==='resolveDelete'&&input.approve===true))return {handled:true,data:await deletionResult(input.id,config)};
  if(record.deleted)throw Error('Esta contagem já não existe. A cópia local permanece disponível.');
  if(input.action==='discardEmpty')return {handled:true,data:{retained:true,empty:false}};
  const mapping:Record<string,string>={teamJoin:'join',teamRead:'read',save:'save',finish:'finish',requestDelete:'requestDelete',resolveDelete:'resolveDelete',delete:'delete'};
@@ -72,7 +90,7 @@ export async function handleTeam(input:Record<string,any>,user:{id:string},allSt
  if(input.auditSession)input.auditSession={id:String(input.auditSession.id||'').slice(0,80),device:String(input.auditSession.device||'').slice(0,100),ip:String(input.auditSession.ip||'IP não capturado').slice(0,80)};
  const data=await call(action);
  if(action==='delete'||action==='resolveDelete'&&input.approve){
-  try{await bridge(config,{action:'delete',id:input.id,store:record.store,allStores:true,userId:user.id});}catch{/* Tombstone immediately revokes access; no live data is overwritten. */}
+  return {handled:true,data:await deletionResult(input.id,config)};
  }else scheduleTeamMirror(input.id,config);
  return {handled:true,data};
 }

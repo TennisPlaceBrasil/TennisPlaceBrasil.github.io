@@ -133,7 +133,7 @@ async function showInventoryHome(){
 async function renderDeviceDrafts(){
  const list=await TPInventoryLocal.list(user.id);const drafts=list.filter(r=>r.deleteStatus!=='PENDENTE'&&(r.status!=='FINALIZADA'||r.serial!==r.saved));
  $('#device-drafts').hidden=!inventoryHome||!drafts.length;
- $('#device-draft-list').innerHTML=drafts.map(r=>'<article class="recount-inbox-item"><div><strong>'+esc(r.label)+'</strong><span>'+(r.serial!==r.saved?'Há dados locais aguardando envio':'Contagem em andamento neste dispositivo')+'</span></div><button class="button button-primary" data-resume-draft="'+esc(r.id)+'">CONTINUAR</button></article>').join('');
+ $('#device-draft-list').innerHTML=drafts.map(r=>'<article class="recount-inbox-item"><div><strong>'+esc(r.label)+'</strong><span>'+(r.orphaned?'Cópia local preservada · indisponível no servidor':r.serial!==r.saved?'Há dados locais aguardando envio':'Contagem em andamento neste dispositivo')+'</span></div><button class="button button-primary" data-resume-draft="'+esc(r.id)+'">'+(r.orphaned?'VER CÓPIA LOCAL':'CONTINUAR')+'</button></article>').join('');
 }
 async function resumeDeviceDraft(id){
  if(openingCount)return;openingCount=true;
@@ -218,7 +218,7 @@ function picker(){
   const filter=$('#history-store-filter');
   if(filter){filter.hidden=!(user?.allStores||user?.multiStore);filter.value=historyStoreFilter||'';}
   $('#session-picker').hidden=!sessions.length;
-  $('#session-picker').innerHTML='<option value="">Selecione uma contagem</option>'+sessions.slice().reverse().map(s=>'<option value="'+esc(s.id)+'">'+esc(s.label)+' · '+esc(s.status)+'</option>').join('');
+  $('#session-picker').innerHTML='<option value="">Selecione uma contagem</option>'+sessions.slice().reverse().map(s=>'<option value="'+esc(s.id)+'">'+esc(s.label)+' · '+esc(s.status)+(s.sheetMissing?' · ABA AUSENTE':'')+'</option>').join('');
   $('#session-picker').value=current?.id||'';
   $('#load-sessions').disabled=loadingSessions;
   $('#load-sessions').textContent=loadingSessions?'CARREGANDO…':sessionsLoaded?'ATUALIZAR CONTAGENS':'CARREGAR CONTAGENS';
@@ -295,8 +295,10 @@ async function loadSessions(){
     const r=await api('list',{filterStore:historyStoreFilter||undefined});
     const latest=current;
     sessions=r.data||[];
-    if(latest&&!sessions.some(s=>s.id===latest.id)){remoteUnavailable('Esta contagem foi excluída da planilha.');}
+    if(latest&&!sessions.some(s=>s.id===latest.id)&&(!historyStoreFilter||latest.store===historyStoreFilter)){remoteUnavailable('Esta contagem não está na lista disponível. A cópia local foi preservada.');}
     else if(latest){const metadata=sessions.find(s=>s.id===latest.id);latest.label=metadata.label;sessions=sessions.map(s=>s.id===latest.id?latest:s);render();}
+    if(r.deletionSync?.length)$('#app-error').textContent=r.deletionSync.length+' exclusão(ões) aguardando confirmação da planilha. A sincronização será repetida automaticamente ao atualizar as contagens.';
+    else if(sessions.some(s=>s.sheetMissing))$('#app-error').textContent='Há contagem com a aba ausente na planilha. Os dados centrais foram preservados; nenhuma exclusão automática foi feita.';
     sessionsLoaded=true;picker();
   }catch(e){$('#app-error').textContent=e.message;}
   finally{loadingSessions=false;picker();}
@@ -317,11 +319,11 @@ async function deleteSession(idOverride){
   if(!user?.allStores||!id)return;
   try{
     if(current?.id===id)await ensureSaved();
-    await api('delete',{id});await TPInventoryLocal.remove(user.id,id);
+    const deletion=(await api('delete',{id})).data;await TPInventoryLocal.remove(user.id,id);
     sessions=sessions.filter(s=>s.id!==id);
     if(current?.id===id){localStorage.removeItem(draftKey());current=null;serial=0;saved=0;retry=null;conflict=false;}
-    picker();render();$('#app-error').textContent='';sync('Contagem excluída do Drive');loadRecounts();
-  }catch(e){if(/já não existe|sem permissão|excluída da planilha/.test(e.message)){sessions=sessions.filter(s=>s.id!==id);if(current?.id===id){clearTimeout(timer);current=null;serial=0;saved=0;retry=null;conflict=false;}picker();render();$('#app-error').textContent='Esta contagem já foi excluída da planilha.';}else $('#app-error').textContent=e.message;}
+    picker();render();$('#app-error').textContent='';sync(deletion?.deletionPending?'Exclusão registrada no Hub. Remoção da aba pendente; o sistema tentará novamente ao sincronizar.':'Contagem excluída do Hub e da planilha.');loadRecounts();
+  }catch(e){if(/já não existe|excluída da planilha/.test(e.message)){sessions=sessions.filter(s=>s.id!==id);if(current?.id===id){clearTimeout(timer);current=null;serial=0;saved=0;retry=null;conflict=false;}picker();render();$('#app-error').textContent='Esta contagem já foi excluída da planilha.';}else $('#app-error').textContent=e.message;}
 }
 async function loadDeletionRequests(){
   if(!user?.allStores||loadingDeletions)return;loadingDeletions=true;$('#refresh-deletions').disabled=true;$('#deletion-inbox-status').textContent='Buscando solicitações…';
@@ -342,7 +344,7 @@ async function requestDeletion(){
     const target=current;
     const result=(await api('requestDelete',{id:target.id,participantId:target.participantId,auditSession:await auditSession()})).data;
     Object.assign(target,result);await persistDraft();clearTimeout(timer);timer=null;
-    current=null;inventoryHome=true;teamScope='own';picker();render();await renderDeviceDrafts();loadTeamCounts();
+    sessions=sessions.filter(s=>s.id!==target.id);current=null;inventoryHome=true;teamScope='own';picker();render();await renderDeviceDrafts();loadTeamCounts();
     $('#app-error').textContent='Solicitação enviada. A contagem foi ocultada da loja e está aguardando a análise do ADM. Os dados ficam preservados até a decisão.';
   }catch(e){$('#app-error').textContent=e.message;}
   finally{$('#request-delete-session').disabled=false;}
@@ -352,7 +354,7 @@ async function resolveDeletion(approve){
   const id=current.id;if(approve&&!confirm('Os produtos da contagem foram revisados? Aprovar excluirá a aba e removerá a contagem do Inventário.'))return;
   $('#approve-delete').disabled=true;$('#reject-delete').disabled=true;
   try{const result=(await api('resolveDelete',{id,approve,reviewVersion:current.version,reason:$('#delete-review-reason').value.trim(),auditSession:await auditSession()})).data;
-    if(approve){await TPInventoryLocal.remove(user.id,id);sessions=sessions.filter(item=>item.id!==id);localStorage.removeItem('tp-stockcount-draft-'+user.id+'-'+id);clearTimeout(timer);current=null;serial=0;saved=0;retry=null;conflict=false;activeDeletionReviewId=null;$('#app-error').textContent='Solicitação aprovada. A contagem e a aba no Drive foram excluídas.';}
+    if(approve){await TPInventoryLocal.remove(user.id,id);sessions=sessions.filter(item=>item.id!==id);localStorage.removeItem('tp-stockcount-draft-'+user.id+'-'+id);clearTimeout(timer);current=null;serial=0;saved=0;retry=null;conflict=false;activeDeletionReviewId=null;$('#app-error').textContent=result?.deletionPending?'Solicitação aprovada. A contagem saiu do Hub; a remoção da aba está pendente e será tentada novamente ao sincronizar.':'Solicitação aprovada. A contagem e a aba da planilha foram excluídas.';}
     else{current=Object.assign(current,result);activeDeletionReviewId=null;$('#app-error').textContent='Solicitação recusada. A contagem foi liberada para a loja.';}
     picker();render();loadDeletionRequests();if(sessionsLoaded)loadSessions();
   }catch(e){$('#app-error').textContent=e.message;}
