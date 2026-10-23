@@ -1,7 +1,7 @@
 {
   "id": "/hub/apps/contagem-estoque/",
-  "name": "Inventário Tennis Place",
-  "short_name": "Inventário TP",
+  "name": "HubTennisPlace | Inventário",
+  "short_name": "HubTennisPlace",
   "description": "Contagem de estoque em equipe, com salvamento local e sincronização.",
   "lang": "pt-BR",
   "start_url": "./index.html?source=installed",
