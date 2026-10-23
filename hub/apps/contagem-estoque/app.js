@@ -1,7 +1,7 @@
 'use strict';
 const $=s=>document.querySelector(s),BASE='https://rihvnshexilakojnltox.supabase.co',KEY='sb_publishable_7coOHeG2tOc9XfS0qeKvPg_z2fh0KWz',AUTH_KEY='tp-manuais-supabase-v1';
 let auth=null,user=null,stores=[],sessions=[],sessionsLoaded=false,loadingSessions=false,current=null,catalog=new Map(),mode='count',unknown=null,lookingUp=false;
-let inventoryHome=false,openingCount=false,cameraCandidate=null,cameraLookup=false,cameraGeneration=0,cameraLastEan='',cameraLastAt=0,scanAudio=null;
+let inventoryHome=false,openingCount=false,cameraCandidate=null,cameraLookup=false,cameraGeneration=0,cameraLastEan='',cameraLastAt=0,cameraFallbackStarted=false,scanAudio=null;
 let analysisCache=null,analysisRequest=0,subgroupCatalogReady=false;
 let teamScope='own',teamBusy=false,teamListBusy=false,teamLockId=null,teamUnlock=null;
 let serial=0,saved=0,inflight=null,timer=null,retry=null,conflict=false,xlsxPromise,recounts=[],loadingRecounts=false,recountSourceId=null,recountPage=0,pendingImport=null,cameraStream=null,cameraControls=null,cameraFrame=0,cameraActive=false,zxingPromise=null,deletionRequests=[],loadingDeletions=false,activeDeletionReviewId=null,unknownOrigin='LEITOR / DIGITAÇÃO',auditSessionPromise=null;
@@ -531,18 +531,32 @@ function renderCameraRecent(){
  const rows=current?.recentCamera||[];$('#camera-recent').hidden=!rows.length;
  $('#camera-recent-list').innerHTML=rows.slice(0,3).map(r=>'<li><strong>'+esc(r.description)+'</strong><span>'+esc(r.brand)+' · '+esc(subgroupOf(r)||'Não informado')+' · '+esc(r.ean)+' · '+esc(r.mode==='defects'?'DEFEITOS':'CONTAGEM')+' · '+esc(new Date(r.at).toLocaleTimeString('pt-BR'))+'</span></li>').join('');
 }
+function cameraEanCandidates(value){
+ const ean=String(value||'').trim();if(!/^\d{8,14}$/.test(ean))return[];
+ if(ean.length===12)return[ean,'0'+ean];
+ if(ean.length===13&&ean.startsWith('0'))return[ean,ean.slice(1)];
+ return[ean];
+}
+async function findCameraProduct(value){
+ for(const code of cameraEanCandidates(value)){
+  let product=catalog.get(code);
+  if(!product&&!catalogComplete&&navigator.onLine){const result=await api('catalog',{ean:code}),row=result.data;if(row)product={ean:String(row[0]),description:row[1],brand:row[2],subgroup:row[3]||''};}
+  if(product){const canonical=String(product.ean||code),resolved={...product,ean:canonical};for(const alias of cameraEanCandidates(canonical))catalog.set(alias,resolved);return resolved;}
+ }
+ return null;
+}
 async function cameraDetected(value){
  if(!cameraActive||cameraLookup||cameraCandidate)return;
- const ean=String(value||'').trim();if(!/^\d{8,14}$/.test(ean))return;
- if(ean===cameraLastEan&&Date.now()-cameraLastAt<1800)return;cameraLastEan=ean;cameraLastAt=Date.now();cameraLookup=true;const session=current?.id,generation=cameraGeneration;
+ const candidates=cameraEanCandidates(value);if(!candidates.length)return;const detected=candidates[0];
+ if(candidates.includes(cameraLastEan)&&Date.now()-cameraLastAt<1800)return;cameraLastEan=detected;cameraLastAt=Date.now();cameraLookup=true;const session=current?.id,generation=cameraGeneration;
  try{
-  let product=catalog.get(ean);
-  if(!product&&!catalogComplete&&navigator.onLine){const r=await api('catalog',{ean});if(r.data){product={ean:String(r.data[0]),description:r.data[1],brand:r.data[2],subgroup:r.data[3]||''};cacheCatalog(ean,product);}}
+  const product=await findCameraProduct(detected);
   if(!cameraActive||generation!==cameraGeneration||current?.id!==session)return;
-  if(!product){scanSound(false);return;}
-  if(current.kind==='RECONTAGEM'&&!current.targets.some(t=>t.ean===ean)){scanSound(false);return;}
-  cameraCandidate={...product,session,mode};$('#camera-product-name').textContent=product.description;$('#camera-product-meta').textContent=product.brand+' · '+(product.subgroup||'Não informado')+' · '+ean;$('#camera-product').hidden=false;$('#camera-launch').disabled=false;$('#camera-status').textContent='Confira o produto e toque em LANÇAR para registrar uma unidade.';
- }catch(_){if(cameraActive)scanSound(false);}finally{if(generation===cameraGeneration)cameraLookup=false;}
+  if(!product){$('#camera-status').textContent='Código lido ('+detected+'), mas não localizado no cadastro. Confira a loja ou use “Bipar ou digitar EAN”.';scanSound(false);return;}
+  cameraLastEan=product.ean;
+  if(current.kind==='RECONTAGEM'&&!current.targets.some(t=>t.ean===product.ean)){ $('#camera-status').textContent='Código '+product.ean+' lido, mas não faz parte desta solicitação de recontagem.';scanSound(false);return;}
+  cameraCandidate={...product,session,mode};$('#camera-product-name').textContent=product.description;$('#camera-product-meta').textContent=product.brand+' · '+(product.subgroup||'Não informado')+' · '+product.ean;$('#camera-product').hidden=false;$('#camera-launch').disabled=false;$('#camera-status').textContent='Confira o produto e toque em LANÇAR para registrar uma unidade.';
+ }catch(_){if(cameraActive){$('#camera-status').textContent='Código detectado, mas não foi possível consultar o cadastro. Verifique a conexão e tente novamente.';scanSound(false);}}finally{if(generation===cameraGeneration)cameraLookup=false;}
 }
 function launchCameraProduct(){
  const candidate=cameraCandidate;if(!candidate||candidate.session!==current?.id||!cameraActive)return;
@@ -550,13 +564,23 @@ function launchCameraProduct(){
  renderCameraRecent();clearCameraCandidate();
  cameraLastEan=candidate.ean;cameraLastAt=Date.now();$('#camera-status').textContent='Lançado. Aponte para o próximo produto.';
 }
+async function startZxingFallback(generation){
+ if(cameraFallbackStarted||!cameraActive||generation!==cameraGeneration)return;cameraFallbackStarted=true;
+ if(cameraFrame)cancelAnimationFrame(cameraFrame);cameraFrame=0;$('#camera-status').textContent='Usando o leitor alternativo. Mantenha o código focado na câmera.';
+ try{
+  const ZX=await loadZxing();if(!cameraActive||generation!==cameraGeneration)return;
+  const Reader=ZX.BrowserMultiFormatOneDReader||ZX.BrowserMultiFormatReader,reader=new Reader();
+  const controls=await reader.decodeFromStream(cameraStream,$('#camera-video'),result=>{if(result&&cameraActive&&generation===cameraGeneration)cameraDetected(result.getText());});
+  if(generation!==cameraGeneration||!cameraActive){controls?.stop();return;}cameraControls=controls;
+ }catch(_){if(cameraActive&&generation===cameraGeneration)$('#camera-status').textContent='Não foi possível ler o código. Limpe a lente, aproxime a etiqueta e mantenha o EAN dentro da imagem.';}
+}
 async function startCamera(){
-  stopCamera(false);const generation=cameraGeneration;clearCameraCandidate();renderCameraRecent();cameraLastEan='';$('#camera-status').textContent='Solicitando acesso à câmera…';
+  stopCamera(false);const generation=cameraGeneration;cameraFallbackStarted=false;clearCameraCandidate();renderCameraRecent();cameraLastEan='';$('#camera-status').textContent='Solicitando acesso à câmera…';
   try{
     const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});if(generation!==cameraGeneration||!$('#camera-dialog').open){stream.getTracks().forEach(t=>t.stop());return;}cameraStream=stream;const video=$('#camera-video');video.srcObject=stream;await video.play();if(generation!==cameraGeneration||!$('#camera-dialog').open){stream.getTracks().forEach(t=>t.stop());return;}cameraActive=true;$('#camera-status').textContent='Aponte a câmera para o código de barras.';
     let detector=null,formats=[];if('BarcodeDetector'in window){try{formats=await BarcodeDetector.getSupportedFormats();const supported=['ean_13','ean_8','upc_a','upc_e'].filter(f=>formats.includes(f));if(supported.length)detector=new BarcodeDetector({formats:supported});}catch(_){}}
-    if(detector){let busy=false,last=0;const tick=async now=>{if(!cameraActive)return;cameraFrame=requestAnimationFrame(tick);if(busy||now-last<220||video.readyState<2)return;last=now;busy=true;try{const found=await detector.detect(video);if(found.length)await cameraDetected(found[0].rawValue);}catch(_){}finally{busy=false;}};cameraFrame=requestAnimationFrame(tick);}
-    else{const ZX=await loadZxing();if(!cameraActive||generation!==cameraGeneration)return;const Reader=ZX.BrowserMultiFormatOneDReader||ZX.BrowserMultiFormatReader,reader=new Reader();const controls=await reader.decodeFromStream(cameraStream,video,(result)=>{if(result&&cameraActive&&generation===cameraGeneration)cameraDetected(result.getText());});if(generation!==cameraGeneration||!cameraActive){controls?.stop();return;}cameraControls=controls;}
+    if(detector){let busy=false,last=0,misses=0;const tick=async now=>{if(!cameraActive||generation!==cameraGeneration)return;cameraFrame=requestAnimationFrame(tick);if(busy||now-last<220||video.readyState<2)return;last=now;busy=true;try{const found=await detector.detect(video);if(found.length){misses=0;await cameraDetected(found[0].rawValue);}else if(++misses>=14){await startZxingFallback(generation);}}catch(_){if(++misses>=14)await startZxingFallback(generation);}finally{busy=false;}};cameraFrame=requestAnimationFrame(tick);}
+    else await startZxingFallback(generation);
   }catch(e){if(generation!==cameraGeneration)return;stopCamera(false);$('#camera-status').textContent=e.name==='NotAllowedError'?'Permita o acesso à câmera nas configurações do Chrome e tente novamente.':e.name==='NotFoundError'?'Não encontramos uma câmera disponível neste dispositivo.':e.message||'Não foi possível iniciar a câmera.';}
 }
 async function loadRecounts(){
