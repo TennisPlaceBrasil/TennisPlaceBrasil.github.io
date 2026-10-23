@@ -7,7 +7,7 @@ const manifest=JSON.parse(read('manifest.webmanifest'));
 assert.equal(manifest.display,'fullscreen');assert.equal(manifest.orientation,'any');
 assert.equal(manifest.scope,'./');assert.match(manifest.start_url,/index.html/);
 for(const icon of manifest.icons){const png=fs.readFileSync(new URL(icon.src,root));const size=Number(icon.sizes.split('x')[0]);assert.equal(png.readUInt32BE(16),size);assert.equal(png.readUInt32BE(20),size);}
-for(const file of ['app.js','pwa.js','offline-store.js','offline-export.js'])new vm.Script(read(file),{filename:file});
+for(const file of ['app.js','pwa.js','dashboard.js','offline-store.js','offline-export.js'])new vm.Script(read(file),{filename:file});
 const html=read('index.html');assert.match(html,/rel="manifest"/);assert.match(html,/viewport-fit=cover/);
 const sw=fs.readFileSync(new URL('../../hub/sw.js',import.meta.url),'utf8');
 for(const asset of ['pwa.js','mobile.css','manifest.webmanifest','icons/icon-192.png','icons/icon-512.png','icons/apple-touch-icon.png'])assert.ok(sw.includes('apps/contagem-estoque/'+asset),asset+' cached for offline start');

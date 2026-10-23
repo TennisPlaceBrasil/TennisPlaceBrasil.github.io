@@ -106,3 +106,14 @@ Validação:
 - Teste real de concorrência passou com dois envios paralelos de 5.000 EANs cada: 15.000 unidades somadas, duas revisões, sem perda. As fixtures temporárias foram removidas.
 
 Novas tabelas e RPCs são exclusivas de service_role, com RLS e revogação de acesso de anon/authenticated. A API autenticada continua exigindo JWT. O endpoint compartilhado mantém apenas leitura por token válido.
+
+
+## Subgrupos e dashboard administrativo
+
+O catálogo inclui `[EAN, produto, marca, subgrupo]`; o quarto valor vem de `DESCRGRUPOPROD` (coluna K de Sheet0). As classificações não são inferidas da descrição. O layout mobile mostra o subgrupo sob o produto; desktop, acompanhamento e XLSX incluem uma coluna própria. CSV/TXT de importação continuam com EAN e quantidade.
+
+Antes de publicar o cliente desta versão: atualizar a implantação existente do Apps Script com `Code.gs`, mantendo propriedades e URL, executar `migrateSubgroups()` e verificar a coluna E (Contagem) e L (Defeitos). A migração insere colunas sem trocar IDs/revisões nem alterar quantidades. A leitura aceita o layout antigo; recontagens e importação são reposicionadas sem perder dados. Atualizar `stockcount-share-read` com `share-read.ts` e `team.ts` depois do bridge.
+
+O dashboard exige a permissão administrativa já existente. Posição = última contagem finalizada de cada loja no período, sem acumular snapshots de dias diferentes. A série diária usa a última contagem de cada loja/dia e avisa que as lojas participantes podem variar. Defeitos são divididos por (contagem + defeitos). Acompanhamento operacional usa loja/período; marca/subgrupo filtram os produtos. Sem base de estoque esperado não se calculam acuracidade ou divergências.
+
+Verificações: `node backend/contagem-estoque/verify-dashboard.mjs`, `verify-recount.mjs`, `verify-team-ui.mjs`, `verify-offline.mjs`, `verify-pwa.mjs` e `verify-share-ui.mjs` (os demais nomes na mesma pasta).

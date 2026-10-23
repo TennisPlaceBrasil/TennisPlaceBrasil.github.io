@@ -59,3 +59,10 @@ await b.run('persistDraft()');b.context.record=b.records.get('c');b.run('current
 assert.equal(b.run('current.counts.length'),5000);assert.equal(b.run('teamExportState().counts.reduce((n,r)=>n+r.quantity,0)'),15000);assert.equal(b.run('current.counts[0].ean'),'0000000000000');
 assert.equal(b.run('current.counts[4999].lastScannedAt'),'2026-10-23T12:00:00Z');
 console.log('PASS: responsible validation, own/combined isolation, tab lock guards, lost-response replay, recovery, late finish, 5,000 + 5,000 rows ('+Math.round(performance.now()-start)+' ms)');
+
+// Classification is present in both the visible grid and exports, including legacy local rows.
+a.run("catalog.set('001',{description:'Produto',brand:'MARCA',subgroup:'TENIS'});current.localFinished=false;current.collabReadOnly=false;teamScope='own';render()");
+assert.equal((a.$('#count-body').innerHTML.match(/<td>/g)||[]).length,6);assert.match(a.$('#count-body').innerHTML,/TENIS/);assert.equal(a.run('teamExportState().counts[0].subgroup'),'TENIS');
+// Non-administrators cannot start an analysis request.
+let unauthorizedFetches=0;b.context.fetch=async()=>{unauthorizedFetches++;return Response.json({});};await b.run('analyze()');assert.equal(unauthorizedFetches,0);
+console.log('PASS: subgroup visible in table/mobile/export and analysis remains administrative');

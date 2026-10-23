@@ -66,8 +66,8 @@ dialog{max-height:calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-
  .is-counting:not(.count-options-open) th:nth-child(3),.is-counting:not(.count-options-open) td:nth-child(3){display:none}
  .is-counting:not(.count-options-open) table{table-layout:fixed}
  .is-counting:not(.count-options-open) th:nth-child(1){width:24%}
- .is-counting:not(.count-options-open) th:nth-child(4){width:136px}
- .is-counting:not(.count-options-open) th:nth-child(5){width:42px}
+ .is-counting:not(.count-options-open) th:nth-child(5){width:136px}
+ .is-counting:not(.count-options-open) th:nth-child(6){width:42px}
  .is-counting:not(.count-options-open) td:first-child{white-space:normal;overflow-wrap:anywhere;font-size:11px}
  .camera-dialog{padding:12px}.camera-dialog video{max-height:30dvh;margin-top:8px}
  .camera-product{padding:10px;margin:8px 0}.camera-product div{margin-top:8px}
@@ -77,7 +77,7 @@ dialog{max-height:calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-
  .intro-art{display:none}.intro{min-height:130px}.login-panel input{font-size:16px}
  .lists{grid-template-columns:minmax(0,1fr)}.analysis-filters{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
  .is-counting:not(.count-options-open) th:nth-child(1){width:22%}
- .is-counting:not(.count-options-open) th:nth-child(4){width:122px}
+ .is-counting:not(.count-options-open) th:nth-child(5){width:122px}
  .is-counting:not(.count-options-open) .qty-actions button{width:32px}
  .is-counting:not(.count-options-open) .quantity-input{width:42px}
 }
@@ -96,8 +96,8 @@ dialog{max-height:calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-
  .camera-dialog video{max-height:28dvh;aspect-ratio:16/9}.camera-dialog .camera-recent,.camera-dialog>small{display:none}
 }
 #count-options-toggle{display:none}
-@media(max-width:1100px),(pointer:coarse){.is-counting #count-options-toggle{display:inline-flex;align-items:center;justify-content:center}.is-counting:not(.count-options-open) th:nth-child(4){width:148px}}
-@media(max-width:600px){.is-counting:not(.count-options-open) th:nth-child(4){width:128px}}
+@media(max-width:1100px),(pointer:coarse){.is-counting #count-options-toggle{display:inline-flex;align-items:center;justify-content:center}.is-counting:not(.count-options-open) th:nth-child(5){width:148px}}
+@media(max-width:600px){.is-counting:not(.count-options-open) th:nth-child(5){width:128px}}
 @media(orientation:landscape) and (max-height:600px) and (min-width:560px){.is-counting:not(.count-options-open) #recount-targets,.is-counting:not(.count-options-open) #delete-pending-status,.is-counting:not(.count-options-open) #delete-review-actions{grid-column:1/-1}}
 
 .mobile-ean{display:none}

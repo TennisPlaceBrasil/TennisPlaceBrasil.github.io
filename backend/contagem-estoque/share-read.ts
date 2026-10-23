@@ -25,6 +25,16 @@ Deno.serve(async req=>{
     const result=await response.json();count=result?.data;
     if(!result.ok||!count||count.id!==link.count_id||count.store!==link.store)return reply({error:"Esta contagem não está mais disponível."},404);
   }
+  // Historical collaborative rows may predate subgroups. Read only this count's
+  // projection to fill classification; quantities still come from the central snapshot.
+  if(record&&count.counts.concat(count.defects).some((r:any)=>!r.subgroup&&!r.unknown)){
+    const response=await bridge(config,{action:'read',id:link.count_id,store:link.store,allStores:true,userId:'share'});
+    if(response.ok){const projected=await response.json();if(projected.ok&&projected.data?.id===link.count_id){
+      const groups=new Map(projected.data.counts.concat(projected.data.defects).filter((r:any)=>r.subgroup).map((r:any)=>[r.ean,r.subgroup]));
+      const hydrate=(rows:any[])=>rows.map(r=>({...r,subgroup:r.subgroup||groups.get(r.ean)||''}));
+      count.counts=hydrate(count.counts);count.defects=hydrate(count.defects);count.shareParticipants=(count.shareParticipants||[]).map((p:any)=>({...p,counts:hydrate(p.counts||[]),defects:hydrate(p.defects||[])}));
+    }}
+  }
   if(count.collaborative){count.device=count.participants.map((p:{responsible:string;device:string})=>p.responsible+' · '+(p.device||'Não informado')).join(' / ');count.ip=count.participants.map((p:{responsible:string;ip:string})=>p.responsible+': '+(p.ip||'IP não capturado')).join(' / ');}
   const products=[...(Array.isArray(count.defects)?count.defects.map((r:Record<string,unknown>)=>({...r,kind:"DEFEITOS"})):[]),...(Array.isArray(count.counts)?count.counts.map((r:Record<string,unknown>)=>({...r,kind:"CONTAGEM"})):[])];
   return reply({data:{id:count.id,label:count.label,store:count.store,date:count.date,status:count.status,updatedAt:count.updatedAt,device:count.device||"Não registrado",ip:count.ip||"Não registrado",counts:count.counts||[],defects:count.defects||[],products,participants:count.shareParticipants||[]}});

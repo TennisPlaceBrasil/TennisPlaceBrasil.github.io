@@ -70,15 +70,15 @@ function saveMeta_(meta){db_().getSheetByName('_Contagens').getRange(meta.row,5,
 function permitted_(meta,p){if(!meta || (!p.allStores&&meta.store!==p.store))throw new Error('Contagem sem permissão.');return meta;}
 function publicMeta_(m){const result=Object.assign({},m,{lastRequestId:m.requestId});delete result.row;delete result.requestId;delete result.createdBy;return result;}
 function catalog_(){
-  const cache=CacheService.getScriptCache(),key='tp-stock-catalog-v1';
+  const cache=CacheService.getScriptCache(),key='tp-stock-catalog-subgroups-v2';
   const info=cache.get(key);
   if(info){
     try{const keys=JSON.parse(info),parts=cache.getAll(keys);if(keys.every(k=>parts[k]))return JSON.parse(Utilities.ungzip(Utilities.newBlob(Utilities.base64Decode(keys.map(k=>parts[k]).join('')))).getDataAsString('UTF-8'));}catch(_){}
   }
   const sheet=SpreadsheetApp.openById(config_('PRODUCT_FILE_ID')).getSheetByName('Sheet0');
   if(!sheet)throw new Error('A aba Sheet0 do cadastro não foi encontrada.');
-  const rows=sheet.getLastRow()>1?sheet.getRange(2,4,sheet.getLastRow()-1,3).getDisplayValues():[];
-  const products=rows.filter(r=>/^\d+$/.test(String(r[0]).trim())).map(r=>[String(r[0]).trim(),r[1],r[2]]);
+  const rows=sheet.getLastRow()>1?sheet.getRange(2,4,sheet.getLastRow()-1,8).getDisplayValues():[];
+  const products=rows.filter(r=>/^\d+$/.test(String(r[0]).trim())).map(r=>[String(r[0]).trim(),r[1],r[2],r[7]||'']);
   const packed=Utilities.base64Encode(Utilities.gzip(Utilities.newBlob(JSON.stringify(products),'application/json')).getBytes());
   const generation=String(Date.now()),keys=[],parts={};
   for(let i=0;i<packed.length;i+=70000){const k=key+'-'+generation+'-'+i;keys.push(k);parts[k]=packed.slice(i,i+70000);}
@@ -89,12 +89,14 @@ function state_(meta,spreadsheet){
   const sheet=(spreadsheet||db_()).getSheetByName(meta.sheet);
   if(!sheet)throw new Error('A aba desta contagem não foi encontrada.');
   const last=sheet.getLastRow();
-  const values=last>=5?sheet.getRange(5,1,last-4,12).getDisplayValues():[];
+  const modern=sheet.getRange('E4').getDisplayValues()[0][0]==='SUBGRUPO',width=modern?7:6;
+  const values=last>=5?sheet.getRange(5,1,last-4,width*2).getDisplayValues():[];
+  let groups=null;const subgroup=(ean,value)=>{if(value)return value;if(!groups)groups=new Map(catalog_().map(p=>[p[0],p[3]||'']));return groups.get(ean)||'';};
   const parse=(offset)=>values.filter(r=>r[offset]&&Number(r[offset+1])>0).map(r=>({
-    ean:String(r[offset]),quantity:Number(r[offset+1]),description:r[offset+2],brand:r[offset+3],unknown:r[offset+4]==='SIM',lastScannedAt:r[offset+5]||''
+    ean:String(r[offset]),quantity:Number(r[offset+1]),description:r[offset+2],brand:r[offset+3],subgroup:subgroup(String(r[offset]),modern?r[offset+4]:''),unknown:r[offset+(modern?5:4)]==='SIM',lastScannedAt:r[offset+(modern?6:5)]||''
   }));
-  const result=Object.assign(publicMeta_(meta),{counts:parse(0),defects:parse(6)});
-  if(meta.kind==='RECONTAGEM'){const rows=last>=5?sheet.getRange(5,17,last-4,4).getDisplayValues():[];result.targets=rows.filter(r=>r[0]).map(r=>({ean:r[0],description:r[1],brand:r[2]}));result.zeroEans=rows.filter(r=>r[0]&&r[3]==='SIM').map(r=>r[0]);}
+  const result=Object.assign(publicMeta_(meta),{counts:parse(0),defects:parse(width)});
+  if(meta.kind==='RECONTAGEM'){const start=modern?19:17,rows=last>=5?sheet.getRange(5,start,last-4,4).getDisplayValues():[];result.targets=rows.filter(r=>r[0]).map(r=>({ean:r[0],description:r[1],brand:r[2],subgroup:subgroup(r[0],'')}));result.zeroEans=rows.filter(r=>r[0]&&r[3]==='SIM').map(r=>r[0]);}
   return result;
 }
 function normalizeRows_(rows,products){
@@ -106,7 +108,7 @@ function normalizeRows_(rows,products){
     const product=products.get(ean);
     if(!product&&!r.unknown)throw new Error('Produto inexistente: '+ean);
     const inputTime=String(r.lastScannedAt||'').trim(),inputMs=Date.parse(inputTime),safeTime=inputTime&&!isNaN(inputMs)?new Date(inputMs).toISOString():'';
-    const item=result.get(ean)||{ean,quantity:0,description:product?product[1]:String(r.description||'PRODUTO INEXISTENTE').trim().slice(0,180),brand:product?product[2]:String(r.brand||'NÃO CADASTRADA').trim().slice(0,80),unknown:!product,lastScannedAt:safeTime};
+    const item=result.get(ean)||{ean,quantity:0,description:product?product[1]:String(r.description||'PRODUTO INEXISTENTE').trim().slice(0,180),brand:product?product[2]:String(r.brand||'NÃO CADASTRADA').trim().slice(0,80),subgroup:product?product[3]||'':'',unknown:!product,lastScannedAt:safeTime};
     item.quantity+=quantity;if(Date.parse(safeTime)>Date.parse(item.lastScannedAt||0))item.lastScannedAt=safeTime;result.set(ean,item);
   });
   return Array.from(result.values());
@@ -118,7 +120,7 @@ function mergeRows_(existing,incoming){
 }
 function deleteEmptyCount_(meta,list){
   if(meta.kind==='RECONTAGEM')throw new Error('Uma recontagem não pode ser removida como vazia.');
-  const sheet=db_().getSheetByName(meta.sheet),counts=sheet&&sheet.getLastRow()>=5?sheet.getRange(5,1,sheet.getLastRow()-4,2).getDisplayValues().some(r=>r[0]&&Number(r[1])>0):false,defects=sheet&&sheet.getLastRow()>=5?sheet.getRange(5,7,sheet.getLastRow()-4,2).getDisplayValues().some(r=>r[0]&&Number(r[1])>0):false;
+  const sheet=db_().getSheetByName(meta.sheet),counts=sheet&&sheet.getLastRow()>=5?sheet.getRange(5,1,sheet.getLastRow()-4,2).getDisplayValues().some(r=>r[0]&&Number(r[1])>0):false,defects=sheet&&sheet.getLastRow()>=5?sheet.getRange(5,sheet.getRange('E4').getDisplayValues()[0][0]==='SUBGRUPO'?8:7,sheet.getLastRow()-4,2).getDisplayValues().some(r=>r[0]&&Number(r[1])>0):false;
   if(counts||defects)throw new Error('Esta contagem já possui produtos.');
   const ss=db_(),metadata=ss.getSheetByName('_Contagens');if(sheet)ss.deleteSheet(sheet);metadata.deleteRow(meta.row);SpreadsheetApp.flush();return {id:meta.id,label:meta.label,deleted:true,empty:true};
 }
@@ -133,14 +135,15 @@ function writeState_(meta,counts,defects,previous){
   const size=Math.max(counts.length,defects.length,combined.length,1);
   const oldSize=Math.max((previous.counts||[]).length+(previous.defects||[]).length,1),clearSize=Math.max(size,oldSize);
   resizeRows_(sheet,Math.max(clearSize,isRecount?(previous.targets||[]).length:0)+4);
-  resizeColumns_(sheet,isRecount?20:15);
-  sheet.getRange(5,1,clearSize,15).clearContent();
-  const matrix=Array.from({length:size},()=>Array(15).fill(''));
-  const fill=(list,col)=>list.forEach((r,i)=>{matrix[i][col]=r.ean;matrix[i][col+1]=r.quantity;matrix[i][col+2]=String(r.description||'').startsWith('=')?"'"+r.description:r.description;matrix[i][col+3]=String(r.brand||'').startsWith('=')?"'"+r.brand:r.brand;matrix[i][col+4]=r.unknown?'SIM':'NÃO';matrix[i][col+5]=r.lastScannedAt||'';});
-  fill(counts,0);fill(defects,6);
-  combined.forEach((r,i)=>{matrix[i][12]=r.ean;matrix[i][13]=r.quantity;matrix[i][14]=r.ean+','+r.quantity;});
-  sheet.getRange(5,1,size,15).setNumberFormat('@').setValues(matrix);
-  sheet.getRange(5,2,size,1).setNumberFormat('0');sheet.getRange(5,8,size,1).setNumberFormat('0');sheet.getRange(5,14,size,1).setNumberFormat('0');
+  ensureSubgroupColumns_(sheet);resizeColumns_(sheet,isRecount?22:17);
+  sheet.getRange(4,1,1,17).setValues([stateHeaders_()]);
+  sheet.getRange(5,1,clearSize,17).clearContent();
+  const matrix=Array.from({length:size},()=>Array(17).fill(''));
+  const fill=(list,col)=>list.forEach((r,i)=>{matrix[i][col]=r.ean;matrix[i][col+1]=r.quantity;matrix[i][col+2]=String(r.description||'').startsWith('=')?"'"+r.description:r.description;matrix[i][col+3]=String(r.brand||'').startsWith('=')?"'"+r.brand:r.brand;matrix[i][col+4]=String(r.subgroup||'').startsWith('=')?"'"+r.subgroup:r.subgroup||'';matrix[i][col+5]=r.unknown?'SIM':'NÃO';matrix[i][col+6]=r.lastScannedAt||'';});
+  fill(counts,0);fill(defects,7);
+  combined.forEach((r,i)=>{matrix[i][14]=r.ean;matrix[i][15]=r.quantity;matrix[i][16]=r.ean+','+r.quantity;});
+  sheet.getRange(5,1,size,17).setNumberFormat('@').setValues(matrix);
+  sheet.getRange(5,2,size,1).setNumberFormat('0');sheet.getRange(5,9,size,1).setNumberFormat('0');sheet.getRange(5,16,size,1).setNumberFormat('0');
   resizeRows_(sheet,Math.max(size,isRecount?(previous.targets||[]).length:0)+4);
   SpreadsheetApp.flush();
 }
@@ -182,12 +185,12 @@ function route_(p){
     const now=new Date(),date=countDate_(p.date,now);
     let number=nextCountNumber_(list,p.store,date),label=countLabel_(p.store,date,number);
     while(db_().getSheetByName(label))label=countLabel_(p.store,date,++number);
-    const sheet=db_().insertSheet(label),meta={id:Utilities.getUuid(),store:p.store,date,label,status:'EM ANDAMENTO',version:0,sheet:label,createdBy:p.userId,createdAt:now.toISOString(),updatedAt:now.toISOString(),requestId:'',...sessionAudit_(p.auditSession)};resizeRows_(sheet,5);resizeColumns_(sheet,15);
+    const sheet=db_().insertSheet(label),meta={id:Utilities.getUuid(),store:p.store,date,label,status:'EM ANDAMENTO',version:0,sheet:label,createdBy:p.userId,createdAt:now.toISOString(),updatedAt:now.toISOString(),requestId:'',...sessionAudit_(p.auditSession)};resizeRows_(sheet,5);resizeColumns_(sheet,17);
     sheet.getRange('A1:B2').setValues([['LOJA',p.store],['DATA',date]]);
-    sheet.getRange('A3:E3').merge().setValue('CONTAGEM');sheet.getRange('G3:K3').merge().setValue('DEFEITOS');sheet.getRange('M3:O3').merge().setValue('IMPORTAÇÃO — DEFEITOS PRIMEIRO');
-    sheet.getRange(4,1,1,15).setValues([['EAN','QNTD','PRODUTO','MARCA','INEXISTENTE','ÚLTIMA BIPAGEM','EAN','QNTD','PRODUTO','MARCA','INEXISTENTE','ÚLTIMA BIPAGEM','EAN','QNTD','EAN,QNTD']]);
-    sheet.getRange('A3:O4').setBackground('#eeeeee').setFontWeight('bold');sheet.setFrozenRows(4);
-    sheet.setColumnWidths(1,15,140);sheet.setColumnWidth(3,360);sheet.setColumnWidth(9,360);sheet.setColumnWidth(15,220);
+    sheet.getRange('A3:G3').merge().setValue('CONTAGEM');sheet.getRange('H3:N3').merge().setValue('DEFEITOS');sheet.getRange('O3:Q3').merge().setValue('IMPORTAÇÃO — DEFEITOS PRIMEIRO');
+    sheet.getRange(4,1,1,17).setValues([stateHeaders_()]);
+    sheet.getRange('A3:Q4').setBackground('#eeeeee').setFontWeight('bold');sheet.setFrozenRows(4);
+    sheet.setColumnWidths(1,17,140);sheet.setColumnWidth(3,360);sheet.setColumnWidth(10,360);sheet.setColumnWidth(15,220);
     db_().getSheetByName('_Contagens').appendRow([meta.id,meta.store,meta.date,meta.label,meta.status,0,meta.sheet,meta.createdBy,meta.createdAt,meta.updatedAt,'',meta.kind||'CONTAGEM',meta.sourceId||'',meta.createdRequestId||'',meta.ip,meta.device,meta.sessionId]);
     return state_(meta);
   }
@@ -256,12 +259,12 @@ function requestRecount_(p,list){
   const original=state_(source),products=new Map(original.counts.concat(original.defects).map(r=>[r.ean,r]));
   const now=new Date(),ss=db_(),base=source.label+' RECONTAGEM';let number=1+Math.max(0,...list.filter(m=>m.kind==='RECONTAGEM'&&m.sourceId===source.id).map(m=>Number((m.label.match(/#(\d+)$/)||[])[1]||1))),label=base+' #'+number;while(ss.getSheetByName(label))label=base+' #'+(++number);
   const sheet=ss.insertSheet(label),meta={id:Utilities.getUuid(),store:source.store,date:source.date,label,status:'EM ANDAMENTO',version:0,sheet:label,createdBy:p.userId,createdAt:now.toISOString(),updatedAt:now.toISOString(),requestId:'',kind:'RECONTAGEM',sourceId:source.id,createdRequestId:p.requestId};
-  resizeColumns_(sheet,20);resizeRows_(sheet,eans.length+4);
+  resizeColumns_(sheet,22);resizeRows_(sheet,eans.length+4);
   sheet.getRange('A1:B2').setValues([['RECONTAGEM',source.label],['LOJA',source.store]]);
-  sheet.getRange(4,1,1,15).setValues([['EAN','QNTD','PRODUTO','MARCA','INEXISTENTE','','EAN','QNTD','PRODUTO','MARCA','INEXISTENTE','','EAN','QNTD','EAN,QNTD']]);
-  sheet.getRange('Q4:T4').setValues([['EAN SOLICITADO','PRODUTO','MARCA','NÃO LOCALIZADO']]);
-  sheet.getRange(5,17,eans.length,4).setNumberFormat('@').setValues(eans.map(e=>[e,products.get(e)?.description||'Consultar pelo EAN',products.get(e)?.brand||'','NÃO']));
-  sheet.getRange('A4:T4').setBackground('#ffda28').setFontWeight('bold');sheet.setFrozenRows(4);sheet.setColumnWidths(1,20,140);sheet.setColumnWidth(3,340);sheet.setColumnWidth(9,340);sheet.setColumnWidth(18,340);
+  sheet.getRange(4,1,1,17).setValues([stateHeaders_()]);
+  sheet.getRange('S4:V4').setValues([['EAN SOLICITADO','PRODUTO','MARCA','NÃO LOCALIZADO']]);
+  sheet.getRange(5,19,eans.length,4).setNumberFormat('@').setValues(eans.map(e=>[e,products.get(e)?.description||'Consultar pelo EAN',products.get(e)?.brand||'','NÃO']));
+  sheet.getRange('A4:V4').setBackground('#ffda28').setFontWeight('bold');sheet.setFrozenRows(4);sheet.setColumnWidths(1,22,140);sheet.setColumnWidth(3,340);sheet.setColumnWidth(10,340);sheet.setColumnWidth(20,340);
   ss.getSheetByName('_Contagens').getRange(1,1,1,META_HEADERS.length).setValues([META_HEADERS]);
   ss.getSheetByName('_Contagens').appendRow([meta.id,meta.store,meta.date,meta.label,meta.status,0,meta.sheet,meta.createdBy,meta.createdAt,meta.updatedAt,'',meta.kind,meta.sourceId,meta.createdRequestId]);
   SpreadsheetApp.flush();return publicMeta_(meta);
@@ -274,7 +277,7 @@ function validateRecount_(meta,counts,defects,zeros,finish,state){
   if(finish&&[...allowed].some(e=>!scanned.has(e)&&!zeros.includes(e)))throw new Error('Bipe ou marque como não localizado cada EAN solicitado antes de finalizar.');
 }
 function writeRecountZeros_(meta,zeros){
-  const state=state_(meta),set=new Set(zeros);if(state.targets.length)db_().getSheetByName(meta.sheet).getRange(5,20,state.targets.length,1).setValues(state.targets.map(r=>[set.has(r.ean)?'SIM':'NÃO']));
+  const state=state_(meta),set=new Set(zeros);if(state.targets.length)db_().getSheetByName(meta.sheet).getRange(5,db_().getSheetByName(meta.sheet).getRange('E4').getDisplayValues()[0][0]==='SUBGRUPO'?22:20,state.targets.length,1).setValues(state.targets.map(r=>[set.has(r.ean)?'SIM':'NÃO']));
 }
 function applyRecount_(meta,counts,defects,list){
   const source=list.find(m=>m.id===meta.sourceId&&m.store===meta.store);if(!source)throw new Error('A contagem original foi excluída.');
@@ -333,7 +336,7 @@ function verifyInventoryRuntime(){
     recount=call({action:'finish',id:recount.id,version:recount.version,requestId:Utilities.getUuid(),counts:recount.counts,defects:[],zeroEans:[b]});
     const updated=call({action:'read',id:count.id});
     check(updated.counts.length===1&&updated.counts[0].quantity===4&&!updated.defects.length,'aplicação da recontagem');
-    check(db_().getSheetByName(recount.sheet).getRange(6,13).getDisplayValues()[0][0]==='','limpeza da importação antiga');
+    check(db_().getSheetByName(recount.sheet).getRange(6,15).getDisplayValues()[0][0]==='','limpeza da importação antiga');
     const empty=call({action:'create'});ids.push(empty.id);
     const removed=call({action:'finish',id:empty.id,version:empty.version,requestId:Utilities.getUuid(),counts:[],defects:[]});
     check(removed.empty&&!db_().getSheetByName(empty.sheet),'exclusão automática de contagem vazia');
@@ -351,4 +354,20 @@ function verifyInventoryProductIdentification(){
  const known=normalizeRows_([{ean:'123',quantity:1,description:'ALTERADO',brand:'ALTERADA'}],new Map([['123',['123','PRODUTO OFICIAL','MARCA OFICIAL']]]));
  if(known[0].description!=='PRODUTO OFICIAL'||known[0].brand!=='MARCA OFICIAL')throw Error('Cadastro oficial alterado');
  console.log('OK: produto e marca informados preservados; EAN com zeros preservado; cadastro oficial prioritário.');
+}
+
+
+// Adds adjacent subgroup columns without changing count IDs, quantities or revisions.
+function stateHeaders_(){return ['EAN','QNTD','PRODUTO','MARCA','SUBGRUPO','INEXISTENTE','ÚLTIMA BIPAGEM','EAN','QNTD','PRODUTO','MARCA','SUBGRUPO','INEXISTENTE','ÚLTIMA BIPAGEM','EAN','QNTD','EAN,QNTD'];}
+function ensureSubgroupColumns_(sheet){
+ if(sheet.getRange('E4').getDisplayValues()[0][0]==='SUBGRUPO')return;
+ sheet.insertColumnsAfter(4,1);sheet.insertColumnsAfter(11,1);
+ sheet.getRange('E4').setValue('SUBGRUPO');sheet.getRange('L4').setValue('SUBGRUPO');
+}
+function migrateSubgroups(){
+ const lock=LockService.getScriptLock();lock.waitLock(25000);
+ try{const groups=new Map(catalog_().map(p=>[p[0],p[3]||'']));let changed=0;
+  metadata_().forEach(meta=>{const state=state_(meta);['counts','defects'].forEach(kind=>state[kind].forEach(r=>r.subgroup=r.subgroup||groups.get(r.ean)||''));writeState_(meta,state.counts,state.defects,state);changed++;});
+  return {updated:changed};
+ }finally{lock.releaseLock();}
 }
