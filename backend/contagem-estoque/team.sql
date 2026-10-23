@@ -71,8 +71,7 @@ begin
   return public.stockcount_team_snapshot(p_id,p_person);
  end if;
  if p_action='list' then
-  return (select coalesce(jsonb_agg((meta-'adjustedCounts'-'adjustedDefects')||jsonb_build_object('id',id,'collaborative',true,'version',revision,'updatedAt',updated_at,
-    'participants',(select coalesce(jsonb_agg(jsonb_build_object('responsible',p.responsible,'done',p.done) order by p.updated_at),'[]') from public.stockcount_team_people p where p.count_id=stockcount_team_counts.id)) order by updated_at desc),'[]')
+  return (select coalesce(jsonb_agg((meta-'adjustedCounts'-'adjustedDefects')||jsonb_build_object('id',id,'collaborative',true,'version',revision,'updatedAt',updated_at) order by updated_at desc),'[]')
    from public.stockcount_team_counts where not deleted and (adm or store=st) and (p_payload->>'store' is null or store=p_payload->>'store')
     and (coalesce((p_payload->>'history')::boolean,false) or meta->>'status'<>'FINALIZADA'));
  end if;

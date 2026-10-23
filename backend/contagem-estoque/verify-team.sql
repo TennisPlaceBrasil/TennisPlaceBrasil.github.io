@@ -9,6 +9,8 @@ begin
  fail:=false;begin perform public.stockcount_team('join',u,id,gen_random_uuid(),'{"responsible":"Ana1"}');exception when others then fail:=true;end;if not fail then raise exception 'digits accepted';end if;
  fail:=false;begin perform public.stockcount_team('join',u,id,gen_random_uuid(),'{"responsible":"A n a"}');exception when others then fail:=true;end;if not fail then raise exception 'short name accepted';end if;
  result:=public.stockcount_team('join',u,id,b,'{"responsible":"Maria"}');
+ result:=public.stockcount_team('list',u,null,null,'{"store":"APAR"}');
+ if not exists(select 1 from jsonb_array_elements(result) x where x->>'id'=id) then raise exception 'active collaborative count missing from shared device list';end if;
  state:=jsonb_build_object('requestId','test-request-0001','participantVersion',0,'counts',jsonb_build_array(jsonb_build_object('ean','000123','quantity',2,'description','Produto A','brand','MARCA','lastScannedAt','2026-10-23T12:00:00Z')),'defects','[]'::jsonb);
  result:=public.stockcount_team('save',u,id,a,state);
  if (result->>'participantVersion')::int<>1 then raise exception 'version not incremented';end if;
