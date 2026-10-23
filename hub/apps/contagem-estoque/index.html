@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#10110f">
   <meta name="description" content="Contagem de estoque da Tennis Place com salvamento no Google Drive.">
   <title>Inventário | Tennis Place</title>
-  <link rel="stylesheet" href="style.css?v=scan2">
+  <link rel="stylesheet" href="style.css?v=team2">
 </head>
 <body>
   <header class="topbar">
@@ -32,7 +32,7 @@
         <label for="store-code">LOJA / SIGLA</label>
         <select id="store-code" aria-label="Loja da contagem" required><option value="">Selecione a loja</option></select>
         <label for="count-date">DATA DA CONTAGEM</label><input id="count-date" type="date" required>
-        <button id="new-count" class="button button-primary" type="button">＋ NOVA CONTAGEM</button>
+        <label for="count-responsible">RESPONSAVEL</label><input id="count-responsible" type="text" autocomplete="name" required maxlength="80" placeholder="Nome de quem está contando" aria-describedby="responsible-help"><button id="new-count" class="button button-primary" type="button">＋ NOVA CONTAGEM</button>
       </div>
       <div class="session-picker-wrap" id="session-picker-wrap" hidden>
         <span>CONTAGENS SALVAS</span>
@@ -43,6 +43,8 @@
         <button id="delete-session" class="button button-quiet" type="button" hidden>EXCLUIR CONTAGEM</button>
       </div>
     </section>
+    <p id="responsible-help" class="team-help">RESPONSÁVEL: pelo menos 4 letras, sem números. Cada aparelho deve entrar com o nome de quem conta. Dividam as áreas para não contar a mesma peça duas vezes.</p>
+    <section id="team-open" class="recount-inbox"><div class="list-heading"><div><span class="eyebrow">TRABALHO EM EQUIPE</span><h3>Participar de uma contagem em andamento</h3></div><button id="team-refresh" class="button button-quiet" type="button">ATUALIZAR CONTAGENS DA LOJA</button></div><p id="team-open-status" role="status"></p><div id="team-open-list"></div></section>
     <div id="share-link-panel" class="share-link-panel" hidden>
       <div class="share-link-heading"><div><span class="eyebrow">ACOMPANHAMENTO</span><strong>Link somente para visualização</strong><small>Expira em 30 dias. Gerar outro link revoga o anterior.</small></div><button id="copy-share-link" class="button button-primary" type="button">COPIAR LINK</button></div>
       <input id="share-link-value" type="url" readonly aria-label="Link de acompanhamento da contagem">
@@ -62,6 +64,7 @@
           <div><span>DEFEITOS BIPADOS</span><b id="defect-total">0</b></div>
         </div>
       </div>
+      <section id="team-panel" class="recount-inbox" hidden><h3 id="team-who"></h3><p id="team-state" role="status"></p><div id="team-people"></div><div class="dialog-actions"><button id="team-own" class="button button-primary" type="button">MINHA PARTE</button><button id="team-total" class="button button-quiet" type="button">TOTAL DA CONTAGEM · CONSULTA</button><button id="team-own-export" class="button button-quiet" type="button">BAIXAR MEU EXCEL</button></div><p class="team-help">Você altera somente seus lançamentos. Finalize sua parte apenas depois de terminar todas as suas áreas. O total é encerrado quando todos os participantes finalizam.</p></section>
       <p id="delete-pending-status" class="delete-pending-status" role="status" hidden>Solicitação de exclusão enviada. A contagem está bloqueada até o ADM revisar os produtos e decidir.</p>
       <section id="recount-targets" class="recount-targets" hidden aria-labelledby="recount-title"><div class="list-heading"><div><span class="eyebrow">RECONTAGEM SOLICITADA</span><h3 id="recount-title">Produtos para recontar</h3></div><span id="recount-progress"></span></div><p>Bipe os produtos solicitados. Amarelo significa incluído na recontagem; a quantidade é responsabilidade da loja. Se não encontrar um produto, marque “Não localizado (0)”.</p><label class="recount-search-label" for="recount-search">BUSCAR EAN OU PRODUTO</label><input id="recount-search" class="recount-search" type="search" placeholder="Buscar na solicitação…"><div id="recount-target-list" class="recount-target-list"></div><div class="recount-pages"><button id="recount-prev" type="button" class="button button-quiet">ANTERIOR</button><span id="recount-page"></span><button id="recount-next" type="button" class="button button-quiet">PRÓXIMA</button></div></section>
       <div class="scanner-panel">
@@ -106,7 +109,8 @@
   <dialog id="import-unknown-dialog"><form id="import-unknown-form"><p class="eyebrow">EAN FORA DO CADASTRO</p><h2>Produto inexistente</h2><p id="import-unknown-count"></p><p id="import-unknown-list" class="import-unknown-list"></p><p>Informe produto e marca de cada EAN antes de lançar para cadastro posterior.</p><div id="import-unknown-fields"></div><div class="dialog-actions"><button type="button" id="import-cancel-unknown" class="button button-quiet">CORRIGIR ARQUIVO</button><button type="submit" id="import-confirm-unknown" class="button button-primary">LANÇAR MESMO ASSIM</button></div></form></dialog>
   <dialog id="unknown-dialog"><form id="unknown-form"><p class="eyebrow">EAN NÃO RECONHECIDO</p><h2>Produto inexistente</h2><p id="unknown-ean"></p><p id="unknown-reason">O código não foi encontrado no cadastro de produtos.</p><label for="unknown-description">PRODUTO</label><input id="unknown-description" required maxlength="180" placeholder="Descrição do produto"><label for="unknown-brand">MARCA</label><input id="unknown-brand" required maxlength="80" placeholder="Marca do produto"><p>Informe os dois campos para o cadastro posterior pelo administrativo.</p><div class="dialog-actions"><button type="button" id="correct-ean" class="button button-quiet">CORRIGIR</button><button type="submit" id="allow-ean" class="button button-primary">LANÇAR MESMO ASSIM</button></div></form></dialog>
   <dialog id="recount-dialog"><form id="recount-request-form"><p class="eyebrow">SOLICITAÇÃO PARA A LOJA</p><h2>Solicitar recontagem</h2><p id="recount-source-label"></p><p>Envie um TXT com um EAN por linha. A loja verá os códigos e informará as quantidades, sem consultar a contagem anterior.</p><label for="recount-file">ARQUIVO TXT</label><input id="recount-file" type="file" accept=".txt,text/plain" required><p id="recount-file-status" role="status"></p><div class="dialog-actions"><button id="cancel-recount" type="button" class="button button-quiet">CANCELAR</button><button id="send-recount" type="submit" class="button button-primary">ENVIAR À LOJA</button></div></form></dialog>
-  <script src="offline-store.js?v=2"></script><script src="offline-export.js?v=1"></script><script src="app.js?v=audio-strong2"></script><script src="../../shared/tepe-help.js?v=5" defer></script>
+  <script src="offline-store.js?v=3"></script><script src="offline-export.js?v=2"></script><script src="app.js?v=team2"></script><script src="../../shared/tepe-help.js?v=5" defer></script>
 </body>
 </html>
+
 

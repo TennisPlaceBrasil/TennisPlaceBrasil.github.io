@@ -1,0 +1,50 @@
+begin;
+set local role service_role;
+do $$
+declare u uuid:='7a23b121-c29c-4513-8a26-d7822f04149d'; stranger uuid:='cf55a73e-63ad-405b-ba7e-db7ffd95dcff';
+ a uuid:=gen_random_uuid(); b uuid:=gen_random_uuid(); id text:='__team_test_'||gen_random_uuid(); result jsonb; state jsonb; people jsonb; fail boolean; bulk jsonb;
+begin
+ result:=public.stockcount_team('init',u,id,a,jsonb_build_object('id',id,'store','APAR','date','2026-10-23','label','TESTE TEMPORARIO','kind','CONTAGEM','status','EM ANDAMENTO','responsible','João'));
+ if result->>'responsible'<>'João' then raise exception 'init/name failed'; end if;
+ fail:=false;begin perform public.stockcount_team('join',u,id,gen_random_uuid(),'{"responsible":"Ana1"}');exception when others then fail:=true;end;if not fail then raise exception 'digits accepted';end if;
+ fail:=false;begin perform public.stockcount_team('join',u,id,gen_random_uuid(),'{"responsible":"A n a"}');exception when others then fail:=true;end;if not fail then raise exception 'short name accepted';end if;
+ result:=public.stockcount_team('join',u,id,b,'{"responsible":"Maria"}');
+ result:=public.stockcount_team('list',u,null,null,'{"store":"APAR"}');
+ if not exists(select 1 from jsonb_array_elements(result) x where x->>'id'=id) then raise exception 'active collaborative count missing from shared device list';end if;
+ state:=jsonb_build_object('requestId','test-request-0001','participantVersion',0,'counts',jsonb_build_array(jsonb_build_object('ean','000123','quantity',2,'description','Produto A','brand','MARCA','lastScannedAt','2026-10-23T12:00:00Z')),'defects','[]'::jsonb);
+ result:=public.stockcount_team('save',u,id,a,state);
+ if (result->>'participantVersion')::int<>1 then raise exception 'version not incremented';end if;
+ result:=public.stockcount_team('save',u,id,a,state);
+ if (result->>'participantVersion')::int<>1 then raise exception 'duplicate reprocessed';end if;
+ fail:=false;begin perform public.stockcount_team('save',u,id,a,jsonb_set(state,'{counts,0,quantity}','7'));exception when others then fail:=true;end;if not fail then raise exception 'changed same packet accepted';end if;
+ result:=public.stockcount_team('save',u,id,b,jsonb_set(state,'{requestId}','"test-request-0002"'));
+ people:=public.stockcount_team_share_people(id);
+ if jsonb_array_length(people)<>2 or (select x->>'responsible' from jsonb_array_elements(people) x where x->>'responsible'='João') is null
+  or (select (x#>>'{counts,0,quantity}')::int from jsonb_array_elements(people) x where x->>'responsible'='Maria')<>2 then raise exception 'per-responsible share breakdown failed';end if;
+ if people->0 ? 'id' then raise exception 'share view exposed participant capability';end if;
+ result:=public.stockcount_team_snapshot(id);
+ if (result#>>'{counts,0,quantity}')::int<>4 then raise exception 'two people did not sum';end if;
+ result:=public.stockcount_team_snapshot(id,a);
+ if (result#>>'{counts,0,quantity}')::int<>2 or (result#>>'{peers,counts,0,quantity}')::int<>2 then raise exception 'own vs peers isolation failed';end if;
+ if result->'participants'->0 ? 'id' then raise exception 'peer capability exposed';end if;
+ fail:=false;begin perform public.stockcount_team('read',stranger,id,a);exception when others then fail:=true;end;if not fail then raise exception 'cross-store read allowed';end if;
+ fail:=false;begin perform public.stockcount_team('save',u,id,a,jsonb_set(state,'{requestId}','"test-request-stale"'));exception when others then fail:=true;end;if not fail then raise exception 'stale snapshot accepted';end if;
+ -- Correction affects only João; Maria keeps 2.
+ state:=jsonb_set(jsonb_set(jsonb_set(state,'{requestId}','"test-correction-001"'),'{participantVersion}','1'),'{counts,0,quantity}','1');
+ result:=public.stockcount_team('finish',u,id,a,state);
+ if result->>'status'='FINALIZADA' then raise exception 'finalized with other participant pending';end if;
+ result:=public.stockcount_team_snapshot(id);
+ if (result#>>'{counts,0,quantity}')::int<>3 then raise exception 'correction overwrote peer';end if;
+ -- A device recovers 5,000 distinct products plus a defect, one stable snapshot per contribution.
+ select jsonb_agg(jsonb_build_object('ean',lpad(n::text,13,'0'),'quantity',1,'description','Produto '||n,'brand','MARCA','lastScannedAt','2026-10-23T12:30:00Z')) into bulk from generate_series(1,5000) n;
+ state:=jsonb_build_object('requestId','test-five-thousand','participantVersion',1,'counts',bulk,'defects',jsonb_build_array(jsonb_build_object('ean','000123','quantity',1,'description','Defeito','brand','MARCA')));
+ result:=public.stockcount_team('finish',u,id,b,state);
+ if result->>'status'<>'FINALIZADA' or jsonb_array_length(result->'counts')<>5000 then raise exception '5000/finalization failed';end if;
+ result:=public.stockcount_team('finish',u,id,b,state);
+ if (result->>'participantVersion')::int<>2 then raise exception 'lost finish response not idempotent';end if;
+ result:=public.stockcount_team_snapshot(id);
+ if jsonb_array_length(result->'counts')<>5001 or (result#>>'{defects,0,quantity}')::int<>1 then raise exception 'combined 5000/defect lost';end if;
+ if exists(select 1 from information_schema.role_table_grants where table_name in ('stockcount_team_counts','stockcount_team_people') and grantee in ('anon','authenticated','PUBLIC')) then raise exception 'tables exposed';end if;
+ raise notice 'PASS: names, replay, altered packet rejection, store isolation, own corrections, finalization barrier, 5000 rows + defects';
+end $$;
+rollback;
