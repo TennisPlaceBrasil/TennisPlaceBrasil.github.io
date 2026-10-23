@@ -35,9 +35,6 @@ Yellow means the EAN was included, not that its quantity is correct. Every reque
 
 The EAN list is paginated at 80 entries. Catalog lookups and stock analysis do not wait for the write lock; mutations remain serialized and protected by revision checks. Inbox loading is asynchronous and does not block entry into the tool. Analysis defaults to 90 days, requests 40 counts per page, and requires a date range of at most 12 months.
 
-## Contextual help
-
-The shared Tepê helper provides short fixed instructions, without a chat. A single mascot is used when apps are opened inside the Hub; standalone tool entrypoints load the same helper. The supplied Three.js character is loaded after idle and only animates while the help panel is open. WebGL failures fall back to the bundled vector character.
 
 ## Scale notes
 
