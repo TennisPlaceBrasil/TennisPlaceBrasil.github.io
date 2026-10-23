@@ -57,24 +57,28 @@ Deno.serve(async req=>{
     const actions=new Set(["teamList","teamJoin","teamRead","shareCreate","bootstrap","catalog","list","create","read","save","finish","analysis","delete","recountInbox","requestRecount","openRecount","checkCount","discardEmpty","importRows","requestDelete","deletionInbox","resolveDelete"]);
     if(!actions.has(input.action))return reply({error:"Ação inválida."},400);
     const userId=encodeURIComponent(user.id);
-    const [members,mapping]=await Promise.all([
+    const [members,mapping,extraAccess]=await Promise.all([
       rows("manual_portal_members","select=profiles,active&user_id=eq."+userId),
       rows("manual_portal_store_logins","select=sigla&user_id=eq."+userId),
+      rows("stockcount_user_store_access","select=sigla&user_id=eq."+userId),
     ]);
     const member=members[0];
     if(!member?.active)return reply({error:"Acesso não autorizado."},403);
     const analysts=new Set(["adb6a08e-1a28-4b41-8dde-addd9c06f915","42eb08bc-5fa7-4d74-8be5-cbe5c909ef30"]);
     const allStores=analysts.has(user.id);
-    const store=mapping[0]?.sigla;
-    if(!allStores&&!store)return reply({error:"Sua conta não possui loja liberada nesta ferramenta."},403);
+    const allowedStores=Array.from(new Set([...mapping,...extraAccess].map((s:{sigla:string})=>s.sigla).filter(Boolean)));
+    const store=allowedStores.length===1?allowedStores[0]:undefined;
+    const multiStore=!allStores&&allowedStores.length>1;
+    if(!allStores&&!allowedStores.length)return reply({error:"Sua conta não possui loja liberada nesta ferramenta."},403);
 
     const stores=input.action==="bootstrap"&&allStores
       ? await rows("manual_portal_store_logins","select=sigla&order=sigla")
-      : mapping;
-    if(input.action==="bootstrap")return reply({user:{id:user.id,email:allStores?user.email:null,store,allStores},stores:stores.map((s:{sigla:string})=>s.sigla),sessions:[]});
+      : [...mapping,...extraAccess];
+    if(input.action==="bootstrap")return reply({user:{id:user.id,email:allStores?user.email:null,store,allStores,multiStore},stores:Array.from(new Set(stores.map((s:{sigla:string})=>s.sigla))),sessions:[]});
     let createStores:{sigla:string}[]=[];
     if(input.action==="create"&&allStores)createStores=await rows("manual_portal_store_logins","select=sigla&order=sigla");
     if(input.action==="create"&&allStores&&!createStores.some(s=>s.sigla===input.store))return reply({error:"Loja inválida."},400);
+    if(input.action==="create"&&!allStores&&!allowedStores.includes(input.store))return reply({error:"Loja inválida ou sem acesso."},403);
     const config=await rows("stockcount_bridge_config","select=endpoint,secret&id=eq.1");
     if(!config[0]?.endpoint)return reply({error:"A integração com o Google Drive está aguardando a autorização inicial."},503);
     if(input.action==='create'&&input.collaborative&&(!validResponsible(input.responsible)||!input.participantId))return reply({error:'RESPONSÁVEL: informe pelo menos 4 letras, sem números.'},400);
@@ -82,20 +86,23 @@ Deno.serve(async req=>{
       const recovered=await teamRPC('stockcount_team',{p_action:'find',p_user:user.id,p_person:input.participantId});
       if(recovered)return reply({data:recovered});
     }
-    const team=await handleTeam(input,user,allStores,store,config[0]);
+    const team=await handleTeam(input,user,allStores,store,config[0],allowedStores);
     if(team.handled)return reply({data:team.data});
-    if(["list","read","analysis","delete","requestRecount","deletionInbox","resolveDelete"].includes(input.action)&&!allStores)return reply({error:"Histórico restrito aos administradores."},403);
+    if(["list","read"].includes(input.action)&&!allStores&&!allowedStores.length)return reply({error:"Histórico sem loja autorizada."},403);
+    if(["analysis","delete","requestRecount","deletionInbox","resolveDelete"].includes(input.action)&&!allStores)return reply({error:"Ação restrita aos administradores."},403);
     if(input.action==="shareCreate"){
       if(!allStores)return reply({error:"Somente administradores podem gerar links de acompanhamento."},403);
       return reply({data:await createSharedCount(String(input.id||""),String(input.store||""),user.id,config[0])});
     }
+    const requestedStore=typeof input.filterStore==="string"&&input.filterStore?input.filterStore:null;
+    if(requestedStore&&!allStores&&!allowedStores.includes(requestedStore))return reply({error:"Loja fora do acesso autorizado."},403);
     const response=await fetch(config[0].endpoint,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
-      ...input,secret:config[0].secret,userId:user.id,allStores,store:allStores?input.store:store
+      ...input,secret:config[0].secret,userId:user.id,allStores,allowedStores:allStores?undefined:allowedStores,store:allStores?input.store:input.action==="create"?input.store:store,filterStore:requestedStore
     }),redirect:"follow",signal:AbortSignal.timeout(55000)});
     if(!response.ok)throw new Error("O Google Drive não respondeu. Sua contagem permanece pendente no navegador.");
     const result=await response.json();
     if(!result.ok&&input.action==='deletionInbox'){result.ok=true;result.data=[];}
-    if(!result.ok)return reply({error:result.error||"Não foi possível salvar no Drive."},result.error?.startsWith("CONFLICT:")?409:400);
+    if(!result.ok)return reply({error:result.error||"Não foi possível salvar no Drive."},result.error?.startsWith("CONFLICT:")?409:/permissão|restrit|não autorizado/i.test(result.error||"")?403:400);
     if(input.action==="create"&&result.data?.id){
       let shared:Record<string,unknown>={};
       try{
@@ -111,7 +118,7 @@ Deno.serve(async req=>{
       return reply({data:{...result.data,...shared}});
     }
     if(input.action==='list'){
-      const live=await teamRPC('stockcount_team',{p_action:'list',p_user:user.id,p_payload:{history:true}});
+      const live=await teamRPC('stockcount_team',{p_action:'list',p_user:user.id,p_payload:{history:true,store:requestedStore}});
       const known=await rows('stockcount_team_counts','select=id,deleted');
       const deleted=new Set(known.filter((r:{deleted:boolean})=>r.deleted).map((r:{id:string})=>r.id));
       const mapped=new Map((result.data||[]).filter((r:{id:string})=>!deleted.has(r.id)).map((r:{id:string})=>[r.id,r]));

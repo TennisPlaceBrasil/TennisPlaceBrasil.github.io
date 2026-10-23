@@ -6,6 +6,7 @@ Status: authenticated inventory API, collaborative live storage, retryable Googl
 
 - The existing Supabase login accepts store abbreviation/CNPJ or existing administrative credentials.
 - stockcount-api validates active manual membership and the store mapping. Alberto and Paulo are the stock analysts.
+- Additional multi-store access is granted explicitly in `stockcount_user_store_access`; an empty history filter shows all stores granted to that account. Users without any store grant remain blocked.
 - Google Apps Script reads Sheet0 in the product spreadsheet and writes snapshots to the designated count spreadsheet.
 - Each count creates a LOJA-dd-MM-yyyy worksheet with Contagem, Defeitos and Importação tables. Importação lists defects first.
 - A private _Contagens tab stores session metadata, revision and the last request ID.

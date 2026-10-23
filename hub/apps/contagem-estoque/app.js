@@ -1,6 +1,6 @@
 'use strict';
 const $=s=>document.querySelector(s),BASE='https://rihvnshexilakojnltox.supabase.co',KEY='sb_publishable_7coOHeG2tOc9XfS0qeKvPg_z2fh0KWz',AUTH_KEY='tp-manuais-supabase-v1';
-let auth=null,user=null,stores=[],sessions=[],sessionsLoaded=false,loadingSessions=false,current=null,catalog=new Map(),mode='count',unknown=null,lookingUp=false;
+let auth=null,user=null,stores=[],sessions=[],sessionsLoaded=false,loadingSessions=false,historyStoreFilter='',current=null,catalog=new Map(),mode='count',unknown=null,lookingUp=false;
 let inventoryHome=false,openingCount=false,cameraCandidate=null,cameraLookup=false,cameraGeneration=0,cameraLastEan='',cameraLastAt=0,cameraFallbackStarted=false,scanAudio=null;
 let analysisCache=null,analysisRequest=0,subgroupCatalogReady=false;
 let teamScope='own',teamBusy=false,teamListBusy=false,teamLockId=null,teamUnlock=null;
@@ -209,7 +209,9 @@ async function api(action,params={},again=false){
   const data=await r.json();if(!r.ok){const e=Error(data.error||'Falha de comunicação.');e.status=r.status;throw e;}return data;
 }
 function picker(){
-  $('#session-picker-wrap').hidden=!user?.allStores;
+  $('#session-picker-wrap').hidden=!(user?.allStores||user?.multiStore);
+  const filter=$('#history-store-filter');
+  if(filter){filter.hidden=!(user?.allStores||user?.multiStore);filter.value=historyStoreFilter||'';}
   $('#session-picker').hidden=!sessions.length;
   $('#session-picker').innerHTML='<option value="">Selecione uma contagem</option>'+sessions.slice().reverse().map(s=>'<option value="'+esc(s.id)+'">'+esc(s.label)+' · '+esc(s.status)+'</option>').join('');
   $('#session-picker').value=current?.id||'';
@@ -255,10 +257,11 @@ function render(){
 }
 function displayAccount(){
   $('#login-panel').hidden=true;$('#app-main').hidden=false;$('#logout').hidden=false;
-  $('#account-label').textContent=user.allStores?'ACESSO ADMINISTRATIVO':user.store;
-  $('#store-code').innerHTML=(user.allStores?'<option value="">Selecione a loja</option>':'')+stores.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('');$('#store-code').value=user.store||'';$('#store-code').disabled=!user.allStores;$('#count-date').value=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());$('#tab-analysis').hidden=!user.allStores;
+  $('#account-label').textContent=user.allStores?'ACESSO ADMINISTRATIVO':user.multiStore?'ACESSO A VÁRIAS LOJAS':user.store;
+  $('#store-code').innerHTML=((user.allStores||user.multiStore)?'<option value="">Selecione a loja</option>':'')+stores.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('');$('#store-code').value=user.store||'';$('#store-code').disabled=!user.allStores&&!user.multiStore;$('#count-date').value=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());$('#tab-analysis').hidden=!user.allStores;
   const today=$('#count-date').value,from=new Date(today+'T12:00:00-03:00');from.setDate(from.getDate()-89);$('#filter-end').value=today;$('#filter-start').value=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(from);
   $('#filter-store').innerHTML='<option value="">Todas as lojas</option>'+stores.map(s=>'<option>'+esc(s)+'</option>').join('');
+  $('#history-store-filter').innerHTML='<option value="">Todas as lojas</option>'+stores.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('');
  $('#count-responsible').value=current?.responsible||$('#count-responsible').value;
  $('#filter-brand').innerHTML='<option value="">Todas as marcas</option>';$('#register-gama').hidden=!user.allStores||stores.includes('GAMA');
 }
@@ -267,7 +270,7 @@ async function boot(){
  await loadLocalCatalog().catch(e=>{localError=e.message;});
  await TPInventoryLocal.setting('profile',{user,stores,enabled:true}).catch(()=>{});displayAccount();
  const cached=await TPInventoryLocal.restore(user.id).catch(()=>null);if(cached){adoptLocal(cached);await activateTeamLock();}const priorName=await TPInventoryLocal.read('settings','responsible:'+user.id);if(!$('#count-responsible').value&&priorName)$('#count-responsible').value=priorName;loadTeamCounts();
- picker();render();$('#recount-inbox').hidden=false;loadRecounts();$('#deletion-inbox').hidden=!user.allStores;if(user.allStores)loadDeletionRequests();
+ picker();render();if(user.allStores||user.multiStore)loadSessions();$('#recount-inbox').hidden=false;loadRecounts();$('#deletion-inbox').hidden=!user.allStores;if(user.allStores)loadDeletionRequests();
  prepareOffline();if(current&&serial!==saved)flush();if(current)validateActiveCount();
 }
 async function validateActiveCount(){
@@ -278,11 +281,11 @@ async function validateActiveCount(){
  }catch(_){}
 }
 async function loadSessions(){
-  if(!user?.allStores)return;
+  if(!user?.allStores&&!user?.multiStore)return;
   if(loadingSessions)return;
   loadingSessions=true;picker();
   try{
-    const r=await api('list');
+    const r=await api('list',{filterStore:historyStoreFilter||undefined});
     const latest=current;
     sessions=r.data||[];
     if(latest&&!sessions.some(s=>s.id===latest.id)){remoteUnavailable('Esta contagem foi excluída da planilha.');}
@@ -650,6 +653,7 @@ $('#share-count').addEventListener('click',async()=>{
 $('#copy-share-link').addEventListener('click',async()=>{const value=$('#share-link-value').value;if(!value)return;try{await navigator.clipboard.writeText(value);$('#copy-share-link').textContent='LINK COPIADO';setTimeout(()=>$('#copy-share-link').textContent='COPIAR LINK',1600);}catch(_){$('#share-link-value').focus();$('#share-link-value').select();document.execCommand('copy');$('#copy-share-link').textContent='LINK COPIADO';}});
 $('#new-count').addEventListener('click',createCount);
 $('#session-picker').addEventListener('change',event=>openCount(event.target.value).catch(e=>note(e.message,true)));
+$('#history-store-filter').addEventListener('change',event=>{historyStoreFilter=event.target.value;sessions=[];sessionsLoaded=false;picker();loadSessions();});
 $('#load-sessions').addEventListener('click',loadSessions);
 $('#delete-session').addEventListener('click',deleteSession);
 $('#scan-form').addEventListener('submit',event=>{event.preventDefault();scan();});
@@ -687,7 +691,7 @@ let lastReturnCheck=0;
 async function refreshAfterReturn(){
  if(!navigator.onLine||document.hidden||!user||Date.now()-lastReturnCheck<1500)return;lastReturnCheck=Date.now();
  if(user.allStores&&!$('#analysis-view').hidden)analyze();
- if(user.allStores&&(sessionsLoaded||current))loadSessions();
+ if((user.allStores||user.multiStore)&&(sessionsLoaded||current))loadSessions();
  else if(current&&current.kind!=='RECONTAGEM'){
   const target=current;
   try{const result=await api('checkCount',{id:target.id});if(!result.data.exists&&current===target){remoteUnavailable('Esta contagem foi excluída da planilha.');}}catch(_){}

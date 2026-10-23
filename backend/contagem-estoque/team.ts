@@ -42,18 +42,23 @@ export function scheduleTeamMirror(id:string,config:Config){
  const runtime=(globalThis as unknown as {EdgeRuntime?:{waitUntil:(p:Promise<unknown>)=>void}}).EdgeRuntime;
  if(runtime)runtime.waitUntil(task);return task;
 }
-export async function handleTeam(input:Record<string,any>,user:{id:string},allStores:boolean,store:string|undefined,config:Config){
+export async function handleTeam(input:Record<string,any>,user:{id:string},allStores:boolean,store:string|undefined,config:Config,allowedStores:string[]=[]){
  const call=(action:string,id=input.id,person=input.participantId||null,payload:Record<string,unknown>=input)=>teamRPC('stockcount_team',{p_action:action,p_user:user.id,p_id:id||null,p_person:person,p_payload:payload});
- if(input.action==='teamList')return {handled:true,data:await call('list',null,null,{store:allStores?input.store||null:store})};
+ if(input.action==='teamList'){
+  const selected=input.store||null;
+  if(selected&&!allStores&&!allowedStores.includes(selected))throw Error('Contagem sem permissão.');
+  return {handled:true,data:await call('list',null,null,{store:selected,allowedStores:allStores?null:allowedStores})};
+ }
  const record=input.id?await teamRecord(String(input.id)):null;
  if(!record){if(['teamJoin','teamRead'].includes(input.action))throw Error('Esta contagem não está disponível para participação.');return {handled:false};}
- if(!allStores&&record.store!==store)throw Error('Contagem sem permissão.');
+ if(!allStores&&!allowedStores.includes(record.store))throw Error('Contagem sem permissão.');
  if(input.action==='checkCount')return {handled:true,data:{exists:!record.deleted}};
  if(record.deleted)throw Error('Esta contagem já não existe. A cópia local permanece disponível.');
  if(input.action==='discardEmpty')return {handled:true,data:{retained:true,empty:false}};
  const mapping:Record<string,string>={teamJoin:'join',teamRead:'read',save:'save',finish:'finish',requestDelete:'requestDelete',resolveDelete:'resolveDelete',delete:'delete'};
  if(input.action==='read'){
-  if(!allStores)throw Error('Use ENTRAR NA CONTAGEM e informe seu responsável.');
+  if(!allStores&&!allowedStores.includes(record.store))throw Error('Contagem sem permissão.');
+  if(!allStores&&record.meta?.status!=='FINALIZADA')throw Error('Contagem em andamento: Use ENTRAR NA CONTAGEM e informe seu responsável.');
   scheduleTeamMirror(input.id,config);return {handled:true,data:await call('read',input.id,null,{})};
  }
  if(input.action==='requestRecount'&&record.mirrored_revision<record.revision){scheduleTeamMirror(input.id,config);throw Error('Aguarde a atualização da planilha antes de solicitar recontagem.');}

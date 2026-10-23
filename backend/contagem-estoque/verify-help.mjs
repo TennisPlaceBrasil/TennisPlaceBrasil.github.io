@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-const script=fs.readFileSync(new URL('../../dist/shared/tepe-help.js',import.meta.url),'utf8');
+const script=fs.readFileSync(new URL('../../hub/shared/tepe-help.js',import.meta.url),'utf8');
 function context(path,elements={},hash=''){
  let selected;
  const window={addEventListener(){}},parent={TPHelp:{},postMessage(data){selected=data.context;}};
@@ -9,7 +9,7 @@ function context(path,elements={},hash=''){
  vm.runInNewContext(script,{window,parent,document,location:{pathname:path,hash,origin:'https://test.local'},URL,setTimeout(){},clearTimeout(){}});
  return selected;
 }
-const shown=(extra={})=>({hidden:false,getClientRects:()=>[{}],...extra});
+const shown=(extra={})=>({hidden:false,dataset:{},getClientRects:()=>[{}],...extra});
 assert.equal(context('/hub/apps/precificador/index.html',{'#loginPassword':shown()}),'pricing-login');
 assert.equal(context('/hub/apps/precificador/index.html'),'pricing');
 assert.equal(context('/hub/apps/analise-precos/index.html',{'#password':shown()}),'analysis-login');
@@ -24,3 +24,4 @@ for(let i=1;i<=7;i++)assert.equal(context('/dash-estoquevendas/index.html',{},'#
 assert.equal(context('/acesso.html',{'#user-password':shown()}),'login');
 assert.equal(context('/acesso.html',{'#secure-frame':shown()}),'manual-step');
 console.log('Verified: contextual help for each login, price analysis, all dashboard modules, active/finalized counts, recount requests and unknown EANs.');
+

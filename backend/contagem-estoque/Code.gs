@@ -67,7 +67,7 @@ function resizeRows_(sheet,target){target=Math.max(1,target,sheet.getFrozenRows(
 function resizeColumns_(sheet,target){target=Math.max(1,target,sheet.getFrozenColumns()+1);const current=sheet.getMaxColumns();if(current<target)sheet.insertColumnsAfter(current,target-current);else if(current>target)sheet.deleteColumns(target+1,current-target);}
 function sessionAudit_(value){const audit=value&&typeof value==='object'?value:{};const ip=String(audit.ip||'IP não capturado').trim().slice(0,80),device=String(audit.device||'Dispositivo não identificado').trim().slice(0,100),id=String(audit.id||'').trim().slice(0,80);return {ip,device,sessionId:id};}
 function saveMeta_(meta){db_().getSheetByName('_Contagens').getRange(meta.row,5,1,13).setValues([[meta.status,meta.version,meta.sheet,meta.createdBy,meta.createdAt,meta.updatedAt,meta.requestId,meta.kind||'CONTAGEM',meta.sourceId||'',meta.createdRequestId||'',meta.ip||'Não registrado',meta.device||'Não registrado',meta.sessionId||'']]);}
-function permitted_(meta,p){if(!meta || (!p.allStores&&meta.store!==p.store))throw new Error('Contagem sem permissão.');return meta;}
+function permitted_(meta,p){const stores=Array.isArray(p.allowedStores)?p.allowedStores:[];if(!meta || (!p.allStores&&!stores.includes(meta.store)&&meta.store!==p.store))throw new Error('Contagem sem permissão.');return meta;}
 function publicMeta_(m){const result=Object.assign({},m,{lastRequestId:m.requestId});delete result.row;delete result.requestId;delete result.createdBy;return result;}
 function catalog_(){
   const cache=CacheService.getScriptCache(),key='tp-stock-catalog-subgroups-v2';
@@ -157,17 +157,17 @@ function countDate_(value,now){
 function route_(p){
   if(p.action==='catalog'){const products=catalog_();if(p.ean)return products.find(r=>r[0]===String(p.ean).trim())||null;return products;}
   let list=metadata_();
-  if(p.action==='checkCount')return {exists:list.some(m=>m.id===p.id&&(p.allStores||m.store===p.store))};
+  if(p.action==='checkCount')return {exists:list.some(m=>m.id===p.id&&(p.allStores||(Array.isArray(p.allowedStores)&&p.allowedStores.includes(m.store))||m.store===p.store))};
   if(p.action==='discardEmpty'){
     const meta=permitted_(list.find(m=>m.id===p.id),p);
     if(meta.status==='FINALIZADA')throw new Error('Contagem finalizada não pode ser removida como vazia.');
     return deleteEmptyCount_(meta,list);
   }
-  if(p.action==='recountInbox')return list.filter(m=>m.kind==='RECONTAGEM'&&m.status!=='FINALIZADA'&&(p.allStores||m.store===p.store)&&list.some(source=>source.id===m.sourceId&&source.store===m.store)).map(publicMeta_);
+  if(p.action==='recountInbox')return list.filter(m=>m.kind==='RECONTAGEM'&&m.status!=='FINALIZADA'&&(p.allStores||(Array.isArray(p.allowedStores)&&p.allowedStores.includes(m.store))||m.store===p.store)&&list.some(source=>source.id===m.sourceId&&source.store===m.store)).map(publicMeta_);
   if(p.action==='requestRecount')return requestRecount_(p,list);
   if(p.action==='list'){
-    if(!p.allStores)throw new Error('Histórico restrito aos administradores.');
-    return list.map(publicMeta_);
+    if(!p.allStores&&!Array.isArray(p.allowedStores))throw new Error('Histórico sem lojas autorizadas.');
+    return list.filter(m=>p.allStores||p.allowedStores.includes(m.store)).filter(m=>!p.filterStore||m.store===p.filterStore).map(publicMeta_);
   }
   if(p.action==='delete'){
     if(!p.allStores)throw new Error('Exclusão restrita aos administradores.');
@@ -178,7 +178,7 @@ function route_(p){
     SpreadsheetApp.flush();
     return {id:meta.id,deleted:true};
   }
-  if(p.action==='read'&&!p.allStores)throw new Error('Histórico restrito aos administradores.');
+  if(p.action==='read')permitted_(list.find(m=>m.id===p.id),p);
   if(p.action==='create'){
     if(!/^[A-Z0-9]{2,24}$/.test(p.store))throw new Error('Loja inválida.');
     cleanupAbandonedEmpty_(list,p.store);list=metadata_();
