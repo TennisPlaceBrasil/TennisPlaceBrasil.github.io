@@ -99,3 +99,6 @@ dialog{max-height:calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-
 @media(max-width:1100px),(pointer:coarse){.is-counting #count-options-toggle{display:inline-flex;align-items:center;justify-content:center}.is-counting:not(.count-options-open) th:nth-child(4){width:148px}}
 @media(max-width:600px){.is-counting:not(.count-options-open) th:nth-child(4){width:128px}}
 @media(orientation:landscape) and (max-height:600px) and (min-width:560px){.is-counting:not(.count-options-open) #recount-targets,.is-counting:not(.count-options-open) #delete-pending-status,.is-counting:not(.count-options-open) #delete-review-actions{grid-column:1/-1}}
+
+.mobile-ean{display:none}
+@media(max-width:1100px),(pointer:coarse){.is-counting:not(.count-options-open) .mobile-ean{display:block;font-size:10px;color:#a4a994;margin-top:4px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.is-counting:not(.count-options-open) .lists th:first-child,.is-counting:not(.count-options-open) .lists td:first-child{display:none}}
