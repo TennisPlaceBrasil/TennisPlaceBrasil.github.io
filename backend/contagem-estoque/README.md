@@ -22,7 +22,7 @@ An empty count is removed when it is finalized or replaced with a new count. Lea
 
 ## Read-only monitoring links
 
-Each new count receives a unique, read-only monitoring link. Administrators can regenerate a link for a saved count; regenerating revokes its previous link. Links expire after 30 days and are invalidated when the count is deleted. The lightweight dashboard polls the Google Drive bridge every 10 seconds and shows count status, totals, products, EAN, brand, quantity, and the last scan time per product. Session IP and device are shown once at the top, not repeated on each product row. The token is stored as a SHA-256 hash in Supabase; a dedicated public Edge Function can only read a count when presented with a valid share token.
+Each new count receives a unique, read-only monitoring link shared by all participants. Administrators can regenerate a link for a saved count; regenerating revokes its previous link. Links expire after 30 days and are invalidated when the count is deleted. The lightweight dashboard polls every 10 seconds and shows one stacked card per responsible, with that person’s products, quantities, defects, device and latest synchronization. The token is stored as a SHA-256 hash in Supabase; a dedicated public Edge Function can only read a count when presented with a valid share token.
 
 The dashboard reads the current row-level scan times from Google Sheets. Deploy the updated Apps Script source after changes to `Code.gs` so the sheet stores the per-product scan timestamp and session IP/device metadata.
 
@@ -86,7 +86,7 @@ The store can return to the inventory start screen without leaving its session o
 
 Novas contagens criadas pela interface usam `stockcount_team_counts` e `stockcount_team_people` como registro transacional. A mesma contagem pode receber vários aparelhos. RESPONSAVEL fica junto à data, exige ao menos quatro letras (espaços e acentos permitidos; números e outros caracteres rejeitados) e identifica a contribuição de cada participante. O nome não é uma nova credencial; a autorização continua sendo o login da loja. IDs aleatórios de participação são privados, persistidos no dispositivo antes da entrada e não aparecem na lista dos demais participantes.
 
-Um aparelho cria a contagem; os demais informam seu próprio responsável e usam **ENTRAR NA CONTAGEM**, na lista de contagens em andamento da própria loja. MINHA PARTE permite corrigir somente a contribuição local. TOTAL DA CONTAGEM é uma consulta da soma de todos. Dividir fisicamente as áreas continua necessário: a deduplicação impede reenvios de uma mesma operação, mas não identifica a mesma peça contada por duas pessoas.
+Um aparelho cria a contagem; os demais informam seu próprio responsável e usam **CONTINUAR** na lista de contagens em andamento da própria loja, visível mesmo durante outra sessão e atualizada a cada 10 segundos. MINHA PARTE permite corrigir somente a contribuição local. TOTAL DA CONTAGEM é uma consulta da soma de todos. Dividir fisicamente as áreas continua necessário: a deduplicação impede reenvios de uma mesma operação, mas não identifica a mesma peça contada por duas pessoas.
 
 Cada sincronização transmite um snapshot exclusivamente daquela participação, com revisão própria e identificador durável. Sob um bloqueio transacional da contagem, o servidor confere a revisão da participação e o SHA-256 do pacote, substitui somente sua contribuição e calcula a soma. Repetir o mesmo pacote não soma de novo. Um pacote antigo não sobrescreve uma revisão mais recente. Web Locks impede duas abas no mesmo navegador de alterarem o mesmo rascunho; a aba sem bloqueio não escreve nem no servidor nem no IndexedDB. A falta dessa API bloqueia a edição colaborativa, mantendo a exportação acessível.
 
@@ -100,6 +100,7 @@ Contagens antigas não são convertidas automaticamente para evitar somar snapsh
 
 Validação:
 - `node backend/contagem-estoque/verify-team-ui.mjs`
+- `node backend/contagem-estoque/verify-share-ui.mjs`
 - `node --experimental-strip-types backend/contagem-estoque/verify-team-api.mjs`
 - Execute `verify-team.sql` em uma transação que termina com ROLLBACK; ajuste as siglas de fixture se necessário.
 - Teste real de concorrência passou com dois envios paralelos de 5.000 EANs cada: 15.000 unidades somadas, duas revisões, sem perda. As fixtures temporárias foram removidas.

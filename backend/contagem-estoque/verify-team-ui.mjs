@@ -23,6 +23,9 @@ for(const d of [a,b]){
 }
 a.run("addScan('001');addScan('001');current.peers.counts=[{ean:'001',quantity:3,description:'Produto',brand:'MARCA',responsible:'João'}];");
 assert.equal(a.run('teamExportState().counts[0].quantity'),5);
+a.run('inventoryHome=false;renderTeam()');assert.equal(a.$('#team-open').hidden,false,'Open team counts remain available while a session is active');
+a.context.fetch=async()=>Response.json({data:[{id:'c',label:'ECOM TESTE',date:'2026-10-23',participants:[{responsible:'Maria',done:false}]}]});
+await a.run('loadTeamCounts()');assert.match(a.$('#team-open-list').innerHTML,/Maria/);assert.match(a.$('#team-open-list').innerHTML,/>CONTINUAR<\/button>/);
 a.run("teamScope='total';addScan('001')");assert.equal(a.run('current.counts[0].quantity'),2,'Total view must not edit own or combined rows');
 a.run("teamScope='own';current.counts[0].quantity=1;current.counts[0].origin='AJUSTE MANUAL';changed();");
 assert.equal(a.run('teamExportState().counts[0].quantity'),4,'Own correction preserves other participant');

@@ -2,7 +2,7 @@ begin;
 set local role service_role;
 do $$
 declare u uuid:='7a23b121-c29c-4513-8a26-d7822f04149d'; stranger uuid:='cf55a73e-63ad-405b-ba7e-db7ffd95dcff';
- a uuid:=gen_random_uuid(); b uuid:=gen_random_uuid(); id text:='__team_test_'||gen_random_uuid(); result jsonb; state jsonb; fail boolean; bulk jsonb;
+ a uuid:=gen_random_uuid(); b uuid:=gen_random_uuid(); id text:='__team_test_'||gen_random_uuid(); result jsonb; state jsonb; people jsonb; fail boolean; bulk jsonb;
 begin
  result:=public.stockcount_team('init',u,id,a,jsonb_build_object('id',id,'store','APAR','date','2026-10-23','label','TESTE TEMPORARIO','kind','CONTAGEM','status','EM ANDAMENTO','responsible','João'));
  if result->>'responsible'<>'João' then raise exception 'init/name failed'; end if;
@@ -16,6 +16,10 @@ begin
  if (result->>'participantVersion')::int<>1 then raise exception 'duplicate reprocessed';end if;
  fail:=false;begin perform public.stockcount_team('save',u,id,a,jsonb_set(state,'{counts,0,quantity}','7'));exception when others then fail:=true;end;if not fail then raise exception 'changed same packet accepted';end if;
  result:=public.stockcount_team('save',u,id,b,jsonb_set(state,'{requestId}','"test-request-0002"'));
+ people:=public.stockcount_team_share_people(id);
+ if jsonb_array_length(people)<>2 or (select x->>'responsible' from jsonb_array_elements(people) x where x->>'responsible'='João') is null
+  or (select (x#>>'{counts,0,quantity}')::int from jsonb_array_elements(people) x where x->>'responsible'='Maria')<>2 then raise exception 'per-responsible share breakdown failed';end if;
+ if people->0 ? 'id' then raise exception 'share view exposed participant capability';end if;
  result:=public.stockcount_team_snapshot(id);
  if (result#>>'{counts,0,quantity}')::int<>4 then raise exception 'two people did not sum';end if;
  result:=public.stockcount_team_snapshot(id,a);

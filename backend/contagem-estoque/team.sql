@@ -49,6 +49,14 @@ returns jsonb language sql stable security invoker set search_path=public as $$
  from public.stockcount_team_counts c left join public.stockcount_team_people p on p.count_id=c.id and p.id=p_person where c.id=p_id and not c.deleted;
 $$;
 
+create or replace function public.stockcount_team_share_people(p_id text)
+returns jsonb language sql stable security invoker set search_path=public as $$
+ select coalesce(jsonb_agg(jsonb_build_object('responsible',p.responsible,'done',p.done,'updatedAt',p.updated_at,
+  'device',p.audit->>'device','ip',p.audit->>'ip','counts',coalesce(p.state->'counts','[]'),'defects',coalesce(p.state->'defects','[]')) order by p.updated_at,p.responsible),'[]')
+ from public.stockcount_team_people p join public.stockcount_team_counts c on c.id=p.count_id
+ where p.count_id=p_id and not c.deleted;
+$$;
+
 create or replace function public.stockcount_team(p_action text,p_user uuid,p_id text default null,p_person uuid default null,p_payload jsonb default '{}')
 returns jsonb language plpgsql security invoker set search_path=public as $$
 declare c public.stockcount_team_counts%rowtype; p public.stockcount_team_people%rowtype; adm boolean; st text; nm text; k text; r jsonb; req text; payload jsonb; n integer; lease uuid;
@@ -63,7 +71,8 @@ begin
   return public.stockcount_team_snapshot(p_id,p_person);
  end if;
  if p_action='list' then
-  return (select coalesce(jsonb_agg((meta-'adjustedCounts'-'adjustedDefects')||jsonb_build_object('id',id,'collaborative',true,'version',revision,'updatedAt',updated_at) order by updated_at desc),'[]')
+  return (select coalesce(jsonb_agg((meta-'adjustedCounts'-'adjustedDefects')||jsonb_build_object('id',id,'collaborative',true,'version',revision,'updatedAt',updated_at,
+    'participants',(select coalesce(jsonb_agg(jsonb_build_object('responsible',p.responsible,'done',p.done) order by p.updated_at),'[]') from public.stockcount_team_people p where p.count_id=stockcount_team_counts.id)) order by updated_at desc),'[]')
    from public.stockcount_team_counts where not deleted and (adm or store=st) and (p_payload->>'store' is null or store=p_payload->>'store')
     and (coalesce((p_payload->>'history')::boolean,false) or meta->>'status'<>'FINALIZADA'));
  end if;
@@ -152,5 +161,5 @@ begin
  return null;
 end;
 $$;
-revoke all on function public.stockcount_team_rows(text,text,uuid),public.stockcount_team_snapshot(text,uuid),public.stockcount_team(text,uuid,text,uuid,jsonb),public.stockcount_team_mirror(text,text,uuid,bigint,text) from public,anon,authenticated;
-grant execute on function public.stockcount_team_rows(text,text,uuid),public.stockcount_team_snapshot(text,uuid),public.stockcount_team(text,uuid,text,uuid,jsonb),public.stockcount_team_mirror(text,text,uuid,bigint,text) to service_role;
+revoke all on function public.stockcount_team_rows(text,text,uuid),public.stockcount_team_snapshot(text,uuid),public.stockcount_team(text,uuid,text,uuid,jsonb),public.stockcount_team_mirror(text,text,uuid,bigint,text),public.stockcount_team_share_people(text) from public,anon,authenticated;
+grant execute on function public.stockcount_team_rows(text,text,uuid),public.stockcount_team_snapshot(text,uuid),public.stockcount_team(text,uuid,text,uuid,jsonb),public.stockcount_team_mirror(text,text,uuid,bigint,text),public.stockcount_team_share_people(text) to service_role;

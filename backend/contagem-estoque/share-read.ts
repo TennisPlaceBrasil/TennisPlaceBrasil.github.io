@@ -18,7 +18,7 @@ Deno.serve(async req=>{
   const record=await teamRecord(link.count_id);let count;
   if(record){
     if(record.deleted||record.store!==link.store)return reply({error:"Esta contagem não está mais disponível."},404);
-    count=await teamRPC('stockcount_team_snapshot',{p_id:record.id});scheduleTeamMirror(record.id,config);
+    count=await teamRPC('stockcount_team_snapshot',{p_id:record.id});count.shareParticipants=await teamRPC('stockcount_team_share_people',{p_id:record.id});scheduleTeamMirror(record.id,config);
   }else{
     const response=await bridge(config,{action:"read",id:link.count_id,store:link.store,allStores:true,userId:"share"});
     if(!response.ok)return reply({error:"Esta contagem não está mais disponível."},404);
@@ -27,6 +27,6 @@ Deno.serve(async req=>{
   }
   if(count.collaborative){count.device=count.participants.map((p:{responsible:string;device:string})=>p.responsible+' · '+(p.device||'Não informado')).join(' / ');count.ip=count.participants.map((p:{responsible:string;ip:string})=>p.responsible+': '+(p.ip||'IP não capturado')).join(' / ');}
   const products=[...(Array.isArray(count.defects)?count.defects.map((r:Record<string,unknown>)=>({...r,kind:"DEFEITOS"})):[]),...(Array.isArray(count.counts)?count.counts.map((r:Record<string,unknown>)=>({...r,kind:"CONTAGEM"})):[])];
-  return reply({data:{id:count.id,label:count.label,store:count.store,date:count.date,status:count.status,updatedAt:count.updatedAt,device:count.device||"Não registrado",ip:count.ip||"Não registrado",counts:count.counts||[],defects:count.defects||[],products,participants:count.participants||[]}});
+  return reply({data:{id:count.id,label:count.label,store:count.store,date:count.date,status:count.status,updatedAt:count.updatedAt,device:count.device||"Não registrado",ip:count.ip||"Não registrado",counts:count.counts||[],defects:count.defects||[],products,participants:count.shareParticipants||[]}});
  }catch(error){return reply({error:error instanceof Error?error.message:"Não foi possível carregar esta contagem."},500);}
 });
