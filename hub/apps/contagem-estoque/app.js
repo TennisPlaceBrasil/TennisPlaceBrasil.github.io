@@ -232,7 +232,7 @@ function render(){
   $('#count-options-toggle').hidden=!compactCounting;
   if(!compactCounting){document.body?.classList.remove('count-options-open');$('#count-options-toggle').setAttribute?.('aria-expanded','false');$('#count-options-toggle').textContent='OPÇÕES';}
 
-  $('#empty-state').hidden=!!current&&!inventoryHome;$('#counting').hidden=!current||inventoryHome;$('#back-inventory-home').hidden=!current||inventoryHome;$('#device-drafts').hidden=!inventoryHome;$('#counting').dataset.localFinished=String(!!current?.localFinished&&current.status!=='FINALIZADA');$('#share-link-panel').hidden=inventoryHome||!(current&&current.shareUrl);if(current?.shareUrl)$('#share-link-value').value=current.shareUrl;renderRecount();updateInventoryHelp();if(!current){renderTeam();$('#delete-review-actions').hidden=true;$('#request-delete-session').hidden=true;return;}
+  $('#empty-state').hidden=!!current&&!inventoryHome;$('#counting').hidden=!current||inventoryHome;$('#back-inventory-home').hidden=!current||inventoryHome;$('#device-drafts').hidden=!inventoryHome;$('#counting').dataset.localFinished=String(!!current?.localFinished&&current.status!=='FINALIZADA');$('#share-link-panel').hidden=inventoryHome||!(current&&current.shareUrl);if(current?.shareUrl)$('#share-link-value').value=current.shareUrl;renderRecount();if(!current){renderTeam();$('#delete-review-actions').hidden=true;$('#request-delete-session').hidden=true;return;}
   renderTeam();$('#export-xlsx').textContent=current.collaborative?'BAIXAR EXCEL CONSOLIDADO':'BAIXAR PLANILHA EXCEL';$('#session-title').textContent=current.label;
   $('#reload-count').hidden=!user?.allStores&&current.kind!=='RECONTAGEM';
   const view=current.collaborative&&teamScope==='total'?teamExportState():current,counts=view.counts,defects=view.defects,done=current.status==='FINALIZADA'||current.localFinished||current.collabViewOnly||current.collabReadOnly||current.collaborative&&teamScope==='total',deletePending=current.deleteStatus==='PENDENTE';
@@ -609,10 +609,7 @@ async function submitRecount(event){
   try{if(file.size>1500000)throw Error('O TXT deve ter no máximo 1,5 MB.');const eans=parseRecountTxt(await file.text());$('#recount-file-status').textContent='Enviando '+eans.length+' EANs…';const r=await api('requestRecount',{id:recountSourceId,eans,requestId:uuid(),auditSession:await auditSession()});sessions.push(r.data);$('#recount-dialog').close();picker();$('#app-error').textContent='Recontagem enviada para a loja '+r.data.store+'.';loadRecounts();}
   catch(e){$('#recount-file-status').textContent=e.message;}finally{$('#send-recount').disabled=false;}
 }
-function updateInventoryHelp(){
-  const context=!user?'inventory-login':activeDeletionReviewId&&current?.id===activeDeletionReviewId?'inventory-delete-review':!$('#analysis-view').hidden?'inventory-analysis':current?.deleteStatus==='PENDENTE'?'inventory-delete-pending':current?.localFinished&&current.status!=='FINALIZADA'?'inventory-local-finished':current?.status==='FINALIZADA'?(current.kind==='RECONTAGEM'?'inventory-recount-finished':'inventory-finished'):current?.kind==='RECONTAGEM'?'inventory-recount':!current?(user.allStores?'inventory-admin-start':'inventory-start'):mode==='defects'?'inventory-defects':'inventory-count';
-  window.dispatchEvent(new CustomEvent('tp-help',{detail:context}));
-}
+
 $('#recount-search').addEventListener('input',()=>{recountPage=0;renderRecount();});
 $('#recount-prev').addEventListener('click',()=>{recountPage--;renderRecount();});
 $('#recount-next').addEventListener('click',()=>{recountPage++;renderRecount();});
@@ -661,12 +658,12 @@ $('#import-count').addEventListener('click',()=>$('#import-count-file').click())
 $('#import-count-file').addEventListener('change',event=>importWithFeedback('counts',event.target));$('#import-defects-file').addEventListener('change',event=>importWithFeedback('defects',event.target));
 $('#import-unknown-form').addEventListener('submit',event=>{event.preventDefault();sendImport(true).then(()=>{if(!pendingImport)$('#import-unknown-dialog').close();}).catch(e=>$('#import-file-status').textContent=e.message);});
 $('#import-cancel-unknown').addEventListener('click',()=>{$('#import-unknown-dialog').close();pendingImport=null;$('#import-file-status').textContent='Importação cancelada para corrigir os EANs.';});
-$('#import-unknown-dialog').addEventListener('close',()=>{$('#import-confirm-unknown').disabled=false;updateInventoryHelp();});
-$('#open-camera').addEventListener('click',()=>{if(!current||current.status==='FINALIZADA')return;$('#camera-dialog').showModal();window.dispatchEvent(new CustomEvent('tp-help',{detail:'inventory-camera'}));startCamera();});
-$('#camera-close').addEventListener('click',()=>stopCamera());$('#camera-dialog').addEventListener('close',()=>{stopCamera(false);updateInventoryHelp();});
+$('#import-unknown-dialog').addEventListener('close',()=>{$('#import-confirm-unknown').disabled=false;});
+$('#open-camera').addEventListener('click',()=>{if(!current||current.status==='FINALIZADA')return;$('#camera-dialog').showModal();startCamera();});
+$('#camera-close').addEventListener('click',()=>stopCamera());$('#camera-dialog').addEventListener('close',()=>{stopCamera(false);});
 $('#correct-ean').addEventListener('click',()=>{$('#unknown-dialog').close();unknown=null;$('#ean-input').focus();$('#ean-input').select();});
 $('#unknown-form').addEventListener('submit',event=>{event.preventDefault();const description=$('#unknown-description').value.trim(),brand=$('#unknown-brand').value.trim();if(!description||!brand){$('#unknown-description').value=description;$('#unknown-brand').value=brand;$('#unknown-form').reportValidity();return;}const row=addScan(unknown,true,unknownOrigin,{description,brand});if(row){$('#unknown-dialog').close();unknown=null;}});
-document.querySelectorAll('.mode-button').forEach(b=>b.addEventListener('click',()=>{mode=b.dataset.mode;render();updateInventoryHelp();document.querySelectorAll('.mode-button').forEach(x=>x.classList.toggle('active',x===b));$('#ean-input').focus();}));
+document.querySelectorAll('.mode-button').forEach(b=>b.addEventListener('click',()=>{mode=b.dataset.mode;render();document.querySelectorAll('.mode-button').forEach(x=>x.classList.toggle('active',x===b));$('#ean-input').focus();}));
 document.querySelectorAll('#count-body,#defect-body').forEach(body=>body.addEventListener('click',event=>{
   const b=event.target.closest('[data-delta],[data-remove]');if(!b||!editableTeam())return;
   const list=current[b.dataset.kind],row=list.find(r=>r.ean===b.dataset.ean);if(!row)return;
@@ -682,7 +679,7 @@ $('#reload-count').addEventListener('click',()=>openCount(current?.id).catch(e=>
 $('#finish-count').addEventListener('click',finishCount);$('#export-txt').addEventListener('click',exportCsv);$('#export-xlsx').addEventListener('click',exportExcel);
 $('#analysis-filters').addEventListener('submit',analyze);
 $('#filter-brand').addEventListener('change',renderAnalysis);$('#filter-subgroup').addEventListener('change',renderAnalysis);
-function showTab(analysis){$('#count-view').hidden=analysis;$('#analysis-view').hidden=!analysis;$('#tab-count').classList.toggle('active',!analysis);$('#tab-analysis').classList.toggle('active',analysis);render();updateInventoryHelp();}
+function showTab(analysis){$('#count-view').hidden=analysis;$('#analysis-view').hidden=!analysis;$('#tab-count').classList.toggle('active',!analysis);$('#tab-analysis').classList.toggle('active',analysis);render();}
 $('#tab-count').addEventListener('click',()=>showTab(false));$('#tab-analysis').addEventListener('click',()=>{showTab(true);analyze();});
 window.addEventListener('pagehide',()=>stopCamera(false));
 window.addEventListener('beforeunload',event=>{if((localError||localWrites>0)&&current){event.preventDefault();event.returnValue='';}});
