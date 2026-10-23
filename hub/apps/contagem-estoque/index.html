@@ -1,16 +1,16 @@
 <!doctype html>
 <html lang="pt-BR">
-<head>
+<head><meta name="application-name" content="HubTennisPlace"><meta property="og:site_name" content="HubTennisPlace">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#10110f">
-  <meta name="description" content="Contagem de estoque da Tennis Place com salvamento no Google Drive.">
-  <title>Inventário | Tennis Place</title>
+  <meta name="description" content="Contagem de estoque do HubTennisPlace com salvamento no Google Drive.">
+  <title>HubTennisPlace | Inventário</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="Inventário TP">
+  <meta name="apple-mobile-web-app-title" content="Inventário HubTennisPlace">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="style.css?v=pwa1">
   <link rel="stylesheet" href="mobile.css?v=3">
@@ -18,8 +18,8 @@
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="../../" aria-label="Voltar ao Hub Tennis Place"><img src="../../logo.png" alt="Tennis Place"><span class="brand-tool">INVENTÁRIO</span></a>
-    <div class="account-bar"><button id="count-options-toggle" type="button" class="button button-quiet" aria-expanded="false" hidden>OPÇÕES</button><button id="install-app" type="button" class="button button-quiet">INSTALAR APP</button><button id="fullscreen-app" type="button" class="button button-quiet" hidden>TELA CHEIA</button><span id="account-label" class="local-badge">ACESSO TENNIS PLACE</span><button id="logout" class="button button-quiet" hidden>SAIR</button></div>
+    <a class="brand" href="../../" aria-label="Voltar ao HubTennisPlace"><img src="../../logo.png" alt="Tennis Place"><span class="brand-tool">INVENTÁRIO</span></a>
+    <div class="account-bar"><button id="count-options-toggle" type="button" class="button button-quiet" aria-expanded="false" hidden>OPÇÕES</button><button id="install-app" type="button" class="button button-quiet">INSTALAR APP</button><button id="fullscreen-app" type="button" class="button button-quiet" hidden>TELA CHEIA</button><span id="account-label" class="local-badge">ACESSO HUBTENNISPLACE</span><button id="logout" class="button button-quiet" hidden>SAIR</button></div>
   </header>
   <section class="login-panel" id="login-panel"><p class="eyebrow">ACESSO TENNIS PLACE</p><h1><em>Inventário</em></h1><p>Use o mesmo acesso dos manuais.</p><form id="login-form"><label for="login-id">Sigla da loja ou e-mail</label><input id="login-id" autocomplete="username" required><label for="login-password">CNPJ da loja ou senha</label><input id="login-password" type="password" autocomplete="current-password" required><button class="button button-primary" id="login-submit">ENTRAR</button><p id="login-error" role="alert"></p><button id="recover-local" class="button button-quiet" type="button" hidden>RETOMAR CONTAGEM DESTE DISPOSITIVO</button></form></section>
   <main id="app-main" hidden><nav class="tool-tabs"><button id="tab-count" class="active">CONTAGEM</button><button id="tab-analysis" hidden>ANÁLISE DE ESTOQUE</button></nav><p id="app-error" role="alert"></p><section class="offline-panel"><p id="offline-status" class="offline-status" role="status">Preparando uso sem internet…</p><div><button id="prepare-offline" class="button button-quiet" type="button">PREPARAR / ATUALIZAR USO OFFLINE</button><button id="sync-now" class="button button-quiet" type="button">SINCRONIZAR</button></div></section><div id="count-view"><button id="back-inventory-home" class="button button-quiet" type="button" hidden>← INÍCIO DO INVENTÁRIO</button><section id="device-drafts" class="recount-inbox" hidden><h3>Em andamento neste dispositivo</h3><p>Continue uma contagem local. Dados pendentes permanecem neste aparelho até sincronizar.</p><div id="device-draft-list"></div></section>
@@ -112,7 +112,7 @@
       <p class="footer-note">A análise utiliza contagens finalizadas e soma as unidades da contagem com os defeitos.</p>
     </section>
     </div><section id="analysis-view" hidden><div class="analysis-heading"><p class="eyebrow">GESTÃO / HISTÓRICO</p><h1>Análise de <em>Estoque</em></h1><p>Estoque físico = contagem + defeitos. Produtos ausentes em uma data aparecem com zero. Consulte até 12 meses por vez.</p></div><form id="analysis-filters" class="analysis-filters"><label>LOJA<select id="filter-store"></select></label><label>MARCA<select id="filter-brand"><option value="">Todas as marcas</option></select></label><label>SUBGRUPO<select id="filter-subgroup"><option value="">Todos os subgrupos</option></select></label><label>DE<input id="filter-start" type="date"></label><label>ATÉ<input id="filter-end" type="date"></label><button class="button button-primary">ANALISAR</button></form><p id="analysis-status" aria-live="polite"></p><section id="analysis-dashboard" aria-label="Dashboard do inventário" aria-live="polite"></section><h2 class="analysis-detail-title">Comparação detalhada por data</h2><div class="analysis-table"><table><thead id="analysis-head"></thead><tbody id="analysis-body"></tbody></table></div></section>
-    <footer><span>TENNIS PLACE <b>HUB</b></span><span>BE BOLD. BE YOU.</span></footer>
+    <footer><span>HubTennisPlace</span><span>BE BOLD. BE YOU.</span></footer>
   </main>
   <dialog id="camera-dialog" class="camera-dialog"><div class="list-heading"><div><p class="eyebrow">LEITURA PELO DISPOSITIVO</p><h2>Código de barras</h2></div><button id="camera-close" class="button button-quiet" type="button">FECHAR</button></div><video id="camera-video" autoplay muted playsinline></video><p id="camera-status" role="status">A câmera inicia apenas quando solicitada.</p><section id="camera-product" class="camera-product" hidden aria-live="polite"><strong id="camera-product-name"></strong><span id="camera-product-meta"></span><div><button id="camera-launch" class="button button-primary" type="button" disabled>LANÇAR</button><button id="camera-rescan" class="button button-quiet" type="button">LER OUTRO CÓDIGO</button></div></section><section id="camera-recent" class="camera-recent" hidden><h3>Últimos 3 lançamentos pela câmera</h3><ol id="camera-recent-list"></ol></section><small>Confira o produto antes de lançar. A câmera permanece aberta. Códigos desconhecidos não aparecem para lançamento aqui; use a digitação para identificá-los.</small></dialog>
   <dialog id="import-unknown-dialog"><form id="import-unknown-form"><p class="eyebrow">EAN FORA DO CADASTRO</p><h2>Produto inexistente</h2><p id="import-unknown-count"></p><p id="import-unknown-list" class="import-unknown-list"></p><p>Informe produto e marca de cada EAN antes de lançar para cadastro posterior.</p><div id="import-unknown-fields"></div><div class="dialog-actions"><button type="button" id="import-cancel-unknown" class="button button-quiet">CORRIGIR ARQUIVO</button><button type="submit" id="import-confirm-unknown" class="button button-primary">LANÇAR MESMO ASSIM</button></div></form></dialog>

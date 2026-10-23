@@ -1,13 +1,13 @@
 <!doctype html>
 <html lang="pt-BR">
-<head>
+<head><meta name="application-name" content="HubTennisPlace"><meta property="og:site_name" content="HubTennisPlace">
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#111111"><title>Acompanhamento de Inventário | Tennis Place</title>
+<meta name="theme-color" content="#111111"><title>HubTennisPlace | Acompanhamento de Inventário</title>
 <link rel="icon" href="../../../../favicon.png"><link rel="stylesheet" href="./style.css?v=team2">
 </head>
 <body>
 <main class="page">
-<header class="topbar"><a class="brand" href="../../../"><img src="../../../logo.png" alt="Tennis Place"></a><div class="live"><i></i><span>ACOMPANHAMENTO</span><small id="connection-state">Conectando</small></div></header>
+<header class="topbar"><a class="brand" href="../../../" aria-label="Voltar ao HubTennisPlace"><img src="../../../logo.png" alt="Tennis Place"></a><div class="live"><i></i><span>ACOMPANHAMENTO</span><small id="connection-state">Conectando</small></div></header>
 <section id="error-state" class="error-card" hidden><strong>Contagem indisponível</strong><p id="error-message">Verifique se o link ainda é válido.</p></section>
 <section id="dashboard" hidden>
 <div class="heading"><div><p class="eyebrow">INVENTÁRIO · <span id="store"></span></p><h1 id="count-title">Acompanhamento</h1><p class="subhead"><span id="count-date"></span><span class="dot">•</span><span id="count-status"></span></p></div><div class="freshness"><span>ÚLTIMA ATUALIZAÇÃO</span><strong id="updated-at">—</strong><small>Atualização automática a cada 10 segundos</small></div></div>
@@ -17,7 +17,7 @@
 <section class="stats"><article><span>UNIDADES CONTADAS</span><strong id="units-counted">0</strong></article><article><span>UNIDADES COM DEFEITO</span><strong id="units-defects">0</strong></article><article><span>EANs DIFERENTES</span><strong id="unique-eans">0</strong></article></section>
 <section class="products"><div class="table-head"><div><p class="eyebrow">DETALHAMENTO</p><h2>Contagem por responsável</h2></div><span id="refreshed-at" aria-live="polite"></span></div>
 <div id="participant-cards" class="participant-cards"></div><p id="empty-products" class="empty" hidden>Nenhum produto foi registrado nesta contagem.</p></section>
-<footer><span>TENNIS PLACE</span><span>Be bold. Be You.</span></footer>
+<footer><span>HubTennisPlace</span><span>Be bold. Be You.</span></footer>
 </section>
 </main>
 <script src="./app.js?v=subgroups1" defer></script>
