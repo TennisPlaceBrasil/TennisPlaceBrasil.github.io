@@ -4,9 +4,17 @@ import vm from 'node:vm';
 import {performance} from 'node:perf_hooks';
 const file=new URL('../../hub/apps/contagem-estoque/app.js',import.meta.url);
 const source=fs.readFileSync(file,'utf8').replace(/initializeDevice\(\)\.then\(async\(\)=>\{.*\}\s*\);/,'');
+const html=fs.readFileSync(new URL('../../hub/apps/contagem-estoque/index.html',import.meta.url),'utf8');
+assert.ok(html.includes('FINALIZAR CONTAGEM'));
+assert.ok(html.includes('EXCLUIR CONTAGEM'));
+assert.ok(html.includes('EXPORTAR ARQUIVO'));
+assert.ok(html.indexOf('id="offline-panel-count"')>html.indexOf('id="export-panel"'));
+assert.ok(html.indexOf('id="share-link-panel"')>html.indexOf('id="offline-panel-count"'));
+assert.ok(!/IMPORTAR (?:CONTAGEM|DEFEITOS) TXT/.test(html));
+assert.ok(html.includes('id="delete-confirm-dialog"'));
 function device(){
  const els=new Map(),records=new Map(),settings=new Map(),events=[];
- const element=()=>({value:'',textContent:'',innerHTML:'',hidden:false,disabled:false,readOnly:false,dataset:{},className:'',classList:{toggle(){},add(){},remove(){}},addEventListener(type,fn){events.push([this,type,fn]);},setCustomValidity(s){this.validationMessage=s;},reportValidity(){return !this.validationMessage;},checkValidity(){return true;},focus(){},select(){},scrollIntoView(){},showModal(){this.open=true;},close(){this.open=false;},matches(){return false;}});
+ const element=()=>({parentElement:null,append(child){child.parentElement=this;},value:'',textContent:'',innerHTML:'',hidden:false,disabled:false,readOnly:false,dataset:{},className:'',classList:{toggle(){},add(){},remove(){}},addEventListener(type,fn){events.push([this,type,fn]);},setCustomValidity(s){this.validationMessage=s;},reportValidity(){return !this.validationMessage;},checkValidity(){return true;},focus(){},select(){},scrollIntoView(){},showModal(){this.open=true;},close(){this.open=false;},matches(){return false;}});
  const $=s=>{if(!els.has(s))els.set(s,element());return els.get(s);};
  const local={ready:async()=>{},drain:async()=>{},setting:async(k,v)=>settings.set(k,structuredClone(v)),read:async(_,k)=>settings.get(k),list:async()=>[...records.values()],restore:async(_,id)=>structuredClone(records.get(id)||null),remove:async(_,id)=>records.delete(id),save:async(owner,state,info)=>{records.set(state.id,structuredClone({...state,...info,owner}));}};
  const sandbox={console,Map,Set,JSON,Number,String,Array,Error,Date,Intl,Blob,Response,AbortSignal,crypto:globalThis.crypto,structuredClone,CustomEvent:class{},setTimeout(){return 1;},clearTimeout(){},setInterval(){},navigator:{onLine:true,userAgent:'Chrome Windows',locks:{request:async(_,options,callback)=>callback({name:'lock'})}},TPInventoryLocal:local,sessionStorage:{getItem(){return null;},setItem(){},removeItem(){}},localStorage:{getItem(){return null;},setItem(){},removeItem(){}},window:{addEventListener(){},dispatchEvent(){}},document:{hidden:false,addEventListener(){},querySelector:$,querySelectorAll(){return[];},activeElement:null},confirm:()=>true,alert:()=>{},fetch:async()=>Response.json({data:null})};

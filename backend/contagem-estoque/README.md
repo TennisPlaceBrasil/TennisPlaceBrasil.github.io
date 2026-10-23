@@ -19,7 +19,7 @@ The camera reader is opened only on request. Chrome uses the native Barcode Dete
 
 All users can import a TXT into Contagem or Defeitos. Each line uses EAN,QNTDD; duplicates in a file are summed, and imported quantities are added to existing rows. Unknown EANs are listed and require explicit confirmation. Imports are validated and written in a single request. In a recount, the server rejects EANs that were not requested for that recount.
 
-An empty count is removed when it is finalized or replaced with a new count. Leaving the page triggers a best-effort cleanup request; if the browser is offline, an empty unfinished count is removed the next time that store starts a count after 12 hours. Spreadsheet tabs shrink to only the rows and columns actually used.
+Empty counts are preserved when finalized and when a new count starts. Finishing a participant with no scans never removes the shared count. Store deletion is an explicit request, confirmed in the interface and reviewed by an administrator; pending requests are hidden from the store but remain available to the administrator. Spreadsheet tabs shrink to only the rows and columns actually used.
 
 ## Read-only monitoring links
 
@@ -61,7 +61,7 @@ Depois do login e de criar/abrir a contagem com internet, aguarde **Pronto para 
 
 Cada bipagem é persistida no IndexedDB, separada por usuário e contagem; apenas a linha alterada é gravada durante a bipagem. A contagem pode ser recuperada no botão **Retomar contagem deste dispositivo** após recarregar ou reabrir a página. Sair explicitamente bloqueia essa retomada até o próximo login. Não há senha nem token no IndexedDB. Cadastro e recursos offline são preparados uma vez por sessão de acesso; nenhuma resposta autenticada é armazenada pelo service worker.
 
-Excel com três abas e TXT de Contagem/Defeitos, além do CSV de importação, são gerados localmente. EAN permanece texto, com zeros iniciais, e a importação lista os defeitos primeiro. Finalizar sem conexão fecha os lançamentos no dispositivo e deixa o envio pendente. A contagem vazia é removida quando o servidor confirma a exclusão, incluindo recuperação de uma resposta perdida.
+Excel com três abas e TXT de Contagem/Defeitos, além do CSV de importação, são gerados localmente. EAN permanece texto, com zeros iniciais, e a importação lista os defeitos primeiro. Finalizar sem conexão fecha os lançamentos no dispositivo e deixa o envio pendente. Uma contagem vazia permanece salva ao finalizar. Somente uma exclusão explícita confirmada pelo usuário remove a contagem; falhas de rede preservam os dados locais.
 
 A sincronização transmite snapshots versionados em lotes com identificador estável, persistido antes da requisição. O mesmo pacote é repetido em caso de resposta perdida; bipagens posteriores são enviadas depois da confirmação do pacote anterior. Conflitos ou exclusão no Drive preservam uma cópia local para exportação, sem sobrescrever o servidor nem recriar a contagem apagada. Uma falha de armazenamento é exibida e uma gravação completa repara a cópia local na próxima tentativa bem-sucedida.
 
@@ -110,7 +110,7 @@ Novas tabelas e RPCs são exclusivas de service_role, com RLS e revogação de a
 
 O catálogo inclui `[EAN, produto, marca, subgrupo]`; o quarto valor vem de `DESCRGRUPOPROD` (coluna K de Sheet0). As classificações não são inferidas da descrição. O layout mobile mostra o subgrupo sob o produto; desktop, acompanhamento e XLSX incluem uma coluna própria. CSV/TXT de importação continuam com EAN e quantidade.
 
-Antes de publicar o cliente desta versão: atualizar a implantação existente do Apps Script com `Code.gs`, mantendo propriedades e URL, executar `migrateSubgroups()` e verificar a coluna E (Contagem) e L (Defeitos). A migração insere colunas sem trocar IDs/revisões nem alterar quantidades. A leitura aceita o layout antigo; recontagens e importação são reposicionadas sem perder dados. Atualizar `stockcount-share-read` com `share-read.ts` e `team.ts` depois do bridge.
+A implantação existente do Apps Script deve receber o `Code.gs` atualizado, mantendo propriedades e URL, e executar `migrateSubgroups()` para verificar a coluna E (Contagem) e L (Defeitos). A migração insere colunas sem trocar IDs/revisões nem alterar quantidades. A leitura aceita o layout antigo; recontagens e importação são reposicionadas sem perder dados. Atualizar `stockcount-share-read` com `share-read.ts` e `team.ts` depois do bridge.
 
 O dashboard exige a permissão administrativa já existente. Posição = última contagem finalizada de cada loja no período, sem acumular snapshots de dias diferentes. A série diária usa a última contagem de cada loja/dia e avisa que as lojas participantes podem variar. Defeitos são divididos por (contagem + defeitos). Acompanhamento operacional usa loja/período; marca/subgrupo filtram os produtos. Sem base de estoque esperado não se calculam acuracidade ou divergências.
 

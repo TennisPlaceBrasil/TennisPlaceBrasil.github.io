@@ -119,14 +119,12 @@ function mergeRows_(existing,incoming){
   return rows;
 }
 function deleteEmptyCount_(meta,list){
-  if(meta.kind==='RECONTAGEM')throw new Error('Uma recontagem não pode ser removida como vazia.');
-  const sheet=db_().getSheetByName(meta.sheet),counts=sheet&&sheet.getLastRow()>=5?sheet.getRange(5,1,sheet.getLastRow()-4,2).getDisplayValues().some(r=>r[0]&&Number(r[1])>0):false,defects=sheet&&sheet.getLastRow()>=5?sheet.getRange(5,sheet.getRange('E4').getDisplayValues()[0][0]==='SUBGRUPO'?8:7,sheet.getLastRow()-4,2).getDisplayValues().some(r=>r[0]&&Number(r[1])>0):false;
-  if(counts||defects)throw new Error('Esta contagem já possui produtos.');
-  const ss=db_(),metadata=ss.getSheetByName('_Contagens');if(sheet)ss.deleteSheet(sheet);metadata.deleteRow(meta.row);SpreadsheetApp.flush();return {id:meta.id,label:meta.label,deleted:true,empty:true};
+  // Empty state is valid inventory data. Only the explicit, administrator-approved delete action may remove a count tab.
+  return Object.assign(publicMeta_(meta),{deleted:false,empty:false,retained:true});
 }
 function cleanupAbandonedEmpty_(list,store){
-  const cutoff=Date.now()-12*60*60*1000,stale=list.filter(m=>m.kind!=='RECONTAGEM'&&m.store===store&&m.status!=='FINALIZADA'&&Date.parse(m.updatedAt||m.createdAt)<cutoff);
-  stale.sort((a,b)=>b.row-a.row).forEach(m=>{const sheet=db_().getSheetByName(m.sheet);if(sheet&&sheet.getLastRow()>=5){const values=sheet.getRange(5,1,sheet.getLastRow()-4,8).getDisplayValues();if(values.some(r=>(r[0]&&Number(r[1])>0)||(r[6]&&Number(r[7])>0)))return;}const ss=db_(),tab=ss.getSheetByName(m.sheet),meta=ss.getSheetByName('_Contagens');if(tab)ss.deleteSheet(tab);meta.deleteRow(m.row);});
+  // Do not delete empty or abandoned counts automatically; preserve them for explicit review.
+  return 0;
 }
 function writeState_(meta,counts,defects,previous){
   const sheet=db_().getSheetByName(meta.sheet),isRecount=meta.kind==='RECONTAGEM';
@@ -181,7 +179,8 @@ function route_(p){
   if(p.action==='read')permitted_(list.find(m=>m.id===p.id),p);
   if(p.action==='create'){
     if(!/^[A-Z0-9]{2,24}$/.test(p.store))throw new Error('Loja inválida.');
-    cleanupAbandonedEmpty_(list,p.store);list=metadata_();
+    // Keep older empty sessions intact; only the explicit delete action may remove them.
+
     const now=new Date(),date=countDate_(p.date,now);
     let number=nextCountNumber_(list,p.store,date),label=countLabel_(p.store,date,number);
     while(db_().getSheetByName(label))label=countLabel_(p.store,date,++number);
@@ -236,8 +235,7 @@ function route_(p){
     if(!list.some(m=>m.id===meta.sourceId&&m.store===meta.store))throw new Error('A contagem original foi excluída.');
     validateRecount_(meta,counts,defects,p.zeroEans||[],p.action==='finish',previous);
   }
-  if(p.action==='finish'&&meta.kind!=='RECONTAGEM'&&!counts.length&&!defects.length)return deleteEmptyCount_(meta,list);
-  writeState_(meta,counts,defects,previous);
+    writeState_(meta,counts,defects,previous);
   if(meta.kind==='RECONTAGEM'){writeRecountZeros_(meta,p.zeroEans||[]);if(p.action==='finish')applyRecount_(meta,counts,defects,list);}
   meta.version++;meta.updatedAt=new Date().toISOString();meta.requestId=String(p.requestId||'');if(p.action==='finish')meta.status='FINALIZADA';
   if(p.auditSession){Object.assign(meta,sessionAudit_(p.auditSession));}saveMeta_(meta);

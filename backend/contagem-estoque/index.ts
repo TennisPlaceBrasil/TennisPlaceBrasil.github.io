@@ -121,8 +121,10 @@ Deno.serve(async req=>{
       const live=await teamRPC('stockcount_team',{p_action:'list',p_user:user.id,p_payload:{history:true,store:requestedStore}});
       const known=await rows('stockcount_team_counts','select=id,deleted');
       const deleted=new Set(known.filter((r:{deleted:boolean})=>r.deleted).map((r:{id:string})=>r.id));
+      const pendingForStore=new Set(allStores?[]:live.filter((r:any)=>r.deleteStatus==='PENDENTE').map((r:any)=>r.id));
       const mapped=new Map((result.data||[]).filter((r:{id:string})=>!deleted.has(r.id)).map((r:{id:string})=>[r.id,r]));
-      for(const row of live)mapped.set(row.id,row);result.data=Array.from(mapped.values());
+      for(const row of live)mapped.set(row.id,row);
+      result.data=Array.from(mapped.values()).filter((r:any)=>!pendingForStore.has(r.id));
     }
     if(input.action==='analysis'){
       const live=await teamRPC('stockcount_team',{p_action:'list',p_user:user.id,p_payload:{history:true}});

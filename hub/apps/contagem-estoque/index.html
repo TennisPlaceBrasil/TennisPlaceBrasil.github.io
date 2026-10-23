@@ -12,8 +12,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Inventário HubTennisPlace">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="stylesheet" href="style.css?v=pwa1">
-  <link rel="stylesheet" href="mobile.css?v=3">
+  <link rel="stylesheet" href="style.css?v=count-layout2">
+  <link rel="stylesheet" href="mobile.css?v=count-layout2">
   <link rel="stylesheet" href="dashboard.css?v=1">
 </head>
 <body>
@@ -22,7 +22,7 @@
     <div class="account-bar"><button id="count-options-toggle" type="button" class="button button-quiet" aria-expanded="false" hidden>OPÇÕES</button><button id="install-app" type="button" class="button button-quiet">INSTALAR APP</button><button id="fullscreen-app" type="button" class="button button-quiet" hidden>TELA CHEIA</button><span id="account-label" class="local-badge">ACESSO HUBTENNISPLACE</span><button id="logout" class="button button-quiet" hidden>SAIR</button></div>
   </header>
   <section class="login-panel" id="login-panel"><p class="eyebrow">ACESSO TENNIS PLACE</p><h1><em>Inventário</em></h1><p>Use o mesmo acesso dos manuais.</p><form id="login-form"><label for="login-id">Sigla da loja ou e-mail</label><input id="login-id" autocomplete="username" required><label for="login-password">CNPJ da loja ou senha</label><input id="login-password" type="password" autocomplete="current-password" required><button class="button button-primary" id="login-submit">ENTRAR</button><p id="login-error" role="alert"></p><button id="recover-local" class="button button-quiet" type="button" hidden>RETOMAR CONTAGEM DESTE DISPOSITIVO</button></form></section>
-  <main id="app-main" hidden><nav class="tool-tabs"><button id="tab-count" class="active">CONTAGEM</button><button id="tab-analysis" hidden>ANÁLISE DE ESTOQUE</button></nav><p id="app-error" role="alert"></p><section class="offline-panel"><p id="offline-status" class="offline-status" role="status">Preparando uso sem internet…</p><div><button id="prepare-offline" class="button button-quiet" type="button">PREPARAR / ATUALIZAR USO OFFLINE</button><button id="sync-now" class="button button-quiet" type="button">SINCRONIZAR</button></div></section><div id="count-view"><button id="back-inventory-home" class="button button-quiet" type="button" hidden>← INÍCIO DO INVENTÁRIO</button><section id="device-drafts" class="recount-inbox" hidden><h3>Em andamento neste dispositivo</h3><p>Continue uma contagem local. Dados pendentes permanecem neste aparelho até sincronizar.</p><div id="device-draft-list"></div></section>
+  <main id="app-main" hidden><nav class="tool-tabs"><button id="tab-count" class="active">CONTAGEM</button><button id="tab-analysis" hidden>ANÁLISE DE ESTOQUE</button></nav><p id="app-error" role="alert"></p><div id="offline-panel-home"><section class="offline-panel"><p id="offline-status" class="offline-status" role="status">Preparando uso sem internet…</p><div><button id="prepare-offline" class="button button-quiet" type="button">PREPARAR / ATUALIZAR USO OFFLINE</button><button id="sync-now" class="button button-quiet" type="button">SINCRONIZAR</button></div></section></div><div id="count-view"><button id="back-inventory-home" class="button button-quiet" type="button" hidden>← INÍCIO DO INVENTÁRIO</button><section id="device-drafts" class="recount-inbox" hidden><h3>Em andamento neste dispositivo</h3><p>Continue uma contagem local. Dados pendentes permanecem neste aparelho até sincronizar.</p><div id="device-draft-list"></div></section>
     <section class="intro">
       <div>
         <p class="eyebrow">OPERAÇÃO DE LOJA <span> / </span> ESTOQUE</p>
@@ -54,10 +54,6 @@
     </section>
     <p id="responsible-help" class="team-help">RESPONSÁVEL: pelo menos 4 letras, sem números. Cada aparelho deve entrar com o nome de quem conta. Dividam as áreas para não contar a mesma peça duas vezes.</p>
     <section id="team-open" class="recount-inbox"><div class="list-heading"><div><span class="eyebrow">TRABALHO EM EQUIPE</span><h3>Participar de uma contagem em andamento</h3></div><button id="team-refresh" class="button button-quiet" type="button">ATUALIZAR CONTAGENS DA LOJA</button></div><p id="team-open-status" role="status"></p><div id="team-open-list"></div></section>
-    <div id="share-link-panel" class="share-link-panel" hidden>
-      <div class="share-link-heading"><div><span class="eyebrow">ACOMPANHAMENTO</span><strong>Link somente para visualização</strong><small>Expira em 30 dias. Gerar outro link revoga o anterior.</small></div><button id="copy-share-link" class="button button-primary" type="button">COPIAR LINK</button></div>
-      <input id="share-link-value" type="url" readonly aria-label="Link de acompanhamento da contagem">
-    </div>
     <section id="recount-inbox" class="recount-inbox" hidden aria-labelledby="recount-inbox-title"><div class="list-heading"><div><span class="eyebrow">PEDIDOS DO ADMINISTRATIVO</span><h3 id="recount-inbox-title">Recontagens solicitadas</h3></div><button id="refresh-recounts" class="button button-quiet" type="button">ATUALIZAR SOLICITAÇÕES</button></div><p id="recount-inbox-status" role="status"></p><div id="recount-inbox-list"></div></section>
     <section id="deletion-inbox" class="recount-inbox" hidden aria-labelledby="deletion-inbox-title"><div class="list-heading"><div><span class="eyebrow">REVISÃO ADMINISTRATIVA</span><h3 id="deletion-inbox-title">Solicitações de exclusão</h3></div><button id="refresh-deletions" class="button button-quiet" type="button">ATUALIZAR PEDIDOS</button></div><p id="deletion-inbox-status" role="status"></p><div id="deletion-inbox-list"></div></section>
     <section class="empty-state" id="empty-state">
@@ -66,14 +62,19 @@
       <p>Informe a sigla da loja e toque em <strong>Nova contagem</strong>. Cada sessão fica identificada como LOJA-data #número.</p>
     </section>
     <section class="counting" id="counting" hidden>
+      <div class="count-actions" aria-label="Ações da contagem">
+        <button id="finish-count" class="button button-primary" type="button">FINALIZAR CONTAGEM</button>
+        <button id="request-delete-session" class="button button-quiet" type="button" hidden>EXCLUIR CONTAGEM</button>
+        <button id="delete-current-session" class="button button-quiet" type="button" hidden>EXCLUIR CONTAGEM</button>
+      </div>
       <div class="count-heading">
         <div><span class="eyebrow">SESSÃO ATIVA</span><h2 id="session-title">—</h2></div>
-        <div><span id="sync-status" class="sync-status">Salvo no Drive</span><button id="reload-count" class="button button-quiet">REABRIR</button><button id="request-delete-session" class="button button-quiet" type="button" hidden>SOLICITAR EXCLUSÃO</button><button id="finish-count" class="button button-quiet">FINALIZAR CONTAGEM</button></div><div class="totals">
+        <div><span id="sync-status" class="sync-status">Salvo no Drive</span></div><div class="totals">
           <div><span>UNIDADES CONTADAS</span><b id="count-total">0</b></div>
           <div><span>DEFEITOS BIPADOS</span><b id="defect-total">0</b></div>
         </div>
       </div>
-      <section id="team-panel" class="recount-inbox" hidden><h3 id="team-who"></h3><p id="team-state" role="status"></p><div id="team-people"></div><div class="dialog-actions"><button id="team-own" class="button button-primary" type="button">MINHA PARTE</button><button id="team-total" class="button button-quiet" type="button">TOTAL DA CONTAGEM · CONSULTA</button><button id="team-own-export" class="button button-quiet" type="button">BAIXAR MEU EXCEL</button></div><p class="team-help">Você altera somente seus lançamentos. Finalize sua parte apenas depois de terminar todas as suas áreas. O total é encerrado quando todos os participantes finalizam.</p></section>
+      <section id="team-panel" class="recount-inbox" hidden><h3 id="team-who"></h3><p id="team-state" role="status"></p><div id="team-people"></div><div class="dialog-actions"><button id="team-own" class="button button-primary" type="button">MINHA PARTE</button><button id="team-total" class="button button-quiet" type="button">TOTAL DA CONTAGEM · CONSULTA</button></div><p class="team-help">Você altera somente seus lançamentos. Finalize sua parte apenas depois de terminar todas as suas áreas. O total é encerrado quando todos os participantes finalizam.</p></section>
       <p id="delete-pending-status" class="delete-pending-status" role="status" hidden>Solicitação de exclusão enviada. A contagem está bloqueada até o ADM revisar os produtos e decidir.</p>
       <section id="recount-targets" class="recount-targets" hidden aria-labelledby="recount-title"><div class="list-heading"><div><span class="eyebrow">RECONTAGEM SOLICITADA</span><h3 id="recount-title">Produtos para recontar</h3></div><span id="recount-progress"></span></div><p>Bipe os produtos solicitados. Amarelo significa incluído na recontagem; a quantidade é responsabilidade da loja. Se não encontrar um produto, marque “Não localizado (0)”.</p><label class="recount-search-label" for="recount-search">BUSCAR EAN OU PRODUTO</label><input id="recount-search" class="recount-search" type="search" placeholder="Buscar na solicitação…"><div id="recount-target-list" class="recount-target-list"></div><div class="recount-pages"><button id="recount-prev" type="button" class="button button-quiet">ANTERIOR</button><span id="recount-page"></span><button id="recount-next" type="button" class="button button-quiet">PRÓXIMA</button></div></section>
       <div class="scanner-panel">
@@ -82,8 +83,7 @@
           <button class="mode-button" type="button" data-mode="defects">DEFEITOS</button>
         </div>
         <form id="scan-form">
-        <div class="scanner-tools"><button id="open-camera" class="button button-primary" type="button">▣ LER PELA CÂMERA</button><button id="import-count" class="button button-quiet" type="button">IMPORTAR CONTAGEM TXT</button><button id="import-defects" class="button button-quiet" type="button">IMPORTAR DEFEITOS TXT</button><input id="import-count-file" type="file" accept=".txt,text/plain" hidden><input id="import-defects-file" type="file" accept=".txt,text/plain" hidden></div>
-        <p id="import-file-status" class="scan-message" role="status">TXT com linhas EAN,QNTDD. Quantidades importadas são somadas ao que já foi lançado.</p>
+        <div class="scanner-tools"><button id="open-camera" class="button button-primary" type="button">▣ LER PELA CÂMERA</button></div>
           <label for="ean-input">BIPAR OU DIGITAR EAN</label>
           <div class="scan-field">
             <span class="scan-icon">⌁</span>
@@ -106,21 +106,26 @@
       </div>
       <section id="delete-review-actions" class="recount-inbox delete-review-actions" hidden><div><span class="eyebrow">ANÁLISE DA SOLICITAÇÃO</span><h3>Confira os produtos acima antes de decidir</h3><p id="delete-review-summary"></p></div><label for="delete-review-reason">MOTIVO (opcional ao recusar)</label><input id="delete-review-reason" maxlength="200" placeholder="Explique por que o pedido foi recusado"><div class="dialog-actions"><button id="reject-delete" class="button button-quiet" type="button">RECUSAR SOLICITAÇÃO</button><button id="approve-delete" class="button button-primary" type="button">APROVAR E EXCLUIR</button></div></section>
       <section class="export-panel">
-        <div><span class="eyebrow">03 / SAÍDA</span><h3>Preparar a contagem</h3><p>O Excel terá abas de Contagem, Defeitos e Importação. A importação lista defeitos primeiro e depois a contagem.</p></div>
-        <div class="export-actions"><button id="export-xlsx" class="button button-primary" type="button">BAIXAR PLANILHA EXCEL</button><button id="export-count-txt" class="button button-quiet" type="button">BAIXAR CONTAGEM TXT</button><button id="export-defects-txt" class="button button-quiet" type="button">BAIXAR DEFEITOS TXT</button><button id="export-txt" class="button button-quiet" type="button">BAIXAR IMPORTAÇÃO CSV</button></div>
-      </section>
+         <div><span class="eyebrow">03 / SAÍDA</span><h3>Exportar contagem</h3><p>Arquivo TXT único com defeitos primeiro e, em seguida, as quantidades da contagem.</p></div>
+         <div class="export-actions"><button id="export-txt" class="button button-primary" type="button">EXPORTAR ARQUIVO</button></div>
+       </section>
+       <div id="offline-panel-count"></div>
+       <div id="share-link-panel" class="share-link-panel" hidden>
+         <div class="share-link-heading"><div><span class="eyebrow">ACOMPANHAMENTO</span><strong>Link para acompanhar esta contagem</strong><small>O mesmo link pode ser compartilhado com todos.</small></div><button id="copy-share-link" class="button button-primary" type="button">COPIAR LINK</button></div>
+         <input id="share-link-value" type="url" readonly aria-label="Link de acompanhamento da contagem">
+       </div>
       <p class="footer-note">A análise utiliza contagens finalizadas e soma as unidades da contagem com os defeitos.</p>
     </section>
     </div><section id="analysis-view" hidden><div class="analysis-heading"><p class="eyebrow">GESTÃO / HISTÓRICO</p><h1>Análise de <em>Estoque</em></h1><p>Estoque físico = contagem + defeitos. Produtos ausentes em uma data aparecem com zero. Consulte até 12 meses por vez.</p></div><form id="analysis-filters" class="analysis-filters"><label>LOJA<select id="filter-store"></select></label><label>MARCA<select id="filter-brand"><option value="">Todas as marcas</option></select></label><label>SUBGRUPO<select id="filter-subgroup"><option value="">Todos os subgrupos</option></select></label><label>DE<input id="filter-start" type="date"></label><label>ATÉ<input id="filter-end" type="date"></label><button class="button button-primary">ANALISAR</button></form><p id="analysis-status" aria-live="polite"></p><section id="analysis-dashboard" aria-label="Dashboard do inventário" aria-live="polite"></section><h2 class="analysis-detail-title">Comparação detalhada por data</h2><div class="analysis-table"><table><thead id="analysis-head"></thead><tbody id="analysis-body"></tbody></table></div></section>
     <footer><span>HubTennisPlace</span><span>BE BOLD. BE YOU.</span></footer>
   </main>
+  <dialog id="delete-confirm-dialog" aria-labelledby="delete-confirm-title"><div class="list-heading"><div><p class="eyebrow">CONFIRMAR AÇÃO</p><h2 id="delete-confirm-title">Excluir contagem?</h2></div></div><p id="delete-confirm-message"></p><div class="dialog-actions"><button id="delete-confirm-no" class="button button-quiet" type="button">NÃO</button><button id="delete-confirm-yes" class="button button-primary" type="button">SIM</button></div></dialog>
   <dialog id="camera-dialog" class="camera-dialog"><div class="list-heading"><div><p class="eyebrow">LEITURA PELO DISPOSITIVO</p><h2>Código de barras</h2></div><button id="camera-close" class="button button-quiet" type="button">FECHAR</button></div><video id="camera-video" autoplay muted playsinline></video><p id="camera-status" role="status">A câmera inicia apenas quando solicitada.</p><section id="camera-product" class="camera-product" hidden aria-live="polite"><strong id="camera-product-name"></strong><span id="camera-product-meta"></span><div><button id="camera-launch" class="button button-primary" type="button" disabled>LANÇAR</button><button id="camera-rescan" class="button button-quiet" type="button">LER OUTRO CÓDIGO</button></div></section><section id="camera-recent" class="camera-recent" hidden><h3>Últimos 3 lançamentos pela câmera</h3><ol id="camera-recent-list"></ol></section><small>Confira o produto antes de lançar. A câmera permanece aberta. Códigos desconhecidos não aparecem para lançamento aqui; use a digitação para identificá-los.</small></dialog>
-  <dialog id="import-unknown-dialog"><form id="import-unknown-form"><p class="eyebrow">EAN FORA DO CADASTRO</p><h2>Produto inexistente</h2><p id="import-unknown-count"></p><p id="import-unknown-list" class="import-unknown-list"></p><p>Informe produto e marca de cada EAN antes de lançar para cadastro posterior.</p><div id="import-unknown-fields"></div><div class="dialog-actions"><button type="button" id="import-cancel-unknown" class="button button-quiet">CORRIGIR ARQUIVO</button><button type="submit" id="import-confirm-unknown" class="button button-primary">LANÇAR MESMO ASSIM</button></div></form></dialog>
   <dialog id="unknown-dialog"><form id="unknown-form"><p class="eyebrow">EAN NÃO RECONHECIDO</p><h2>Produto inexistente</h2><p id="unknown-ean"></p><p id="unknown-reason">O código não foi encontrado no cadastro de produtos.</p><label for="unknown-description">PRODUTO</label><input id="unknown-description" required maxlength="180" placeholder="Descrição do produto"><label for="unknown-brand">MARCA</label><input id="unknown-brand" required maxlength="80" placeholder="Marca do produto"><p>Informe os dois campos para o cadastro posterior pelo administrativo.</p><div class="dialog-actions"><button type="button" id="correct-ean" class="button button-quiet">CORRIGIR</button><button type="submit" id="allow-ean" class="button button-primary">LANÇAR MESMO ASSIM</button></div></form></dialog>
   <dialog id="recount-dialog"><form id="recount-request-form"><p class="eyebrow">SOLICITAÇÃO PARA A LOJA</p><h2>Solicitar recontagem</h2><p id="recount-source-label"></p><p>Envie um TXT com um EAN por linha. A loja verá os códigos e informará as quantidades, sem consultar a contagem anterior.</p><label for="recount-file">ARQUIVO TXT</label><input id="recount-file" type="file" accept=".txt,text/plain" required><p id="recount-file-status" role="status"></p><div class="dialog-actions"><button id="cancel-recount" type="button" class="button button-quiet">CANCELAR</button><button id="send-recount" type="submit" class="button button-primary">ENVIAR À LOJA</button></div></form></dialog>
   <dialog id="install-dialog" aria-labelledby="install-title"><div class="list-heading"><h2 id="install-title">Instalar Inventário</h2><button id="install-close" type="button" class="button button-quiet">FECHAR</button></div><p id="install-instructions"></p><p>Após instalar, abra pelo ícone Inventário TP. O aplicativo acompanha a rotação do dispositivo. A abertura em tela cheia depende do sistema e do navegador.</p><p>Para contar sem internet, entre e aguarde a indicação “Pronto para contar sem internet”.</p><p id="install-feedback" role="status"></p></dialog>
   <script src="pwa.js?v=1"></script>
-  <script src="offline-store.js?v=3"></script><script src="offline-export.js?v=3"></script><script src="dashboard.js?v=1"></script><script src="app.js?v=history-multistore1"></script>
+  <script src="offline-store.js?v=3"></script><script src="offline-export.js?v=3"></script><script src="dashboard.js?v=1"></script><script src="app.js?v=count-layout2"></script>
 </body>
 </html>
 

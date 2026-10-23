@@ -1,6 +1,6 @@
 'use strict';
 const $=s=>document.querySelector(s),BASE='https://rihvnshexilakojnltox.supabase.co',KEY='sb_publishable_7coOHeG2tOc9XfS0qeKvPg_z2fh0KWz',AUTH_KEY='tp-manuais-supabase-v1';
-let auth=null,user=null,stores=[],sessions=[],sessionsLoaded=false,loadingSessions=false,historyStoreFilter='',current=null,catalog=new Map(),mode='count',unknown=null,lookingUp=false;
+let auth=null,user=null,stores=[],sessions=[],sessionsLoaded=false,loadingSessions=false,historyStoreFilter='',current=null,catalog=new Map(),mode='count',unknown=null,lookingUp=false,deleteConfirmAction=null;
 let inventoryHome=false,openingCount=false,cameraCandidate=null,cameraLookup=false,cameraGeneration=0,cameraLastEan='',cameraLastAt=0,cameraFallbackStarted=false,scanAudio=null;
 let analysisCache=null,analysisRequest=0,subgroupCatalogReady=false;
 let teamScope='own',teamBusy=false,teamListBusy=false,teamLockId=null,teamUnlock=null;
@@ -63,11 +63,11 @@ function renderTeam(){
  $('#team-state').textContent=current.collabReadOnly?'Outra aba deste aparelho está usando esta contagem. Feche-a e reabra aqui.':current.collabViewOnly?'Consulta administrativa. Os participantes alteram somente a própria parte.':
   (teamScope==='total'?'TOTAL · somente consulta. ':'MINHA PARTE · edite apenas o que você contou. ')+(when?'Última soma recebida às '+when+'. ':'')+(current.mirroredVersion<current.version?'Planilha aguardando espelhamento; dados recebidos no servidor.':'Planilha atualizada.');
  $('#team-people').innerHTML=(current.participants||[]).map(p=>'<div class="team-person"><strong>'+esc(p.responsible)+'</strong> · '+(p.done?'PARTE FINALIZADA':'CONTANDO / AGUARDANDO FINALIZAÇÃO')+' · '+Number(p.units||0)+' unidades · '+Number(p.defects||0)+' defeitos<br><span>Último envio: '+esc(new Date(p.updatedAt).toLocaleString('pt-BR'))+' · '+esc(p.device||'Dispositivo não informado')+' · '+esc(p.ip||'IP não capturado')+'</span></div>').join('');
- $('#team-own').disabled=!!current.collabViewOnly;$('#team-total').disabled=false;$('#team-own-export').hidden=!!current.collabViewOnly;
+ $('#team-own').disabled=!!current.collabViewOnly;$('#team-total').disabled=false;
 }
 async function loadTeamCounts(){
  if(!auth||!user||!navigator.onLine||teamListBusy)return;teamListBusy=true;
- try{const r=await api('teamList',{store:$('#store-code').value||undefined});const counts=r.data||[];
+ try{const r=await api('teamList',{store:$('#store-code').value||undefined});const counts=(r.data||[]).filter(c=>c.deleteStatus!=='PENDENTE');
   $('#team-open-list').innerHTML=counts.map(c=>'<article class="recount-inbox-item"><div><strong>'+esc(c.label)+'</strong><span>'+esc(c.date)+' · '+(c.deleteStatus==='PENDENTE'?'EXCLUSÃO SOLICITADA':'CONTAGEM EM EQUIPE')+' · '+(c.participants||[]).map(p=>esc(p.responsible)+(p.done?' ✓':'')).join(', ')+'</span></div><button class="button button-primary" type="button" data-team-join="'+esc(c.id)+'" '+(c.deleteStatus==='PENDENTE'?'disabled':'')+'>CONTINUAR</button></article>').join('');
   $('#team-open-status').textContent=counts.length?'Contagens sincronizadas da loja. O responsável salvo neste aparelho já fica preenchido.':'Nenhuma contagem em equipe em andamento nesta loja. Crie uma nova acima.';
  }catch(e){$('#team-open-status').textContent=e.message;}finally{teamListBusy=false;}
@@ -102,6 +102,11 @@ async function refreshTeam(){
   if(!clean){target.participantVersion=ownKeys.participantVersion;target.participantDone=ownKeys.participantDone;}
   else if(remote.participantVersion!==prevVersion){target.counts=remote.counts;target.defects=remote.defects;}
   await persistDraft();
+  if(remote.deleteStatus==='PENDENTE'&&!user?.allStores){
+   clearTimeout(timer);timer=null;inventoryHome=true;current=null;teamScope='own';render();await renderDeviceDrafts();loadTeamCounts();
+   $('#app-error').textContent='Esta contagem entrou em revisão e foi ocultada da loja. A cópia local permanece preservada.';
+   return;
+  }
   // Background updates must not replace a quantity input currently being edited.
   if(!document.activeElement?.matches?.('.quantity-input'))render();else renderTeam();
  }catch(e){if(current===target){$('#team-state').textContent='Sem atualização dos demais responsáveis. Seus lançamentos e arquivos locais continuam disponíveis.';if(e.status===403||/já não existe/.test(e.message))remoteUnavailable(e.message);}}
@@ -126,7 +131,7 @@ async function showInventoryHome(){
  $('#count-view').scrollIntoView({block:'start'});if(navigator.onLine&&auth)loadRecounts();
 }
 async function renderDeviceDrafts(){
- const list=await TPInventoryLocal.list(user.id);const drafts=list.filter(r=>r.status!=='FINALIZADA'||r.serial!==r.saved);
+ const list=await TPInventoryLocal.list(user.id);const drafts=list.filter(r=>r.deleteStatus!=='PENDENTE'&&(r.status!=='FINALIZADA'||r.serial!==r.saved));
  $('#device-drafts').hidden=!inventoryHome||!drafts.length;
  $('#device-draft-list').innerHTML=drafts.map(r=>'<article class="recount-inbox-item"><div><strong>'+esc(r.label)+'</strong><span>'+(r.serial!==r.saved?'Há dados locais aguardando envio':'Contagem em andamento neste dispositivo')+'</span></div><button class="button button-primary" data-resume-draft="'+esc(r.id)+'">CONTINUAR</button></article>').join('');
 }
@@ -229,12 +234,14 @@ function render(){
   const compactCounting=!!current&&!inventoryHome&&$('#analysis-view').hidden;
   document.body?.classList.toggle('is-counting',compactCounting);
   if(document.body)document.body.dataset.countMode=mode;
-  $('#count-options-toggle').hidden=!compactCounting;
-  if(!compactCounting){document.body?.classList.remove('count-options-open');$('#count-options-toggle').setAttribute?.('aria-expanded','false');$('#count-options-toggle').textContent='OPÇÕES';}
+  $('#count-options-toggle').hidden=true;
+  const offlinePanel=$('.offline-panel'),offlineTarget=compactCounting?$('#offline-panel-count'):$('#offline-panel-home');
+  if(offlinePanel&&offlineTarget&&offlinePanel.parentElement!==offlineTarget)offlineTarget.append(offlinePanel);
 
-  $('#empty-state').hidden=!!current&&!inventoryHome;$('#counting').hidden=!current||inventoryHome;$('#back-inventory-home').hidden=!current||inventoryHome;$('#device-drafts').hidden=!inventoryHome;$('#counting').dataset.localFinished=String(!!current?.localFinished&&current.status!=='FINALIZADA');$('#share-link-panel').hidden=inventoryHome||!(current&&current.shareUrl);if(current?.shareUrl)$('#share-link-value').value=current.shareUrl;renderRecount();if(!current){renderTeam();$('#delete-review-actions').hidden=true;$('#request-delete-session').hidden=true;return;}
-  renderTeam();$('#export-xlsx').textContent=current.collaborative?'BAIXAR EXCEL CONSOLIDADO':'BAIXAR PLANILHA EXCEL';$('#session-title').textContent=current.label;
-  $('#reload-count').hidden=!user?.allStores&&current.kind!=='RECONTAGEM';
+  $('#empty-state').hidden=!!current&&!inventoryHome;$('#counting').hidden=!current||inventoryHome;$('#back-inventory-home').hidden=!current||inventoryHome;$('#device-drafts').hidden=!inventoryHome;$('#counting').dataset.localFinished=String(!!current?.localFinished&&current.status!=='FINALIZADA');$('#share-link-panel').hidden=inventoryHome||!(current&&current.shareUrl);if(current?.shareUrl)$('#share-link-value').value=current.shareUrl;renderRecount();if(!current){renderTeam();$('#delete-review-actions').hidden=true;$('#request-delete-session').hidden=true;$('#delete-current-session').hidden=true;return;}
+  renderTeam();$('#session-title').textContent=current.label;
+  $('#delete-current-session').hidden=!user?.allStores;
+  $('#delete-current-session').disabled=loadingSessions||current.deleteStatus==='PENDENTE';
   const view=current.collaborative&&teamScope==='total'?teamExportState():current,counts=view.counts,defects=view.defects,done=current.status==='FINALIZADA'||current.localFinished||current.collabViewOnly||current.collabReadOnly||current.collaborative&&teamScope==='total',deletePending=current.deleteStatus==='PENDENTE';
   $('#count-total').textContent=(current.collaborative?teamExportState().counts:counts).reduce((n,r)=>n+r.quantity,0).toLocaleString('pt-BR');
   $('#defect-total').textContent=(current.collaborative?teamExportState().defects:defects).reduce((n,r)=>n+r.quantity,0).toLocaleString('pt-BR');
@@ -246,7 +253,7 @@ function render(){
   $('#ean-input').disabled=done||lookingUp||deletePending;
   ['#open-camera','#import-count','#import-defects'].forEach(id=>{if($(id))$(id).disabled=done||deletePending;});
   $('#finish-count').disabled=current.status==='FINALIZADA'||current.localFinished||current.collabViewOnly||current.collabReadOnly||deletePending;$('#finish-count').textContent=done?(current.localFinished&&current.status!=='FINALIZADA'?'FINALIZADA · ENVIO PENDENTE':'CONTAGEM FINALIZADA'):deletePending?'AGUARDANDO ADM':'FINALIZAR CONTAGEM';
-  if(current.collaborative)$('#finish-count').textContent=current.participantDone?'MINHA PARTE FINALIZADA':current.localFinished?'FINALIZADA · ENVIO PENDENTE':current.status==='FINALIZADA'?'CONTAGEM FINALIZADA':'FINALIZAR MINHA PARTE';
+  if(current.collaborative)$('#finish-count').textContent=current.participantDone?'CONTAGEM FINALIZADA':current.localFinished?'FINALIZADA · ENVIO PENDENTE':current.status==='FINALIZADA'?'CONTAGEM FINALIZADA':'FINALIZAR CONTAGEM';
   $('#delete-pending-status').hidden=!deletePending;
   $('#request-delete-session').hidden=!!user?.allStores||deletePending;$('#request-delete-session').disabled=deletePending||!!current.collabReadOnly||!!current.collabViewOnly;
   document.querySelectorAll('.qty-actions button,.quantity-input,.remove-row').forEach(b=>b.disabled=done||deletePending);
@@ -294,11 +301,20 @@ async function loadSessions(){
   }catch(e){$('#app-error').textContent=e.message;}
   finally{loadingSessions=false;picker();}
 }
-async function deleteSession(){
-  const id=$('#session-picker').value;
+function openDeleteConfirm(action){
+  const id=action==='history'?$('#session-picker').value:current?.id;if(!id)return;
+  const item=sessions.find(s=>s.id===id)||(current?.id===id?current:null);
+  deleteConfirmAction=action;
+  $('#delete-confirm-title').textContent=action==='request'?'Solicitar exclusão?':'Excluir contagem?';
+  $('#delete-confirm-message').textContent=action==='request'
+    ?'Deseja solicitar a exclusão de '+(item?.label||'esta contagem')+'? Ela será ocultada da loja e ficará preservada para revisão do ADM.'
+    :'Deseja excluir '+(item?.label||'esta contagem')+' do histórico e apagar apenas a aba desta contagem no Drive? Esta ação não pode ser desfeita.';
+  $('#delete-confirm-yes').textContent=action==='request'?'SIM, SOLICITAR':'SIM, EXCLUIR';
+  $('#delete-confirm-dialog').showModal();
+}
+async function deleteSession(idOverride){
+  const id=idOverride||$('#session-picker').value;
   if(!user?.allStores||!id)return;
-  const item=sessions.find(s=>s.id===id);
-  if(!confirm('Excluir '+(item?.label||'esta contagem')+' do histórico e apagar a aba correspondente no Google Drive? Esta ação não pode ser desfeita.'))return;
   try{
     if(current?.id===id)await ensureSaved();
     await api('delete',{id});await TPInventoryLocal.remove(user.id,id);
@@ -320,10 +336,15 @@ async function reviewDeletion(id){
 }
 async function requestDeletion(){
   if(!current||user?.allStores||current.deleteStatus==='PENDENTE'||current.collabReadOnly||current.collabViewOnly)return;
-  if(!confirm('Enviar solicitação para excluir '+current.label+'? O ADM vai revisar os produtos antes de decidir. A contagem ficará bloqueada até a análise.'))return;
   $('#request-delete-session').disabled=true;
-  try{await ensureSaved();const result=(await api('requestDelete',{id:current.id,participantId:current.participantId,auditSession:await auditSession()})).data;current=Object.assign(current,result);picker();render();$('#app-error').textContent='Solicitação enviada ao painel ADM. A contagem está bloqueada enquanto aguarda análise.';}
-  catch(e){$('#app-error').textContent=e.message;}
+  try{
+    await ensureSaved();
+    const target=current;
+    const result=(await api('requestDelete',{id:target.id,participantId:target.participantId,auditSession:await auditSession()})).data;
+    Object.assign(target,result);await persistDraft();clearTimeout(timer);timer=null;
+    current=null;inventoryHome=true;teamScope='own';picker();render();await renderDeviceDrafts();loadTeamCounts();
+    $('#app-error').textContent='Solicitação enviada. A contagem foi ocultada da loja e está aguardando a análise do ADM. Os dados ficam preservados até a decisão.';
+  }catch(e){$('#app-error').textContent=e.message;}
   finally{$('#request-delete-session').disabled=false;}
 }
 async function resolveDeletion(approve){
@@ -344,8 +365,7 @@ function changed(hint){
  if(!timer&&navigator.onLine)timer=setTimeout(()=>{timer=null;flush();},5000);
 }
 async function forgetEmpty(target){
- await TPInventoryLocal.remove(user.id,target.id);sessions=sessions.filter(s=>s.id!==target.id);
- if(current===target){current=null;serial=0;saved=0;retry=null;conflict=false;picker();render();sync('Contagem vazia excluída automaticamente');}
+ if(target&&current===target)remoteUnavailable('A contagem não está disponível no servidor. A cópia local foi preservada para exportação.');
 }
 let retryDelay=5000;
 async function flush(){
@@ -358,15 +378,14 @@ async function flush(){
   await persistDraft(); // Commit the exact request ID and payload before sending it.
   sync('Salvo neste dispositivo · enviando ao Drive…','pending');packet.body.auditSession=await auditSession();
   const response=await api(packet.action||'save',packet.body),result=response.data;
-  if(result.empty){await forgetEmpty(target);return;}
+  if(result.empty){throw Error('A rotina da planilha sinalizou uma contagem vazia como removida. A cópia local foi preservada; não será apagada automaticamente.');}
   if(target.collaborative)applyTeamResult(target,result);
   target.version=result.version;target.updatedAt=result.updatedAt;target.status=result.status||target.status;
   saved=packet.serial;retry=null;retryDelay=5000;
   await persistDraft();if(serial===saved){localStorage.removeItem(draftKey());sync(target.collaborative?(target.participantDone?'Sua parte está salva · aguardando os demais responsáveis':'Lançamentos recebidos no servidor'):target.status==='FINALIZADA'?'Contagem finalizada no Google Drive':'Salvo no Google Drive');}else sync('Salvo localmente · alterações pendentes','pending');if(target.collaborative||packet.action==='finish')render();
  }catch(e){
   if(/sem permissão|não foi encontrada|original foi excluída|já não existe/.test(e.message)){
-   if(target.localFinished&&!target.counts.length&&!target.defects.length)try{const exists=await api('checkCount',{id:target.id});if(!exists.data.exists){await forgetEmpty(target);return;}}catch(_){}
-   remoteUnavailable('A contagem não está disponível no Drive.');return;}
+   remoteUnavailable('A contagem não está disponível no Drive. Os dados locais foram preservados para exportação.');return;}
   conflict=e.status===409;if(!conflict&&e.status&&e.status<500)note(e.message+' Os dados locais continuam disponíveis.',true);sync(conflict?'Drive alterado em outro acesso. Continue localmente e exporte para conferência.':'Salvo localmente · envio ao Drive pendente','error');if(conflict)note('As bipagens locais foram preservadas. O Drive não será sobrescrito.',true);retryDelay=Math.min(60000,retryDelay*2);
  }finally{inflight=null;updateOfflineStatus();if(current&&serial!==saved&&!conflict&&navigator.onLine&&auth?.access_token){clearTimeout(timer);timer=setTimeout(()=>{timer=null;flush();},retryDelay);}}})();return inflight;
 }
@@ -406,7 +425,7 @@ async function createCount(){
   try{
     const responsible=readResponsible();
     if(!navigator.onLine)throw Error('Para criar outra contagem, conecte à internet. A contagem preparada neste dispositivo pode continuar normalmente.');
-    if(current){const previous=current;await persistDraft();await TPInventoryLocal.drain();if(inflight)await inflight;if(!previous.collaborative&&!previous.counts.length&&!previous.defects.length&&previous.kind!=='RECONTAGEM'&&!previous.localFinished&&previous.deleteStatus!=='PENDENTE'){await api('discardEmpty',{id:previous.id});await TPInventoryLocal.remove(user.id,previous.id);localStorage.removeItem('tp-stockcount-draft-'+user.id+'-'+previous.id);sessions=sessions.filter(s=>s.id!==previous.id);current=null;serial=0;saved=0;retry=null;conflict=false;}}
+    if(current){await persistDraft();await TPInventoryLocal.drain();if(inflight)await inflight;}
     const store=$('#store-code').value.trim().toUpperCase();
     if(!stores.includes(store))throw Error('Informe uma sigla de loja válida.');
     const date=$('#count-date').value;if(!date||!$('#count-date').checkValidity())throw Error('Selecione uma data válida para a contagem.');
@@ -491,8 +510,8 @@ async function analyze(event){
 }
 function imports(){const state=teamExportState();warnTeamExport();return state.defects.concat(state.counts).map(r=>({EAN:r.ean,QNTD:r.quantity,'CÓDIGO IMPORTAÇÃO':r.ean+','+r.quantity}));}
 function exportCsv(){
-  if(!current)return;const blob=new Blob([imports().map(r=>r.EAN+','+r.QNTD).join('\r\n')],{type:'text/csv;charset=utf-8'}),url=window.URL.createObjectURL(blob),a=document.createElement('a');
-  a.href=url;a.download='IMPORTACAO_'+current.label+'.csv';a.click();setTimeout(()=>window.URL.revokeObjectURL(url),1000);
+  if(!current)return;const blob=new Blob([imports().map(r=>r.EAN+','+r.QNTD).join('\r\n')],{type:'text/plain;charset=utf-8'}),url=window.URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download='CONTAGEM_E_DEFEITOS_'+current.label+'.txt';a.click();setTimeout(()=>window.URL.revokeObjectURL(url),1000);
 }
 async function exportExcel(){
  try{if(current){warnTeamExport();TPInventoryExport.download(TPInventoryExport.workbook(teamExportState()),current.label+'.xlsx');}}catch(e){note('Não foi possível gerar o Excel. Baixe os arquivos TXT. '+e.message,true);}
@@ -504,29 +523,6 @@ function parseRecountTxt(text){
   if(invalid.length)throw Error('Confira as linhas '+invalid.slice(0,8).join(', ')+'. Use um EAN por linha, sem descrição.');
   if(!result.length||result.length>40000)throw Error('O TXT deve conter entre 1 e 40.000 EANs.');return result;
 }
-function parseImportTxt(text){
-  const lines=String(text).replace(/^\uFEFF/,'').split(/\r?\n/),items=new Map(),invalid=[];
-  lines.forEach((line,index)=>{const value=line.trim();if(!value)return;if(index===0&&/^(EAN|CÓDIGO|CODIGO)([,;\t]|$)/i.test(value))return;const parts=value.split(/[,;\t]/).map(v=>v.trim().replace(/^"|"$/g,''));const ean=parts[0]||'',quantity=Number(parts[1]);if(!/^\d{1,30}$/.test(ean)||parts.length!==2||!/^\d+$/.test(parts[1]||'')||!Number.isSafeInteger(quantity)||quantity<1||quantity>1000000){invalid.push(index+1);return;}const total=(items.get(ean)||0)+quantity;if(total>1000000){invalid.push(index+1);return;}items.set(ean,total);});
-  if(invalid.length)throw Error('Revise as linhas '+invalid.slice(0,8).join(', ')+'. Use EAN,QNTDD, com quantidades inteiras positivas.');
-  if(!items.size||items.size>40000)throw Error('O TXT deve conter entre 1 e 40.000 EANs.');return [...items].map(([ean,quantity])=>({ean,quantity}));
-}
-async function importFile(kind,input){
-  const file=input.files?.[0];if(!file)return;input.value='';if(!current)throw Error('Crie ou abra uma contagem antes de importar.');if(file.size>3000000)throw Error('O TXT deve ter no máximo 3 MB.');
-  if(!editableTeam())throw Error('Escolha MINHA PARTE para lançar nesta participação.');const rows=parseImportTxt(await file.text());pendingImport={id:current.id,kind,rows,requestId:uuid()};$('#import-file-status').textContent='Validando '+rows.length+' EANs…';await sendImport(false);
-}
-async function sendImport(includeUnknown){
- if(!editableTeam())throw Error('Sua participação está fechada para lançamentos.');
- if(!pendingImport||!current||pendingImport.id!==current.id)throw Error('A contagem mudou. Escolha o arquivo novamente.');
- const p=pendingImport,missing=p.rows.filter(r=>!catalog.get(r.ean));
- if(missing.length&&!includeUnknown){$('#import-unknown-list').textContent=missing.slice(0,16).map(r=>r.ean).join(', ');$('#import-unknown-count').textContent=missing.length+' EAN(s) não reconhecidos no cadastro local. Deseja lançar mesmo assim?';$('#import-unknown-fields').innerHTML=missing.map(r=>'<fieldset><legend>'+esc(r.ean)+'</legend><label>PRODUTO<input data-import-ean="'+esc(r.ean)+'" data-field="description" required maxlength="180"></label><label>MARCA<input data-import-ean="'+esc(r.ean)+'" data-field="brand" required maxlength="80"></label></fieldset>').join('');$('#import-unknown-dialog').showModal();return;}
- if(current.kind==='RECONTAGEM'&&p.rows.some(r=>!current.targets.some(t=>t.ean===r.ean)))throw Error('O TXT contém EAN fora da solicitação de recontagem.');
- if(includeUnknown){if(!$('#import-unknown-form').reportValidity())return;const identities=new Map();for(const field of $('#import-unknown-fields').querySelectorAll('input')){if(!identities.has(field.dataset.importEan))identities.set(field.dataset.importEan,{});identities.get(field.dataset.importEan)[field.dataset.field]=field.value.trim();}for(const r of missing){r.metadata=identities.get(r.ean)||{};if(!r.metadata.description||!r.metadata.brand)throw Error('Preencha produto e marca de todos os EANs desconhecidos.');}}
- const existing=new Map(current[p.kind].map(r=>[r.ean,r]));for(const r of p.rows)if((existing.get(r.ean)?.quantity||0)+r.quantity>1000000)throw Error('Quantidade ultrapassa 1.000.000 para '+r.ean);
- const now=new Date().toISOString();for(const r of p.rows){let row=existing.get(r.ean);if(!row){const product=catalog.get(r.ean);row={ean:r.ean,quantity:0,description:product?.description||r.metadata?.description||'PRODUTO INEXISTENTE',brand:product?.brand||r.metadata?.brand||'NÃO CADASTRADA',subgroup:product?.subgroup||'',unknown:!product};current[p.kind].push(row);existing.set(r.ean,row);}if(r.metadata&&row.unknown){row.description=r.metadata.description;row.brand=r.metadata.brand;}row.quantity+=r.quantity;row.lastScannedAt=now;row.origin='IMPORTAÇÃO TXT';}
- const imported=new Set(p.rows.map(r=>r.ean));current.zeroEans=(current.zeroEans||[]).filter(e=>!imported.has(e));changed();await persistDraft();note(p.rows.length+' linhas importadas neste dispositivo.');pendingImport=null;$('#import-file-status').textContent='Importado localmente; será enviado ao Drive com os demais lançamentos.';
-}
-
-async function importWithFeedback(kind,input){try{await importFile(kind,input);}catch(e){$('#import-file-status').textContent=e.message;}}
 function loadZxing(){if(window.ZXingBrowser)return Promise.resolve(window.ZXingBrowser);if(zxingPromise)return zxingPromise;zxingPromise=new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='../../shared/zxing-browser.min.js';s.onload=()=>window.ZXingBrowser?resolve(window.ZXingBrowser):reject(Error('Leitor de câmera indisponível.'));s.onerror=()=>reject(Error('Não foi possível carregar o leitor local.'));document.head.append(s);});return zxingPromise;}
 function stopCamera(close=true){cameraGeneration++;cameraActive=false;cameraLookup=false;if(cameraFrame)cancelAnimationFrame(cameraFrame);cameraFrame=0;try{cameraControls?.stop();}catch(_){}cameraControls=null;cameraStream?.getTracks().forEach(t=>t.stop());cameraStream=null;const video=$('#camera-video');if(video)video.srcObject=null;if(close&&$('#camera-dialog')?.open)$('#camera-dialog').close();}
 function clearCameraCandidate(){cameraCandidate=null;$('#camera-product').hidden=true;$('#camera-launch').disabled=true;}
@@ -625,7 +621,13 @@ $('#refresh-recounts').addEventListener('click',loadRecounts);
 $('#recount-inbox-list').addEventListener('click',event=>{const b=event.target.closest('[data-open-recount]');if(b){b.disabled=true;$('#recount-inbox-status').textContent='Abrindo recontagem…';openCount(b.dataset.openRecount,'openRecount').then(()=>{$('#recount-inbox-status').textContent='Recontagem aberta. Confira os produtos solicitados abaixo.';}).catch(e=>{$('#recount-inbox-status').textContent=e.message;}).finally(()=>{b.disabled=false;});}});
 $('#refresh-deletions').addEventListener('click',loadDeletionRequests);
 $('#deletion-inbox-list').addEventListener('click',event=>{const b=event.target.closest('[data-review-delete]');if(b)reviewDeletion(b.dataset.reviewDelete);});
-$('#request-delete-session').addEventListener('click',requestDeletion);
+$('#request-delete-session').addEventListener('click',()=>openDeleteConfirm('request'));
+$('#delete-current-session').addEventListener('click',()=>openDeleteConfirm('active'));
+$('#delete-confirm-no').addEventListener('click',()=>$('#delete-confirm-dialog').close());
+$('#delete-confirm-yes').addEventListener('click',async()=>{
+  const action=deleteConfirmAction;deleteConfirmAction=null;$('#delete-confirm-dialog').close();
+  if(action==='request')await requestDeletion();else if(action==='history')await deleteSession();else if(action==='active')await deleteSession(current?.id);
+});
 $('#approve-delete').addEventListener('click',()=>resolveDeletion(true));$('#reject-delete').addEventListener('click',()=>resolveDeletion(false));
 $('#recount-target-list').addEventListener('click',event=>{const b=event.target.closest('[data-zero-ean]');if(!b||!current||current.status==='FINALIZADA'||current.localFinished||current.deleteStatus==='PENDENTE')return;const ean=b.dataset.zeroEan;current.zeroEans=current.zeroEans||[];current.zeroEans=current.zeroEans.includes(ean)?current.zeroEans.filter(e=>e!==ean):current.zeroEans.concat(ean);changed();});
 $('#login-form').addEventListener('submit',async event=>{
@@ -652,13 +654,8 @@ $('#new-count').addEventListener('click',createCount);
 $('#session-picker').addEventListener('change',event=>openCount(event.target.value).catch(e=>note(e.message,true)));
 $('#history-store-filter').addEventListener('change',event=>{historyStoreFilter=event.target.value;sessions=[];sessionsLoaded=false;picker();loadSessions();});
 $('#load-sessions').addEventListener('click',loadSessions);
-$('#delete-session').addEventListener('click',deleteSession);
+$('#delete-session').addEventListener('click',()=>openDeleteConfirm('history'));
 $('#scan-form').addEventListener('submit',event=>{event.preventDefault();scan();});
-$('#import-count').addEventListener('click',()=>$('#import-count-file').click());$('#import-defects').addEventListener('click',()=>$('#import-defects-file').click());
-$('#import-count-file').addEventListener('change',event=>importWithFeedback('counts',event.target));$('#import-defects-file').addEventListener('change',event=>importWithFeedback('defects',event.target));
-$('#import-unknown-form').addEventListener('submit',event=>{event.preventDefault();sendImport(true).then(()=>{if(!pendingImport)$('#import-unknown-dialog').close();}).catch(e=>$('#import-file-status').textContent=e.message);});
-$('#import-cancel-unknown').addEventListener('click',()=>{$('#import-unknown-dialog').close();pendingImport=null;$('#import-file-status').textContent='Importação cancelada para corrigir os EANs.';});
-$('#import-unknown-dialog').addEventListener('close',()=>{$('#import-confirm-unknown').disabled=false;});
 $('#open-camera').addEventListener('click',()=>{if(!current||current.status==='FINALIZADA')return;$('#camera-dialog').showModal();startCamera();});
 $('#camera-close').addEventListener('click',()=>stopCamera());$('#camera-dialog').addEventListener('close',()=>{stopCamera(false);});
 $('#correct-ean').addEventListener('click',()=>{$('#unknown-dialog').close();unknown=null;$('#ean-input').focus();$('#ean-input').select();});
@@ -675,8 +672,7 @@ document.querySelectorAll('#count-body,#defect-body').forEach(body=>body.addEven
   if(!Number.isInteger(value)||value<1||value>1000000){input.value=String(row.quantity);note('Informe uma quantidade inteira entre 1 e 1.000.000.',true);return;}
   if(value!==row.quantity){row.quantity=value;row.origin='AJUSTE MANUAL';row.lastScannedAt=new Date().toISOString();changed();}
 }));
-$('#reload-count').addEventListener('click',()=>openCount(current?.id).catch(e=>note(e.message,true)));
-$('#finish-count').addEventListener('click',finishCount);$('#export-txt').addEventListener('click',exportCsv);$('#export-xlsx').addEventListener('click',exportExcel);
+$('#finish-count').addEventListener('click',finishCount);$('#export-txt').addEventListener('click',exportCsv);
 $('#analysis-filters').addEventListener('submit',analyze);
 $('#filter-brand').addEventListener('change',renderAnalysis);$('#filter-subgroup').addEventListener('change',renderAnalysis);
 function showTab(analysis){$('#count-view').hidden=analysis;$('#analysis-view').hidden=!analysis;$('#tab-count').classList.toggle('active',!analysis);$('#tab-analysis').classList.toggle('active',analysis);render();}
@@ -705,8 +701,6 @@ $('#prepare-offline').addEventListener('click',prepareOffline);
 $('#recover-local').addEventListener('click',()=>recoverLocal().catch(e=>$('#login-error').textContent=e.message));
 $('#sync-now').addEventListener('click',()=>{if(!auth?.access_token){$('#login-panel').hidden=false;$('#app-main').hidden=true;$('#login-error').textContent='Entre novamente para enviar as bipagens locais ao Drive.';}else flush();});
 for(const kind of ['counts','defects'])for(const direction of ['prev','next'])$('#'+kind+'-'+direction).addEventListener('click',()=>{listPage[kind]+=direction==='next'?1:-1;render();});
-$('#export-count-txt').addEventListener('click',()=>{if(current){warnTeamExport();TPInventoryExport.txt(teamExportState().counts,'CONTAGEM_'+current.label+'.txt');}});
-$('#export-defects-txt').addEventListener('click',()=>{if(current){warnTeamExport();TPInventoryExport.txt(teamExportState().defects,'DEFEITOS_'+current.label+'.txt');}});
 
 $('#camera-launch').addEventListener('click',launchCameraProduct);
 $('#camera-rescan').addEventListener('click',()=>{clearCameraCandidate();cameraLastEan='';$('#camera-status').textContent='Aponte para o código de barras.';});
@@ -719,6 +713,5 @@ $('#store-code').addEventListener('change',loadTeamCounts);
 $('#team-open-list').addEventListener('click',event=>{const b=event.target.closest('[data-team-join]');if(b)joinTeamCount(b.dataset.teamJoin).catch(e=>$('#team-open-status').textContent=e.message);});
 $('#team-own').addEventListener('click',()=>{teamScope='own';listPage.counts=0;listPage.defects=0;render();});
 $('#team-total').addEventListener('click',()=>{teamScope='total';listPage.counts=0;listPage.defects=0;render();});
-$('#team-own-export').addEventListener('click',()=>{if(current)TPInventoryExport.download(TPInventoryExport.workbook(withSubgroups({...current,collaborative:false,counts:current.counts,defects:current.defects})),'MINHA_PARTE_'+current.responsible+'_'+current.label+'.xlsx');});
 $('#count-responsible').addEventListener('input',()=>{const input=$('#count-responsible');input.setCustomValidity(validResponsible(input.value)?'':'Informe pelo menos 4 letras, sem números.');});
 setInterval(()=>{if(user&&auth&&navigator.onLine&&!document.hidden){loadTeamCounts();if(current?.collaborative&&!inventoryHome)refreshTeam();}},10000);
