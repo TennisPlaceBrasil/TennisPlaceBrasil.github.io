@@ -66,3 +66,16 @@ assert.equal((a.$('#count-body').innerHTML.match(/<td>/g)||[]).length,6);assert.
 // Non-administrators cannot start an analysis request.
 let unauthorizedFetches=0;b.context.fetch=async()=>{unauthorizedFetches++;return Response.json({});};await b.run('analyze()');assert.equal(unauthorizedFetches,0);
 console.log('PASS: subgroup visible in table/mobile/export and analysis remains administrative');
+
+// A multi-store account sees all authorized history by default and can filter down to one store.
+const history=device();let listPayloads=[];
+history.run("user={id:'multi',store:null,allStores:false,multiStore:true};stores=['APAR','JOIN'];auth={access_token:'test'};current=null;displayAccount();picker();");
+assert.equal(history.$('#session-picker-wrap').hidden,false);
+assert.equal(history.$('#history-store-filter').hidden,false);
+history.context.fetch=async(_url,req)=>{const body=JSON.parse(req.body);listPayloads.push(body);return Response.json({data:body.filterStore?[{id:'join',store:'JOIN',label:'JOIN FINAL',status:'FINALIZADA'}]:[{id:'apar',store:'APAR',label:'APAR FINAL',status:'FINALIZADA'},{id:'join',store:'JOIN',label:'JOIN FINAL',status:'FINALIZADA'}]});};
+await history.run('loadSessions()');
+assert.equal(listPayloads[0].action,'list');assert.equal('filterStore' in listPayloads[0],false,'Default history request means all assigned stores');
+assert.match(history.$('#session-picker').innerHTML,/APAR FINAL/);assert.match(history.$('#session-picker').innerHTML,/JOIN FINAL/);
+history.run("historyStoreFilter='JOIN';sessions=[];sessionsLoaded=false;");await history.run('loadSessions()');
+assert.equal(listPayloads[1].filterStore,'JOIN');assert.equal(history.run('sessions.length'),1);assert.equal(history.run('sessions[0].id'),'join');
+console.log('PASS: multi-store history defaults to all authorized stores and filters by store');
