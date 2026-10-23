@@ -157,20 +157,36 @@ $$;
 -- Lease + revision guards serialize the Sheets projection without holding a database lock over HTTP.
 create or replace function public.stockcount_team_mirror(p_id text,p_action text,p_lease uuid,p_revision bigint default null,p_error text default null)
 returns jsonb language plpgsql security invoker set search_path=public as $$
-declare c public.stockcount_team_counts%rowtype;
+declare v_count public.stockcount_team_counts%rowtype;
 begin
- select * into c from public.stockcount_team_counts where id=p_id for update;
+ select * into v_count from public.stockcount_team_counts where id=p_id for update;
  if not found then return null; end if;
  if p_action='claim' then
-  if c.deleted or c.mirrored_revision>=c.revision or c.mirror_lease_until>now() then return null; end if;
+  if v_count.mirrored_revision>=v_count.revision or v_count.mirror_lease_until>now() then return null; end if;
   update public.stockcount_team_counts set mirror_lease=p_lease,mirror_lease_until=now()+interval '5 minutes' where id=p_id;
+  if v_count.deleted then
+   return jsonb_build_object('id',v_count.id,'store',v_count.store,'version',v_count.revision,'deleted',true);
+  end if;
   return public.stockcount_team_snapshot(p_id);
  end if;
- if c.mirror_lease is distinct from p_lease then return null; end if;
+ if p_action<>'complete' then raise exception 'Ação de sincronização inválida.'; end if;
+ if v_count.mirror_lease is distinct from p_lease or p_revision is null or p_revision>v_count.revision then return null; end if;
  update public.stockcount_team_counts set mirrored_revision=case when p_error is null then greatest(mirrored_revision,p_revision) else mirrored_revision end,
   mirror_error=left(p_error,300),mirror_lease=null,mirror_lease_until=null where id=p_id;
  return null;
 end;
 $$;
+create or replace function public.stockcount_team_pending_mirrors(p_stores text[] default null,p_limit integer default 3)
+returns jsonb language sql stable security invoker set search_path=public as $$
+ select coalesce(jsonb_agg(jsonb_build_object('id',q.id)),'[]'::jsonb)
+ from (select id from public.stockcount_team_counts
+ where revision>mirrored_revision and (mirror_lease_until is null or mirror_lease_until<=now())
+ and (p_stores is null or store=any(p_stores))
+ order by deleted desc,updated_at asc limit greatest(1,least(coalesce(p_limit,3),10))) q;
+$$;
+revoke all on function public.stockcount_team_pending_mirrors(text[],integer) from public,anon,authenticated;
+grant execute on function public.stockcount_team_pending_mirrors(text[],integer) to service_role;
+revoke all on function public.stockcount_team_mirror(text,text,uuid,bigint,text) from public,anon,authenticated;
+grant execute on function public.stockcount_team_mirror(text,text,uuid,bigint,text) to service_role;
 revoke all on function public.stockcount_team_rows(text,text,uuid),public.stockcount_team_snapshot(text,uuid),public.stockcount_team(text,uuid,text,uuid,jsonb),public.stockcount_team_mirror(text,text,uuid,bigint,text),public.stockcount_team_share_people(text) from public,anon,authenticated;
 grant execute on function public.stockcount_team_rows(text,text,uuid),public.stockcount_team_snapshot(text,uuid),public.stockcount_team(text,uuid,text,uuid,jsonb),public.stockcount_team_mirror(text,text,uuid,bigint,text),public.stockcount_team_share_people(text) to service_role;

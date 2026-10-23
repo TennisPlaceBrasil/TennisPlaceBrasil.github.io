@@ -115,3 +115,12 @@ A implantação existente do Apps Script deve receber o `Code.gs` atualizado, ma
 O dashboard exige a permissão administrativa já existente. Posição = última contagem finalizada de cada loja no período, sem acumular snapshots de dias diferentes. A série diária usa a última contagem de cada loja/dia e avisa que as lojas participantes podem variar. Defeitos são divididos por (contagem + defeitos). Acompanhamento operacional usa loja/período; marca/subgrupo filtram os produtos. Sem base de estoque esperado não se calculam acuracidade ou divergências.
 
 Verificações: `node backend/contagem-estoque/verify-dashboard.mjs`, `verify-recount.mjs`, `verify-team-ui.mjs`, `verify-offline.mjs`, `verify-pwa.mjs` e `verify-share-ui.mjs` (os demais nomes na mesma pasta).
+
+
+## Exclusão confirmada e reconciliação
+
+O Supabase mantém a decisão de exclusão e suas revisões mesmo após ocultar a contagem. A projeção da planilha participa do mesmo lease de sincronização: verifica a existência da aba, remove somente a contagem e suas recontagens e confirma novamente a ausência. Falhas e respostas perdidas mantêm a revisão pendente; consultas de contagens, solicitações e análise disparam novas tentativas, limitadas por loja e por lote. A interface diferencia exclusão registrada de exclusão confirmada na planilha.
+
+As listas usam os IDs centrais como autoridade, impedindo que metadados antigos da planilha restaurem contagens excluídas ou ocultadas para revisão. Uma aba ausente sem exclusão aprovada é sinalizada no histórico sem apagar os produtos centrais. Pedidos de exclusão pendentes permanecem na planilha até aprovação ADM.
+
+Regressões: `node --experimental-strip-types backend/contagem-estoque/verify-deletion.mjs`, `verify-team-api.mjs`, e `verify-deletion.sql` (transação com rollback).
