@@ -2,10 +2,10 @@
 (()=>{
  'use strict';
  const install=document.getElementById('install-app'),fullscreen=document.getElementById('fullscreen-app'),dialog=document.getElementById('install-dialog');
- let pendingPrompt=null;
+ let pendingPrompt=null,installedHere=false;
  const installed=()=>navigator.standalone===true||['standalone','fullscreen','minimal-ui'].some(mode=>matchMedia('(display-mode: '+mode+')').matches);
  function update(){
-  install.hidden=installed();
+  install.hidden=installed()||installedHere;
   fullscreen.hidden=!document.fullscreenEnabled||matchMedia('(display-mode: fullscreen)').matches;
   fullscreen.textContent=document.fullscreenElement?'SAIR DA TELA CHEIA':'TELA CHEIA';
  }
@@ -20,11 +20,11 @@
   if(!dialog.open)dialog.showModal();
  }
  window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();pendingPrompt=event;update();});
- window.addEventListener('appinstalled',()=>{pendingPrompt=null;if(dialog.open)dialog.close();update();});
+ window.addEventListener('appinstalled',()=>{installedHere=true;pendingPrompt=null;if(dialog.open)dialog.close();update();});
  install.addEventListener('click',async()=>{
   if(!pendingPrompt){help();return;}
   const prompt=pendingPrompt;pendingPrompt=null;install.disabled=true;
-  try{await prompt.prompt();const choice=await prompt.userChoice;if(choice.outcome!=='accepted')help('Instalação cancelada. Você pode instalar depois pelo menu do navegador.');}
+  try{await prompt.prompt();const choice=await prompt.userChoice;if(choice.outcome==='accepted')installedHere=true;else help('Instalação cancelada. Você pode instalar depois pelo menu do navegador.');}
   catch(_){help('Use o menu do navegador para concluir a instalação.');}
   finally{install.disabled=false;update();}
  });

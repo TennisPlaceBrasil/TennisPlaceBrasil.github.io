@@ -20,7 +20,7 @@ vm.runInContext(read('pwa.js'),context);
 assert.equal(element('install-app').hidden,false);
 await element('install-app').events.click();assert.equal(element('install-dialog').open,true);assert.match(element('install-instructions').textContent,/Chrome/);
 element('install-dialog').close();windowEvents.beforeinstallprompt({preventDefault(){},async prompt(){prompts++;},userChoice:Promise.resolve({outcome:'accepted'})});
-await element('install-app').events.click();assert.equal(prompts,1);assert.equal(element('install-app').disabled,false);
+await element('install-app').events.click();assert.equal(prompts,1);assert.equal(element('install-app').disabled,false);assert.equal(element('install-app').hidden,true,'Hide install button immediately after acceptance');
 standalone=true;windowEvents.appinstalled();assert.equal(element('install-app').hidden,true);
 await element('fullscreen-app').events.click();assert.equal(fullscreenRequests,1);assert.match(element('fullscreen-app').textContent,/SAIR/);
 await element('fullscreen-app').events.click();assert.equal(document.fullscreenElement,null);
