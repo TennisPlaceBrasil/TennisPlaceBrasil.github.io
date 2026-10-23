@@ -14,6 +14,17 @@ create table if not exists public.stockcount_team_people (
  updated_at timestamptz not null default now(), primary key(count_id,id)
 );
 create unique index if not exists stockcount_team_person_id on public.stockcount_team_people(id);
+create table if not exists public.stockcount_user_store_access (
+ user_id uuid not null references auth.users(id) on delete cascade,
+ sigla text not null references public.manual_portal_store_logins(sigla) on delete cascade,
+ created_at timestamptz not null default now(),
+ primary key(user_id,sigla)
+);
+insert into public.stockcount_user_store_access(user_id,sigla)
+ select user_id,sigla from public.manual_portal_store_logins on conflict do nothing;
+alter table public.stockcount_user_store_access enable row level security;
+revoke all on public.stockcount_user_store_access from public,anon,authenticated;
+grant all on public.stockcount_user_store_access to service_role;
 alter table public.stockcount_team_counts enable row level security;
 alter table public.stockcount_team_people enable row level security;
 revoke all on public.stockcount_team_counts,public.stockcount_team_people from public,anon,authenticated;
@@ -67,20 +78,20 @@ begin
  if p_action='find' then
   select count_id into p_id from public.stockcount_team_people where id=p_person and user_id=p_user;
   if p_id is null then return null; end if;
-  if not adm and not exists(select 1 from public.stockcount_team_counts where id=p_id and store=st and not deleted) then raise exception 'Contagem sem permissão.'; end if;
+ if not adm and not exists(select 1 from public.stockcount_team_counts c where c.id=p_id and not c.deleted and (exists(select 1 from public.manual_portal_store_logins m where m.user_id=p_user and m.sigla=c.store) or exists(select 1 from public.stockcount_user_store_access a where a.user_id=p_user and a.sigla=c.store))) then raise exception 'Contagem sem permissão.'; end if;
   return public.stockcount_team_snapshot(p_id,p_person);
  end if;
  if p_action='list' then
   return (select coalesce(jsonb_agg((meta-'adjustedCounts'-'adjustedDefects')||jsonb_build_object('id',id,'collaborative',true,'version',revision,'updatedAt',updated_at) order by updated_at desc),'[]')
-   from public.stockcount_team_counts where not deleted and (adm or store=st) and (p_payload->>'store' is null or store=p_payload->>'store')
+   from public.stockcount_team_counts c where not deleted and (adm or exists(select 1 from public.manual_portal_store_logins m where m.user_id=p_user and m.sigla=c.store) or exists(select 1 from public.stockcount_user_store_access a where a.user_id=p_user and a.sigla=c.store)) and (p_payload->>'store' is null or store=p_payload->>'store')
     and (coalesce((p_payload->>'history')::boolean,false) or meta->>'status'<>'FINALIZADA'));
  end if;
  if p_action='init' then
-  if not adm and p_payload->>'store' is distinct from st then raise exception 'Contagem sem permissão.'; end if;
+  if not adm and not exists(select 1 from public.manual_portal_store_logins where user_id=p_user and sigla=p_payload->>'store') and not exists(select 1 from public.stockcount_user_store_access where user_id=p_user and sigla=p_payload->>'store') then raise exception 'Contagem sem permissão.'; end if;
   insert into public.stockcount_team_counts(id,store,meta) values(p_id,p_payload->>'store',p_payload-'counts'-'defects'-'auditSession'-'responsible') on conflict do nothing;
  end if;
  select * into c from public.stockcount_team_counts where id=p_id for update;
- if not found or (not adm and c.store is distinct from st) then raise exception 'Contagem sem permissão.'; end if;
+ if not found or (not adm and not exists(select 1 from public.manual_portal_store_logins where user_id=p_user and sigla=c.store) and not exists(select 1 from public.stockcount_user_store_access where user_id=p_user and sigla=c.store)) then raise exception 'Contagem sem permissão.'; end if;
  if c.deleted then raise exception 'Esta contagem já não existe.'; end if;
  if p_action in ('init','join') then
   nm:=btrim(p_payload->>'responsible');
@@ -133,7 +144,7 @@ begin
   update public.stockcount_team_counts set deleted=true,revision=revision+1,updated_at=now() where id=p_id;
   return jsonb_build_object('id',p_id,'deleted',true);
  elsif p_action='adjustRecount' then
-  if not adm and not exists(select 1 from public.manual_portal_store_logins where user_id=p_user and sigla=c.store) then raise exception 'Recontagem sem permissão.'; end if;
+  if not adm and not exists(select 1 from public.manual_portal_store_logins where user_id=p_user and sigla=c.store) and not exists(select 1 from public.stockcount_user_store_access where user_id=p_user and sigla=c.store) then raise exception 'Recontagem sem permissão.'; end if;
   if c.meta->>'status'<>'FINALIZADA' then raise exception 'A contagem ainda não foi finalizada.'; end if;
   update public.stockcount_team_counts set meta=meta||jsonb_build_object('adjustedCounts',p_payload->'counts','adjustedDefects',p_payload->'defects'),revision=revision+1,mirrored_revision=revision+1,updated_at=now() where id=p_id;
  else raise exception 'Ação colaborativa inválida.';
