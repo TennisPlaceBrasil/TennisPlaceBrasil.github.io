@@ -1,6 +1,6 @@
 # Contagem de Estoque — Tennis Place
 
-Status: Google Apps Script version 5 and authenticated Edge API deployed. Recount workflow and contextual Tepê help implemented and verified.
+Status: authenticated inventory API, collaborative live storage, retryable Google Sheets projection, offline device drafts and read-only monitoring. Historical single-device counts and recounts remain supported.
 
 ## Data flow
 
@@ -79,3 +79,29 @@ Camera recognition only prepares a green product card. LANÇAR commits one unit 
 Positive/negative tones use a shared Web Audio context without downloaded audio assets. Unknown typed/scanned EANs require description and brand before confirmation. TXT imports require those fields per missing EAN. Apps Script preserves this metadata while keeping canonical catalog descriptions for known EANs. User descriptions beginning with equals are written as literal sheet text.
 
 The store can return to the inventory start screen without leaving its session or losing local work. This screen lists only unfinished device drafts and pending uploads, never the administrative cloud history. Opening a recount uses its explicit authorized endpoint and preserves the outgoing device draft, even if that draft has pending uploads or conflicts.
+
+
+
+## Contagem simultânea por responsável
+
+Novas contagens criadas pela interface usam `stockcount_team_counts` e `stockcount_team_people` como registro transacional. A mesma contagem pode receber vários aparelhos. RESPONSAVEL fica junto à data, exige ao menos quatro letras (espaços e acentos permitidos; números e outros caracteres rejeitados) e identifica a contribuição de cada participante. O nome não é uma nova credencial; a autorização continua sendo o login da loja. IDs aleatórios de participação são privados, persistidos no dispositivo antes da entrada e não aparecem na lista dos demais participantes.
+
+Um aparelho cria a contagem; os demais informam seu próprio responsável e usam **ENTRAR NA CONTAGEM**, na lista de contagens em andamento da própria loja. MINHA PARTE permite corrigir somente a contribuição local. TOTAL DA CONTAGEM é uma consulta da soma de todos. Dividir fisicamente as áreas continua necessário: a deduplicação impede reenvios de uma mesma operação, mas não identifica a mesma peça contada por duas pessoas.
+
+Cada sincronização transmite um snapshot exclusivamente daquela participação, com revisão própria e identificador durável. Sob um bloqueio transacional da contagem, o servidor confere a revisão da participação e o SHA-256 do pacote, substitui somente sua contribuição e calcula a soma. Repetir o mesmo pacote não soma de novo. Um pacote antigo não sobrescreve uma revisão mais recente. Web Locks impede duas abas no mesmo navegador de alterarem o mesmo rascunho; a aba sem bloqueio não escreve nem no servidor nem no IndexedDB. A falta dessa API bloqueia a edição colaborativa, mantendo a exportação acessível.
+
+Finalizar marca apenas a própria participação como concluída. A contagem só passa para FINALIZADA depois que todos os participantes registrados terminam e sincronizam. Não existe encerramento forçado de um aparelho offline. Pedidos de exclusão aguardam os demais responsáveis terminarem; a aprovação exige a revisão que o ADM acabou de consultar. A exclusão gera um tombstone central que revoga imediatamente a participação e o acesso por link, sem permitir recriação por um pacote antigo.
+
+O Google Sheets recebe uma projeção consolidada assíncrona, protegida por lease e pela revisão do Apps Script. Falhas no Drive não desfazem um recebimento transacional confirmado. A interface diferencia recebimento no servidor de espelhamento na planilha. Consultar/sincronizar novamente tenta atualizar projeções pendentes; não há um agendador independente nesta versão. O dashboard por link lê a soma central e mantém os responsáveis, IPs e dispositivos no topo. O histórico administrativo e a análise incluem os dados consolidados enquanto o espelhamento está pendente. As recontagens existentes continuam individuais; sua aplicação atualiza o total final e preserva as contribuições originais como auditoria.
+
+Exportações consolidadas usam a última soma recebida dos demais, mais a própria contribuição local atual. Sem conexão, não podem incluir lançamentos ainda retidos em outros aparelhos. **BAIXAR MEU EXCEL** oferece uma cópia individual, com nome, produtos, marca, horários e origem. O Excel consolidado inclui uma aba de responsáveis e seus últimos envios. EANs continuam texto; defeitos vêm primeiro na importação.
+
+Contagens antigas não são convertidas automaticamente para evitar somar snapshots preexistentes como se fossem contribuições diferentes. Para trabalho em equipe, crie uma nova contagem e entre nela nos outros aparelhos.
+
+Validação:
+- `node backend/contagem-estoque/verify-team-ui.mjs`
+- `node --experimental-strip-types backend/contagem-estoque/verify-team-api.mjs`
+- Execute `verify-team.sql` em uma transação que termina com ROLLBACK; ajuste as siglas de fixture se necessário.
+- Teste real de concorrência passou com dois envios paralelos de 5.000 EANs cada: 15.000 unidades somadas, duas revisões, sem perda. As fixtures temporárias foram removidas.
+
+Novas tabelas e RPCs são exclusivas de service_role, com RLS e revogação de acesso de anon/authenticated. A API autenticada continua exigindo JWT. O endpoint compartilhado mantém apenas leitura por token válido.

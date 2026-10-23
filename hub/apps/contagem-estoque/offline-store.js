@@ -11,7 +11,7 @@ window.TPInventoryLocal=(()=>{
  function save(owner,state,info,hint){
   // Capture synchronously, before another scan can change the referenced row.
   const k=key(owner,state.id),meta={...state};delete meta.counts;delete meta.defects;
-  if(hint)delete meta.targets;
+  if(hint){delete meta.targets;delete meta.peers;}
   const record={...structuredClone(meta),...structuredClone(info),owner};
   const rows=hint?[{kind:hint.kind,row:state[hint.kind].find(r=>r.ean===hint.ean),position:state[hint.kind].findIndex(r=>r.ean===hint.ean)}]:['counts','defects'].flatMap(kind=>state[kind].map((row,position)=>({kind,row,position})));
   const snapshot=structuredClone(rows);
@@ -35,3 +35,4 @@ window.TPInventoryLocal=(()=>{
  async function list(owner){await queue;const d=await db();return new Promise((resolve,reject)=>{const r=d.transaction('counts').objectStore('counts').getAll();r.onsuccess=()=>resolve(r.result.map(r=>r.value).filter(r=>r.owner===owner).sort((a,b)=>String(b.localUpdatedAt).localeCompare(String(a.localUpdatedAt))));r.onerror=()=>reject(r.error);});}
  return {list,ready:db,save,restore,remove,read,setting,drain:()=>queue};
 })();
+
