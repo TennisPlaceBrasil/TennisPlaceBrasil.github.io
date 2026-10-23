@@ -1,0 +1,101 @@
+/* Flexible viewports, safe areas and compact counting on phones and tablets. */
+html{min-height:100%;scroll-padding-top:12px}
+body{min-height:100vh;min-height:100dvh;padding-bottom:env(safe-area-inset-bottom)}
+.topbar{height:auto;min-height:60px;padding-top:max(6px,env(safe-area-inset-top));padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right));padding-bottom:6px;gap:12px;flex-wrap:wrap}
+.account-bar{min-width:0;flex-wrap:wrap;justify-content:flex-end;gap:6px}
+main{padding-left:max(12px,env(safe-area-inset-left));padding-right:max(12px,env(safe-area-inset-right))}
+main,.session-bar,.session-create,.count-heading>div,.scanner-panel,.scanner-tools,.scan-field,.recount-inbox-item>div{min-width:0}
+.session-create{width:100%}.session-bar{flex-wrap:wrap}
+.scan-message{height:auto;min-height:14px;overflow-wrap:anywhere}
+.count-heading{gap:12px;flex-wrap:wrap}.count-heading h2{overflow-wrap:anywhere}
+.count-heading>div:nth-child(2){display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.sync-status{flex-basis:100%}.list-heading{height:auto;min-height:52px;gap:8px;flex-wrap:wrap;padding-top:8px;padding-bottom:8px}
+.recount-inbox-item,.recount-target,.team-person,.share-link-heading{overflow-wrap:anywhere}
+dialog{max-height:calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));overflow:auto}
+#install-dialog .list-heading{padding:0;border:0}#install-dialog h2{font-size:22px}
+#install-feedback{color:var(--yellow)}
+@media(max-width:1100px),(pointer:coarse){
+ .button{height:auto;min-height:40px;padding:9px 11px;font-size:10px;letter-spacing:.4px;white-space:normal}
+ .topbar{min-height:48px;gap:6px}.brand img{width:90px;height:36px}.brand-tool{font-size:8px}
+ .account-bar{flex:1}.local-badge{font-size:10px}
+ input,select,.session-create input,.session-create select,.analysis-filters input,.analysis-filters select{font-size:16px}
+ .session-create{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+ .session-create label[for="count-responsible"]{grid-column:1/-1;grid-row:3}
+ .session-create #count-responsible{grid-column:1/-1;grid-row:4}
+ .session-create #new-count{grid-column:1/-1;grid-row:5}
+ .session-create input,.session-create select{height:42px}
+ .session-picker-wrap{max-width:100%}.session-picker-wrap select{min-width:0;max-width:100%;flex-basis:100%}
+ .scanner-panel{grid-template-columns:1fr;gap:8px}.scanner-panel form{grid-column:1;grid-row:auto}
+ .mode-switch{flex-direction:row}.mode-button{min-height:40px;flex:1;text-align:center;font-size:11px}
+ .catalog-status{grid-column:auto;white-space:normal}.scanner-tools{display:flex;flex-wrap:wrap}
+ .scanner-tools .button{font-size:10px;min-height:40px;height:auto;flex:1}
+ .scan-field input{height:46px;font-size:16px}.scan-field button{font-size:10px;min-height:44px;padding:0 10px}
+ .scan-message{font-size:11px;line-height:1.4}.qty-actions{gap:4px}
+ .qty-actions button,.remove-row{width:38px;height:40px;flex-shrink:0;font-size:16px}
+ .quantity-input{width:48px;height:40px;font-size:16px}.table-wrap{max-width:100%;overscroll-behavior:contain}
+ td{font-size:12px;padding:7px 6px}th{font-size:10px;padding:8px 6px}.product-name{white-space:normal;overflow-wrap:anywhere}
+ .recount-pages{margin-top:6px;padding:0 6px 6px}.recount-inbox{padding:12px;margin:12px 0}
+ .is-counting:not(.count-options-open) .intro,.is-counting:not(.count-options-open) .privacy-note,
+ .is-counting:not(.count-options-open) .session-bar,.is-counting:not(.count-options-open) #responsible-help,
+ .is-counting:not(.count-options-open) #team-open,.is-counting:not(.count-options-open) #team-panel,
+ .is-counting:not(.count-options-open) #recount-inbox,.is-counting:not(.count-options-open) #deletion-inbox,
+ .is-counting:not(.count-options-open) #share-link-panel,.is-counting:not(.count-options-open) .export-panel,
+ .is-counting:not(.count-options-open) .footer-note,.is-counting:not(.count-options-open) footer,
+ .is-counting:not(.count-options-open) #reload-count,.is-counting:not(.count-options-open) #request-delete-session,
+ .is-counting:not(.count-options-open) #import-count,.is-counting:not(.count-options-open) #import-defects,
+ .is-counting:not(.count-options-open) #import-file-status,.is-counting:not(.count-options-open) .tool-tabs,
+ .is-counting:not(.count-options-open) .offline-panel>div,.is-counting #install-app{display:none!important}
+ .is-counting #back-inventory-home{margin:6px 0;min-height:36px;padding:6px 10px}
+ .is-counting .offline-panel{margin:6px 0;padding:6px 10px;border-radius:6px;gap:4px}
+ .is-counting .offline-status{font-size:11px;margin:0;line-height:1.4}
+ .is-counting:not(.count-options-open) #counting{padding-top:4px}
+ .is-counting:not(.count-options-open) .count-heading{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;padding-bottom:8px}
+ .is-counting:not(.count-options-open) .count-heading>div:nth-child(2){order:3;grid-column:1/-1;flex-basis:auto;justify-content:space-between}
+ .is-counting:not(.count-options-open) .sync-status{flex:1;margin:0;font-size:11px}
+ .is-counting:not(.count-options-open) .count-heading h2{font-size:16px;margin:2px 0}
+ .is-counting:not(.count-options-open) .totals{gap:12px}.is-counting .totals div{min-width:50px}
+ .is-counting .totals span{font-size:8px;letter-spacing:0}.is-counting .totals b{font-size:24px;margin:0}
+ .is-counting:not(.count-options-open) .scanner-panel{padding:10px}
+ .is-counting:not(.count-options-open) .scanner-tools{margin-bottom:6px}
+ .is-counting:not(.count-options-open) .lists{grid-template-columns:minmax(0,1fr);margin-top:10px;gap:0}
+ .is-counting:not(.count-options-open)[data-count-mode="count"] .lists>.list-panel:nth-child(2),
+ .is-counting:not(.count-options-open)[data-count-mode="defects"] .lists>.list-panel:nth-child(1){display:none}
+ .is-counting:not(.count-options-open) .table-wrap{max-height:40dvh;min-height:86px}
+ .is-counting:not(.count-options-open) .list-heading{min-height:38px;padding:5px 10px}
+ .is-counting:not(.count-options-open) .list-heading .eyebrow{display:none}
+ .is-counting:not(.count-options-open) th:nth-child(3),.is-counting:not(.count-options-open) td:nth-child(3){display:none}
+ .is-counting:not(.count-options-open) table{table-layout:fixed}
+ .is-counting:not(.count-options-open) th:nth-child(1){width:24%}
+ .is-counting:not(.count-options-open) th:nth-child(4){width:136px}
+ .is-counting:not(.count-options-open) th:nth-child(5){width:42px}
+ .is-counting:not(.count-options-open) td:first-child{white-space:normal;overflow-wrap:anywhere;font-size:11px}
+ .camera-dialog{padding:12px}.camera-dialog video{max-height:30dvh;margin-top:8px}
+ .camera-product{padding:10px;margin:8px 0}.camera-product div{margin-top:8px}
+}
+@media(max-width:600px){
+ .brand-tool,.account-bar .local-badge{display:none}.account-bar .button{font-size:9px;min-height:36px;padding:7px 8px}
+ .intro-art{display:none}.intro{min-height:130px}.login-panel input{font-size:16px}
+ .lists{grid-template-columns:minmax(0,1fr)}.analysis-filters{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+ .is-counting:not(.count-options-open) th:nth-child(1){width:22%}
+ .is-counting:not(.count-options-open) th:nth-child(4){width:122px}
+ .is-counting:not(.count-options-open) .qty-actions button{width:32px}
+ .is-counting:not(.count-options-open) .quantity-input{width:42px}
+}
+@media(orientation:landscape) and (max-height:600px) and (min-width:560px){
+ .is-counting:not(.count-options-open) #counting{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:8px;align-items:start}
+ .is-counting:not(.count-options-open) .count-heading{grid-column:1/-1;padding:0;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)}
+ .is-counting:not(.count-options-open) .count-heading>div:nth-child(2){grid-column:3;grid-row:1;order:0;justify-content:flex-end}
+ .is-counting:not(.count-options-open) .count-heading .totals{grid-column:2;grid-row:1}
+ .is-counting:not(.count-options-open) .scanner-panel{grid-column:1;grid-row:2}
+ .is-counting:not(.count-options-open) .lists{grid-column:2;grid-row:2;margin:0}
+ .is-counting:not(.count-options-open) .table-wrap{max-height:55dvh}
+ .is-counting .topbar{min-height:40px;padding-top:max(2px,env(safe-area-inset-top));padding-bottom:2px}
+ .is-counting .topbar .brand img{height:30px;width:76px}
+ .is-counting .offline-panel{margin:4px 0;padding:4px 8px}
+ .is-counting #back-inventory-home{margin:2px 0;min-height:30px}
+ .camera-dialog video{max-height:28dvh;aspect-ratio:16/9}.camera-dialog .camera-recent,.camera-dialog>small{display:none}
+}
+#count-options-toggle{display:none}
+@media(max-width:1100px),(pointer:coarse){.is-counting #count-options-toggle{display:inline-flex;align-items:center;justify-content:center}.is-counting:not(.count-options-open) th:nth-child(4){width:148px}}
+@media(max-width:600px){.is-counting:not(.count-options-open) th:nth-child(4){width:128px}}
+@media(orientation:landscape) and (max-height:600px) and (min-width:560px){.is-counting:not(.count-options-open) #recount-targets,.is-counting:not(.count-options-open) #delete-pending-status,.is-counting:not(.count-options-open) #delete-review-actions{grid-column:1/-1}}

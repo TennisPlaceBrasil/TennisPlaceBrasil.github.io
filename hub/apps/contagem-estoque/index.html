@@ -2,16 +2,23 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#10110f">
   <meta name="description" content="Contagem de estoque da Tennis Place com salvamento no Google Drive.">
   <title>Inventário | Tennis Place</title>
-  <link rel="stylesheet" href="style.css?v=team2">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Inventário TP">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="stylesheet" href="style.css?v=pwa1">
+  <link rel="stylesheet" href="mobile.css?v=1">
 </head>
 <body>
   <header class="topbar">
     <a class="brand" href="../../" aria-label="Voltar ao Hub Tennis Place"><img src="../../logo.png" alt="Tennis Place"><span class="brand-tool">INVENTÁRIO</span></a>
-    <div class="account-bar"><span id="account-label" class="local-badge">ACESSO TENNIS PLACE</span><button id="logout" class="button button-quiet" hidden>SAIR</button></div>
+    <div class="account-bar"><button id="count-options-toggle" type="button" class="button button-quiet" aria-expanded="false" hidden>OPÇÕES</button><button id="install-app" type="button" class="button button-quiet">INSTALAR APP</button><button id="fullscreen-app" type="button" class="button button-quiet" hidden>TELA CHEIA</button><span id="account-label" class="local-badge">ACESSO TENNIS PLACE</span><button id="logout" class="button button-quiet" hidden>SAIR</button></div>
   </header>
   <section class="login-panel" id="login-panel"><p class="eyebrow">ACESSO TENNIS PLACE</p><h1><em>Inventário</em></h1><p>Use o mesmo acesso dos manuais.</p><form id="login-form"><label for="login-id">Sigla da loja ou e-mail</label><input id="login-id" autocomplete="username" required><label for="login-password">CNPJ da loja ou senha</label><input id="login-password" type="password" autocomplete="current-password" required><button class="button button-primary" id="login-submit">ENTRAR</button><p id="login-error" role="alert"></p><button id="recover-local" class="button button-quiet" type="button" hidden>RETOMAR CONTAGEM DESTE DISPOSITIVO</button></form></section>
   <main id="app-main" hidden><nav class="tool-tabs"><button id="tab-count" class="active">CONTAGEM</button><button id="tab-analysis" hidden>ANÁLISE DE ESTOQUE</button></nav><p id="app-error" role="alert"></p><section class="offline-panel"><p id="offline-status" class="offline-status" role="status">Preparando uso sem internet…</p><div><button id="prepare-offline" class="button button-quiet" type="button">PREPARAR / ATUALIZAR USO OFFLINE</button><button id="sync-now" class="button button-quiet" type="button">SINCRONIZAR</button></div></section><div id="count-view"><button id="back-inventory-home" class="button button-quiet" type="button" hidden>← INÍCIO DO INVENTÁRIO</button><section id="device-drafts" class="recount-inbox" hidden><h3>Em andamento neste dispositivo</h3><p>Continue uma contagem local. Dados pendentes permanecem neste aparelho até sincronizar.</p><div id="device-draft-list"></div></section>
@@ -109,7 +116,9 @@
   <dialog id="import-unknown-dialog"><form id="import-unknown-form"><p class="eyebrow">EAN FORA DO CADASTRO</p><h2>Produto inexistente</h2><p id="import-unknown-count"></p><p id="import-unknown-list" class="import-unknown-list"></p><p>Informe produto e marca de cada EAN antes de lançar para cadastro posterior.</p><div id="import-unknown-fields"></div><div class="dialog-actions"><button type="button" id="import-cancel-unknown" class="button button-quiet">CORRIGIR ARQUIVO</button><button type="submit" id="import-confirm-unknown" class="button button-primary">LANÇAR MESMO ASSIM</button></div></form></dialog>
   <dialog id="unknown-dialog"><form id="unknown-form"><p class="eyebrow">EAN NÃO RECONHECIDO</p><h2>Produto inexistente</h2><p id="unknown-ean"></p><p id="unknown-reason">O código não foi encontrado no cadastro de produtos.</p><label for="unknown-description">PRODUTO</label><input id="unknown-description" required maxlength="180" placeholder="Descrição do produto"><label for="unknown-brand">MARCA</label><input id="unknown-brand" required maxlength="80" placeholder="Marca do produto"><p>Informe os dois campos para o cadastro posterior pelo administrativo.</p><div class="dialog-actions"><button type="button" id="correct-ean" class="button button-quiet">CORRIGIR</button><button type="submit" id="allow-ean" class="button button-primary">LANÇAR MESMO ASSIM</button></div></form></dialog>
   <dialog id="recount-dialog"><form id="recount-request-form"><p class="eyebrow">SOLICITAÇÃO PARA A LOJA</p><h2>Solicitar recontagem</h2><p id="recount-source-label"></p><p>Envie um TXT com um EAN por linha. A loja verá os códigos e informará as quantidades, sem consultar a contagem anterior.</p><label for="recount-file">ARQUIVO TXT</label><input id="recount-file" type="file" accept=".txt,text/plain" required><p id="recount-file-status" role="status"></p><div class="dialog-actions"><button id="cancel-recount" type="button" class="button button-quiet">CANCELAR</button><button id="send-recount" type="submit" class="button button-primary">ENVIAR À LOJA</button></div></form></dialog>
-  <script src="offline-store.js?v=3"></script><script src="offline-export.js?v=2"></script><script src="app.js?v=loginfix1"></script><script src="../../shared/tepe-help.js?v=5" defer></script>
+  <dialog id="install-dialog" aria-labelledby="install-title"><div class="list-heading"><h2 id="install-title">Instalar Inventário</h2><button id="install-close" type="button" class="button button-quiet">FECHAR</button></div><p id="install-instructions"></p><p>Após instalar, abra pelo ícone Inventário TP. O aplicativo acompanha a rotação do dispositivo. A abertura em tela cheia depende do sistema e do navegador.</p><p>Para contar sem internet, entre e aguarde a indicação “Pronto para contar sem internet”.</p><p id="install-feedback" role="status"></p></dialog>
+  <script src="pwa.js?v=1"></script>
+  <script src="offline-store.js?v=3"></script><script src="offline-export.js?v=2"></script><script src="app.js?v=pwa1"></script><script src="../../shared/tepe-help.js?v=5" defer></script>
 </body>
 </html>
 
