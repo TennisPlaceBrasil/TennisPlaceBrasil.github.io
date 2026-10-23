@@ -1,5 +1,5 @@
 'use strict';
-const CACHE='tp-inventory-shell-team-v2';
+const CACHE='tp-inventory-shell-loginfix-v1';
 const ROOT=new URL('./',self.location).pathname;
 const FILES=['','index.html','app.js','style.css','logo.png','apps/contagem-estoque/','apps/contagem-estoque/index.html','apps/contagem-estoque/app.js','apps/contagem-estoque/style.css','apps/contagem-estoque/offline-store.js','apps/contagem-estoque/offline-export.js','shared/tepe-help.js','shared/tepe-help.css','shared/tepe-fallback.svg','shared/tepe-mascote.html','shared/zxing-browser.min.js'];
 const paths=new Set(FILES.map(path=>ROOT+path));
