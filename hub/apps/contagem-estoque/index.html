@@ -44,6 +44,7 @@
       </div>
       <div class="session-picker-wrap" id="session-picker-wrap" hidden>
         <span>CONTAGENS SALVAS</span>
+        <select id="history-store-filter" aria-label="Filtrar histórico por loja" hidden><option value="">Todas as lojas</option></select>
         <select id="session-picker" aria-label="Selecionar contagem salva" hidden></select>
         <button id="load-sessions" class="button button-quiet" type="button">CARREGAR CONTAGENS</button>
         <button id="share-count" class="button button-quiet" type="button" hidden>GERAR LINK</button>
@@ -119,7 +120,7 @@
   <dialog id="recount-dialog"><form id="recount-request-form"><p class="eyebrow">SOLICITAÇÃO PARA A LOJA</p><h2>Solicitar recontagem</h2><p id="recount-source-label"></p><p>Envie um TXT com um EAN por linha. A loja verá os códigos e informará as quantidades, sem consultar a contagem anterior.</p><label for="recount-file">ARQUIVO TXT</label><input id="recount-file" type="file" accept=".txt,text/plain" required><p id="recount-file-status" role="status"></p><div class="dialog-actions"><button id="cancel-recount" type="button" class="button button-quiet">CANCELAR</button><button id="send-recount" type="submit" class="button button-primary">ENVIAR À LOJA</button></div></form></dialog>
   <dialog id="install-dialog" aria-labelledby="install-title"><div class="list-heading"><h2 id="install-title">Instalar Inventário</h2><button id="install-close" type="button" class="button button-quiet">FECHAR</button></div><p id="install-instructions"></p><p>Após instalar, abra pelo ícone Inventário TP. O aplicativo acompanha a rotação do dispositivo. A abertura em tela cheia depende do sistema e do navegador.</p><p>Para contar sem internet, entre e aguarde a indicação “Pronto para contar sem internet”.</p><p id="install-feedback" role="status"></p></dialog>
   <script src="pwa.js?v=1"></script>
-  <script src="offline-store.js?v=3"></script><script src="offline-export.js?v=3"></script><script src="dashboard.js?v=1"></script><script src="app.js?v=camera-upc1"></script><script src="../../shared/tepe-help.js?v=5" defer></script>
+  <script src="offline-store.js?v=3"></script><script src="offline-export.js?v=3"></script><script src="dashboard.js?v=1"></script><script src="app.js?v=history-multistore1"></script><script src="../../shared/tepe-help.js?v=5" defer></script>
 </body>
 </html>
 
