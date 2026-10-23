@@ -70,7 +70,7 @@ $$;
 
 create or replace function public.stockcount_team(p_action text,p_user uuid,p_id text default null,p_person uuid default null,p_payload jsonb default '{}')
 returns jsonb language plpgsql security invoker set search_path=public as $$
-declare c public.stockcount_team_counts%rowtype; p public.stockcount_team_people%rowtype; adm boolean; st text; nm text; k text; r jsonb; req text; payload jsonb; n integer; lease uuid;
+declare v_count public.stockcount_team_counts%rowtype; p public.stockcount_team_people%rowtype; adm boolean; st text; nm text; k text; r jsonb; req text; payload jsonb; n integer; lease uuid;
 begin
  if not exists(select 1 from public.manual_portal_members where user_id=p_user and active) then raise exception 'Acesso inativo.'; end if;
  adm:=p_user in ('adb6a08e-1a28-4b41-8dde-addd9c06f915'::uuid,'42eb08bc-5fa7-4d74-8be5-cbe5c909ef30'::uuid);
@@ -78,21 +78,22 @@ begin
  if p_action='find' then
   select count_id into p_id from public.stockcount_team_people where id=p_person and user_id=p_user;
   if p_id is null then return null; end if;
- if not adm and not exists(select 1 from public.stockcount_team_counts c where c.id=p_id and not c.deleted and (exists(select 1 from public.manual_portal_store_logins m where m.user_id=p_user and m.sigla=c.store) or exists(select 1 from public.stockcount_user_store_access a where a.user_id=p_user and a.sigla=c.store))) then raise exception 'Contagem sem permissão.'; end if;
+ if not adm and not exists(select 1 from public.stockcount_team_counts scoped_count where scoped_count.id=p_id and not scoped_count.deleted and (exists(select 1 from public.manual_portal_store_logins m where m.user_id=p_user and m.sigla=scoped_count.store) or exists(select 1 from public.stockcount_user_store_access a where a.user_id=p_user and a.sigla=scoped_count.store))) then raise exception 'Contagem sem permissão.'; end if;
   return public.stockcount_team_snapshot(p_id,p_person);
  end if;
  if p_action='list' then
-  return (select coalesce(jsonb_agg((meta-'adjustedCounts'-'adjustedDefects')||jsonb_build_object('id',id,'collaborative',true,'version',revision,'updatedAt',updated_at) order by updated_at desc),'[]')
-   from public.stockcount_team_counts c where not deleted and (adm or exists(select 1 from public.manual_portal_store_logins m where m.user_id=p_user and m.sigla=c.store) or exists(select 1 from public.stockcount_user_store_access a where a.user_id=p_user and a.sigla=c.store)) and (p_payload->>'store' is null or store=p_payload->>'store')
-    and (coalesce((p_payload->>'history')::boolean,false) or meta->>'status'<>'FINALIZADA'));
+  return (select coalesce(jsonb_agg((sc.meta-'adjustedCounts'-'adjustedDefects')||jsonb_build_object('id',sc.id,'collaborative',true,'version',sc.revision,'updatedAt',sc.updated_at) order by sc.updated_at desc),'[]')
+   from public.stockcount_team_counts sc where not sc.deleted and (adm or exists(select 1 from public.manual_portal_store_logins m where m.user_id=p_user and m.sigla=sc.store) or exists(select 1 from public.stockcount_user_store_access a where a.user_id=p_user and a.sigla=sc.store)) and (p_payload->>'store' is null or sc.store=p_payload->>'store')
+    and (coalesce((p_payload->>'history')::boolean,false) or sc.meta->>'status'<>'FINALIZADA')
+    and (adm or sc.meta->>'deleteStatus' is distinct from 'PENDENTE'));
  end if;
  if p_action='init' then
   if not adm and not exists(select 1 from public.manual_portal_store_logins where user_id=p_user and sigla=p_payload->>'store') and not exists(select 1 from public.stockcount_user_store_access where user_id=p_user and sigla=p_payload->>'store') then raise exception 'Contagem sem permissão.'; end if;
   insert into public.stockcount_team_counts(id,store,meta) values(p_id,p_payload->>'store',p_payload-'counts'-'defects'-'auditSession'-'responsible') on conflict do nothing;
  end if;
- select * into c from public.stockcount_team_counts where id=p_id for update;
- if not found or (not adm and not exists(select 1 from public.manual_portal_store_logins where user_id=p_user and sigla=c.store) and not exists(select 1 from public.stockcount_user_store_access where user_id=p_user and sigla=c.store)) then raise exception 'Contagem sem permissão.'; end if;
- if c.deleted then raise exception 'Esta contagem já não existe.'; end if;
+ select * into v_count from public.stockcount_team_counts where id=p_id for update;
+ if not found or (not adm and not exists(select 1 from public.manual_portal_store_logins where user_id=p_user and sigla=v_count.store) and not exists(select 1 from public.stockcount_user_store_access where user_id=p_user and sigla=v_count.store)) then raise exception 'Contagem sem permissão.'; end if;
+ if v_count.deleted then raise exception 'Esta contagem já não existe.'; end if;
  if p_action in ('init','join') then
   nm:=btrim(p_payload->>'responsible');
   if nm is null or nm !~ '^[[:alpha:] ]+$' or length(replace(nm,' ',''))<4 or length(nm)>80 then raise exception 'RESPONSÁVEL: informe pelo menos 4 letras, sem números.'; end if;
@@ -101,7 +102,7 @@ begin
   if found then
    if p.user_id<>p_user or p.responsible<>nm then raise exception 'CONFLICT: responsável diferente do cadastro deste dispositivo.'; end if;
   else
-   if c.meta->>'status'='FINALIZADA' or c.meta->>'deleteStatus'='PENDENTE' then raise exception 'Esta contagem está bloqueada ou finalizada.'; end if;
+   if v_count.meta->>'status'='FINALIZADA' or v_count.meta->>'deleteStatus'='PENDENTE' then raise exception 'Esta contagem está bloqueada ou finalizada.'; end if;
    insert into public.stockcount_team_people(count_id,id,user_id,responsible,audit) values(p_id,p_person,p_user,nm,coalesce(p_payload->'auditSession','{}'));
   end if;
  elsif p_action='read' then
@@ -115,7 +116,7 @@ begin
    if p.last_payload is distinct from payload then raise exception 'CONFLICT: o mesmo envio contém dados diferentes.'; end if;
    return public.stockcount_team_snapshot(p_id,p_person);
   end if;
-  if p.done or c.meta->>'status'='FINALIZADA' or c.meta->>'deleteStatus'='PENDENTE' then raise exception 'Participação encerrada ou contagem bloqueada. Dados locais preservados.'; end if;
+  if p.done or v_count.meta->>'status'='FINALIZADA' or v_count.meta->>'deleteStatus'='PENDENTE' then raise exception 'Participação encerrada ou contagem bloqueada. Dados locais preservados.'; end if;
   if (p_payload->>'participantVersion')::bigint is distinct from p.version then raise exception 'CONFLICT: esta participação foi alterada em outra aba. Exporte a cópia local.'; end if;
   foreach k in array array['counts','defects'] loop
    if jsonb_typeof(p_payload->k) is distinct from 'array' or jsonb_array_length(p_payload->k)>40000 then raise exception 'Lista de produtos inválida.'; end if;
@@ -134,8 +135,8 @@ begin
   if exists(select 1 from public.stockcount_team_people where count_id=p_id and id is distinct from p_person and not done) then raise exception 'Aguarde os outros responsáveis finalizarem antes de solicitar exclusão.'; end if;
   update public.stockcount_team_counts set meta=meta||jsonb_build_object('deleteStatus','PENDENTE','deleteRequestedAt',now(),'deleteRequestedBy',p_user),revision=revision+1,updated_at=now() where id=p_id;
  elsif p_action='resolveDelete' then
-  if not adm or c.meta->>'deleteStatus' is distinct from 'PENDENTE' then raise exception 'Aprovação sem permissão.'; end if;
-  if (p_payload->>'reviewVersion')::bigint is distinct from c.revision then raise exception 'Reabra os produtos antes de aprovar.'; end if;
+  if not adm or v_count.meta->>'deleteStatus' is distinct from 'PENDENTE' then raise exception 'Aprovação sem permissão.'; end if;
+  if (p_payload->>'reviewVersion')::bigint is distinct from v_count.revision then raise exception 'Reabra os produtos antes de aprovar.'; end if;
   update public.stockcount_team_counts set deleted=coalesce((p_payload->>'approve')::boolean,false),meta=meta||jsonb_build_object('deleteStatus',case when (p_payload->>'approve')::boolean then 'APROVADA' else 'RECUSADA' end,'deleteReviewedBy',p_user,'deleteReviewedAt',now(),'deleteReason',left(p_payload->>'reason',200)),revision=revision+1,updated_at=now() where id=p_id;
   if (p_payload->>'approve')::boolean then return jsonb_build_object('id',p_id,'deleted',true); end if;
  elsif p_action='delete' then
@@ -144,8 +145,8 @@ begin
   update public.stockcount_team_counts set deleted=true,revision=revision+1,updated_at=now() where id=p_id;
   return jsonb_build_object('id',p_id,'deleted',true);
  elsif p_action='adjustRecount' then
-  if not adm and not exists(select 1 from public.manual_portal_store_logins where user_id=p_user and sigla=c.store) and not exists(select 1 from public.stockcount_user_store_access where user_id=p_user and sigla=c.store) then raise exception 'Recontagem sem permissão.'; end if;
-  if c.meta->>'status'<>'FINALIZADA' then raise exception 'A contagem ainda não foi finalizada.'; end if;
+  if not adm and not exists(select 1 from public.manual_portal_store_logins where user_id=p_user and sigla=v_count.store) and not exists(select 1 from public.stockcount_user_store_access where user_id=p_user and sigla=v_count.store) then raise exception 'Recontagem sem permissão.'; end if;
+  if v_count.meta->>'status'<>'FINALIZADA' then raise exception 'A contagem ainda não foi finalizada.'; end if;
   update public.stockcount_team_counts set meta=meta||jsonb_build_object('adjustedCounts',p_payload->'counts','adjustedDefects',p_payload->'defects'),revision=revision+1,mirrored_revision=revision+1,updated_at=now() where id=p_id;
  else raise exception 'Ação colaborativa inválida.';
  end if;

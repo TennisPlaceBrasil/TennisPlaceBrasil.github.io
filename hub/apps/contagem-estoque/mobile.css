@@ -37,14 +37,10 @@ dialog{max-height:calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-
  .recount-pages{margin-top:6px;padding:0 6px 6px}.recount-inbox{padding:12px;margin:12px 0}
  .is-counting:not(.count-options-open) .intro,.is-counting:not(.count-options-open) .privacy-note,
  .is-counting:not(.count-options-open) .session-bar,.is-counting:not(.count-options-open) #responsible-help,
- .is-counting:not(.count-options-open) #team-open,.is-counting:not(.count-options-open) #team-panel,
+ .is-counting:not(.count-options-open) #team-open,
  .is-counting:not(.count-options-open) #recount-inbox,.is-counting:not(.count-options-open) #deletion-inbox,
- .is-counting:not(.count-options-open) #share-link-panel,.is-counting:not(.count-options-open) .export-panel,
  .is-counting:not(.count-options-open) .footer-note,.is-counting:not(.count-options-open) footer,
- .is-counting:not(.count-options-open) #reload-count,.is-counting:not(.count-options-open) #request-delete-session,
- .is-counting:not(.count-options-open) #import-count,.is-counting:not(.count-options-open) #import-defects,
- .is-counting:not(.count-options-open) #import-file-status,.is-counting:not(.count-options-open) .tool-tabs,
- .is-counting:not(.count-options-open) .offline-panel>div,.is-counting #install-app{display:none!important}
+ .is-counting:not(.count-options-open) .tool-tabs,.is-counting #install-app{display:none!important}
  .is-counting #back-inventory-home{margin:6px 0;min-height:36px;padding:6px 10px}
  .is-counting .offline-panel{margin:6px 0;padding:6px 10px;border-radius:6px;gap:4px}
  .is-counting .offline-status{font-size:11px;margin:0;line-height:1.4}
@@ -102,3 +98,12 @@ dialog{max-height:calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-
 
 .mobile-ean{display:none}
 @media(max-width:1100px),(pointer:coarse){.is-counting:not(.count-options-open) .mobile-ean{display:block;font-size:10px;color:#a4a994;margin-top:4px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.is-counting:not(.count-options-open) .lists th:first-child,.is-counting:not(.count-options-open) .lists td:first-child{display:none}}
+
+@media(max-width:1100px),(pointer:coarse){
+ .count-actions{display:flex;gap:8px;margin:0 0 10px}
+ .count-actions .button{min-width:0;flex:1}
+ .is-counting:not(.count-options-open) .export-panel{display:flex!important;gap:10px;padding:12px;margin-top:10px}
+ .is-counting:not(.count-options-open) #share-link-panel:not([hidden]){display:block!important;margin:10px 0}
+ .is-counting:not(.count-options-open) .offline-panel>div{display:flex!important}
+ .is-counting:not(.count-options-open) #request-delete-session:not([hidden]),.is-counting:not(.count-options-open) #delete-current-session:not([hidden]){display:inline-flex}
+}
