@@ -211,7 +211,7 @@ async function refresh(){
 async function api(action,params={},again=false){
   const r=await fetch(BASE+'/functions/v1/stockcount-api',{method:'POST',headers:{apikey:KEY,Authorization:'Bearer '+auth?.access_token,'Content-Type':'application/json'},body:JSON.stringify({action,...params}),signal:AbortSignal.timeout(action==='catalog'&&!params.ean?90000:action==='catalog'?4500:action==='bootstrap'?12000:60000)});
   if(r.status===401&&!again){await refresh();return api(action,params,true);}
-  const data=await r.json();if(!r.ok){const e=Error(data.error||'Falha de comunicação.');e.status=r.status;throw e;}return data;
+  let data;try{data=JSON.parse(await r.text());}catch{throw Error('O servidor respondeu em formato inválido. Tente novamente; seus dados locais estão preservados.');}if(!r.ok){const e=Error(data.error||'Falha de comunicação.');e.status=r.status;throw e;}return data;
 }
 function picker(){
   $('#session-picker-wrap').hidden=!(user?.allStores||user?.multiStore);
@@ -241,7 +241,7 @@ function render(){
   $('#empty-state').hidden=!!current&&!inventoryHome;$('#counting').hidden=!current||inventoryHome;$('#back-inventory-home').hidden=!current||inventoryHome;$('#device-drafts').hidden=!inventoryHome;$('#counting').dataset.localFinished=String(!!current?.localFinished&&current.status!=='FINALIZADA');$('#share-link-panel').hidden=inventoryHome||!(current&&current.shareUrl);if(current?.shareUrl)$('#share-link-value').value=current.shareUrl;renderRecount();if(!current){renderTeam();$('#delete-review-actions').hidden=true;$('#request-delete-session').hidden=true;$('#delete-current-session').hidden=true;return;}
   renderTeam();$('#session-title').textContent=current.label;
   $('#delete-current-session').hidden=!user?.allStores;
-  $('#delete-current-session').disabled=loadingSessions||current.deleteStatus==='PENDENTE';
+  $('#delete-current-session').disabled=loadingSessions;
   const view=current.collaborative&&teamScope==='total'?teamExportState():current,counts=view.counts,defects=view.defects,done=current.status==='FINALIZADA'||current.localFinished||current.collabViewOnly||current.collabReadOnly||current.collaborative&&teamScope==='total',deletePending=current.deleteStatus==='PENDENTE';
   $('#count-total').textContent=(current.collaborative?teamExportState().counts:counts).reduce((n,r)=>n+r.quantity,0).toLocaleString('pt-BR');
   $('#defect-total').textContent=(current.collaborative?teamExportState().defects:defects).reduce((n,r)=>n+r.quantity,0).toLocaleString('pt-BR');
@@ -318,7 +318,6 @@ async function deleteSession(idOverride){
   const id=idOverride||$('#session-picker').value;
   if(!user?.allStores||!id)return;
   try{
-    if(current?.id===id)await ensureSaved();
     const deletion=(await api('delete',{id})).data;await TPInventoryLocal.remove(user.id,id);
     sessions=sessions.filter(s=>s.id!==id);
     if(current?.id===id){localStorage.removeItem(draftKey());current=null;serial=0;saved=0;retry=null;conflict=false;}
