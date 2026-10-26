@@ -12,7 +12,7 @@ export async function teamRecord(id:string){
 export function validResponsible(value:unknown){return typeof value==='string'&&value.length<=80&&/^[\p{L} ]+$/u.test(value.trim())&&value.replace(/ /g,'').length>=4;}
 async function bridge(config:Config,payload:Record<string,unknown>){
  const r=await fetch(config.endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,secret:config.secret}),redirect:'follow',signal:AbortSignal.timeout(55000)});
- if(!r.ok)throw Error('Planilha temporariamente indisponível.');const result=await r.json();if(!result.ok)throw Error(result.error||'Falha na planilha.');return result.data;
+ if(!r.ok)throw Error('Planilha temporariamente indisponível.');let result;try{result=JSON.parse(await r.text());}catch{throw Error('A integração da planilha respondeu em formato inválido. Os dados permanecem no Hub.');}if(!result.ok)throw Error(result.error||'Falha na planilha.');return result.data;
 }
 export async function mirrorTeam(id:string,config:Config){
  const lease=crypto.randomUUID();const snapshot=await teamRPC('stockcount_team_mirror',{p_id:id,p_action:'claim',p_lease:lease});if(!snapshot)return false;
@@ -27,17 +27,21 @@ export async function mirrorTeam(id:string,config:Config){
   }else{
   const current=await bridge(config,{action:'read',id,store:snapshot.store,allStores:true,userId:'team-mirror'});
   const requestId='team-'+id+'-'+snapshot.version;
+  if(current.lastRequestId===requestId){
+   await bridge(config,{action:'syncAttribution',id,store:snapshot.store,allStores:true,userId:'team-mirror',version:current.version,counts:snapshot.counts,defects:snapshot.defects});
+  }
   if(current.lastRequestId!==requestId){
    // CAS in Apps Script prevents a delayed older HTTP request overwriting a newer projection.
    if(current.status==='FINALIZADA'){
      const quantities=(rows:any[])=>JSON.stringify(rows.map(r=>[r.ean,Number(r.quantity)]).sort((a,b)=>String(a[0]).localeCompare(String(b[0]))));
      if(snapshot.status==='FINALIZADA'&&quantities(current.counts)===quantities(snapshot.counts)&&quantities(current.defects)===quantities(snapshot.defects)){
+       await bridge(config,{action:'syncAttribution',id,store:snapshot.store,allStores:true,userId:'team-mirror',version:current.version,counts:snapshot.counts,defects:snapshot.defects});
        await teamRPC('stockcount_team_mirror',{p_id:id,p_action:'complete',p_lease:lease,p_revision:snapshot.version,p_error:null});return true;
      }
      throw Error('A planilha foi finalizada fora da sincronização; cópia central preservada.');
    }
    // Empty finalized sessions stay auditable instead of invoking the legacy empty-tab deletion.
-   const action=snapshot.status==='FINALIZADA'&&(snapshot.counts.length||snapshot.defects.length)?'finish':'save';
+   const action=snapshot.status==='FINALIZADA'?'finish':'save';
    await bridge(config,{action,id,store:snapshot.store,allStores:true,userId:'team-mirror',version:current.version,requestId,counts:snapshot.counts,defects:snapshot.defects,
     auditSession:{device:'Responsáveis: '+snapshot.participants.map((p:{responsible:string})=>p.responsible).join(', ').slice(0,80),ip:'Consulte o painel por responsável'}});
   }
