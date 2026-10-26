@@ -36,12 +36,16 @@ returns jsonb language sql stable security invoker set search_path=public as $$
   select r.value as item,r.ordinality as pos,p.updated_at,p.responsible,p.id
   from public.stockcount_team_people p cross join lateral jsonb_array_elements(p.state->p_kind) with ordinality r(value,ordinality)
   where p.count_id=p_id and (p_exclude is null or p.id<>p_exclude)
+ ), by_person as (
+  select item->>'ean' as ean,responsible,sum((item->>'quantity')::bigint) as quantity from expanded group by item->>'ean',responsible
+ ), attribution as (
+  select ean,jsonb_agg(jsonb_build_object('responsible',responsible,'quantity',quantity) order by responsible) as breakdown from by_person group by ean
  ), grouped as (
   select item->>'ean' as ean,sum((item->>'quantity')::bigint) as quantity,
    (array_agg(item order by coalesce(item->>'lastScannedAt','') desc,updated_at desc))[1] as latest,
    string_agg(distinct responsible,', ' order by responsible) as names,min(updated_at) as first_seen,min(pos) as pos
   from expanded group by item->>'ean'
- ) select coalesce(jsonb_agg(latest||jsonb_build_object('quantity',quantity,'responsible',names) order by first_seen,pos,ean),'[]') from grouped;
+ ) select coalesce(jsonb_agg(latest||jsonb_build_object('quantity',quantity,'responsible',names,'responsibleBreakdown',breakdown) order by first_seen,pos,grouped.ean),'[]') from grouped join attribution using(ean);
 $$;
 create or replace function public.stockcount_team_snapshot(p_id text,p_person uuid default null)
 returns jsonb language sql stable security invoker set search_path=public as $$

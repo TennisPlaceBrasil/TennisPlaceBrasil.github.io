@@ -39,7 +39,8 @@ function mergeTeamRows(others,mine,name){
  const map=new Map();for(const row of others||[])map.set(row.ean,{...row});
  for(const row of mine||[]){const old=map.get(row.ean),names=new Set(String(old?.responsible||'').split(', ').filter(Boolean));if(name)names.add(name);
   const latest=old&&String(old.lastScannedAt||'')>String(row.lastScannedAt||'')?old:row;
-  map.set(row.ean,{...latest,quantity:(old?.quantity||0)+row.quantity,responsible:[...names].join(', ')});
+  const breakdown=new Map((old?.responsibleBreakdown||[]).map(p=>[p.responsible,p.quantity]));if(name)breakdown.set(name,(breakdown.get(name)||0)+row.quantity);
+  map.set(row.ean,{...latest,quantity:(old?.quantity||0)+row.quantity,responsible:[...names].join(', '),responsibleBreakdown:old&&!old.responsibleBreakdown?.length?[]:[...breakdown].map(([responsible,quantity])=>({responsible,quantity}))});
  }return [...map.values()];
 }
 function subgroupOf(row){return row.subgroup||catalog.get(row.ean)?.subgroup||'';}
