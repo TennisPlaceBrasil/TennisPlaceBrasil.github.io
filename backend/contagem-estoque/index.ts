@@ -87,6 +87,11 @@ Deno.serve(async req=>{
       if(recovered)return reply({data:recovered});
     }
     if(['teamList','list','deletionInbox','recountInbox','analysis'].includes(input.action))await reconcileTeamMirrors(config[0],allStores?null:allowedStores);
+    if(input.action==='deletionInbox'){
+      if(!allStores)return reply({error:'Ação restrita aos administradores.'},403);
+      const live=await teamRPC('stockcount_team',{p_action:'list',p_user:user.id,p_payload:{history:true}});
+      return reply({data:live.filter((r:any)=>r.deleteStatus==='PENDENTE')});
+    }
     const team=await handleTeam(input,user,allStores,store,config[0],allowedStores);
     if(team.handled)return reply({data:team.data});
     if(["list","read"].includes(input.action)&&!allStores&&!allowedStores.length)return reply({error:"Histórico sem loja autorizada."},403);

@@ -141,7 +141,7 @@ begin
   if (p_payload->>'approve')::boolean then return jsonb_build_object('id',p_id,'deleted',true); end if;
  elsif p_action='delete' then
   if not adm then raise exception 'Exclusão restrita ao ADM.'; end if;
-  if exists(select 1 from public.stockcount_team_people where count_id=p_id and not done) then raise exception 'Aguarde todos os responsáveis finalizarem antes de excluir.'; end if;
+  
   update public.stockcount_team_counts set deleted=true,revision=revision+1,updated_at=now() where id=p_id;
   return jsonb_build_object('id',p_id,'deleted',true);
  elsif p_action='adjustRecount' then
