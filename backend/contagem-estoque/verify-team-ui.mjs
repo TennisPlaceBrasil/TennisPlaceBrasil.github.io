@@ -15,6 +15,12 @@ assert.ok(html.includes('id="delete-confirm-dialog"'));
 assert.ok(html.includes('id="large-quantity-toggle"'));
 assert.ok(html.includes('id="large-quantity-input"'));
 assert.ok(html.includes('id="recent-scans-list"'));
+assert.match(html, /id="view-session"[^>]*>VISUALIZAR<\/button>/);
+assert.match(html, /id="reopen-session"[^>]*>REABRIR CONTAGEM<\/button>/);
+assert.match(source, /#session-picker'\)\.addEventListener\('change',event=>\{selectedSessionId=event\.target\.value;picker\(\);\}\)/);
+assert.doesNotMatch(source, /#session-picker'\)\.addEventListener\('change',event=>openCount/);
+assert.match(source, /data-person-action="finish"/);
+assert.match(source, /data-person-action="clear"/);
 function device(){
  const els=new Map(),records=new Map(),settings=new Map(),events=[];
  const element=()=>({parentElement:null,append(child){child.parentElement=this;},value:'',textContent:'',innerHTML:'',hidden:false,disabled:false,readOnly:false,dataset:{},className:'',classList:{toggle(){},add(){},remove(){}},addEventListener(type,fn){events.push([this,type,fn]);},setAttribute(k,v){this[k]=v;},setCustomValidity(s){this.validationMessage=s;},reportValidity(){return !this.validationMessage;},checkValidity(){return true;},focus(){},select(){},scrollIntoView(){},showModal(){this.open=true;},close(){this.open=false;},matches(){return false;}});
@@ -22,7 +28,7 @@ function device(){
  const local={ready:async()=>{},drain:async()=>{},setting:async(k,v)=>settings.set(k,structuredClone(v)),read:async(_,k)=>settings.get(k),list:async()=>[...records.values()],restore:async(_,id)=>structuredClone(records.get(id)||null),remove:async(_,id)=>records.delete(id),save:async(owner,state,info)=>{records.set(state.id,structuredClone({...state,...info,owner}));}};
  const sandbox={console,Map,Set,JSON,Number,String,Array,Error,Date,Intl,Blob,Response,AbortSignal,crypto:globalThis.crypto,structuredClone,CustomEvent:class{},setTimeout(){return 1;},clearTimeout(){},setInterval(){},navigator:{onLine:true,userAgent:'Chrome Windows',locks:{request:async(_,options,callback)=>callback({name:'lock'})}},TPInventoryLocal:local,sessionStorage:{getItem(){return null;},setItem(){},removeItem(){}},localStorage:{getItem(){return null;},setItem(){},removeItem(){}},window:{addEventListener(){},dispatchEvent(){}},document:{hidden:false,addEventListener(){},querySelector:$,querySelectorAll(){return[];},activeElement:null},confirm:()=>true,alert:()=>{},fetch:async()=>Response.json({data:null})};
  const context=vm.createContext(sandbox);vm.runInContext(source,context);
- return {context,els,records,settings,run:code=>vm.runInContext(code,context),$:s=>$(s)};
+ return {context,els,records,settings,events,run:code=>vm.runInContext(code,context),$:s=>$(s)};
 }
 const a=device(),b=device();
 for(const d of [a,b]){
@@ -106,3 +112,13 @@ assert.match(history.$('#session-picker').innerHTML,/APAR FINAL/);assert.match(h
 history.run("historyStoreFilter='JOIN';sessions=[];sessionsLoaded=false;");await history.run('loadSessions()');
 assert.equal(listPayloads[1].filterStore,'JOIN');assert.equal(history.run('sessions.length'),1);assert.equal(history.run('sessions[0].id'),'join');
 console.log('PASS: multi-store history defaults to all authorized stores and filters by store');
+const selection=device();selection.run("user={id:'admin',allStores:true};sessions=[{id:'selected',label:'APAR FINAL',status:'FINALIZADA',kind:'CONTAGEM'}];current=null;picker();");
+const onChange=selection.events.find(([element,type])=>element===selection.$('#session-picker')&&type==='change')[2];selection.$('#session-picker').value='selected';onChange({target:selection.$('#session-picker')});
+assert.equal(selection.$('#view-session').hidden,false,'selected count should be opened only by VISUALIZAR');
+assert.equal(selection.$('#reopen-session').hidden,false,'ADM should see REABRIR CONTAGEM for a finalized standard count');
+assert.equal(selection.run('current'),null,'choosing an option must not open the count');
+assert.equal(selection.run('selectedSessionId'),'selected');
+const adm=device();adm.run("user={id:'admin',allStores:true};current={id:'c',label:'APAR TESTE',store:'APAR',collaborative:true,collabViewOnly:true,status:'EM ANDAMENTO',participants:[{id:'p1',responsible:'Maria',done:false,units:3,defects:1,updatedAt:'2026-10-27T12:00:00Z'}],counts:[],defects:[],version:1,mirroredVersion:1};renderTeam();");
+assert.match(adm.$('#team-people').innerHTML,/data-person-action="finish" data-person-id="p1"/);
+assert.match(adm.$('#team-people').innerHTML,/data-person-action="clear" data-person-id="p1"/);
+console.log('PASS: explicit VISUALIZAR, ADM reopen selection, and per-person finish/clear controls');

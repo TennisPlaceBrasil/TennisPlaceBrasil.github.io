@@ -44,6 +44,16 @@ begin
  if (result->>'participantVersion')::int<>2 then raise exception 'lost finish response not idempotent';end if;
  result:=public.stockcount_team_snapshot(test_id);
  if jsonb_array_length(result->'counts')<>5001 or (result#>>'{defects,0,quantity}')::int<>1 then raise exception 'combined 5000/defect lost';end if;
+ fail:=false;begin perform public.stockcount_team_manage_participant(test_id,b,stranger,'clear');exception when others then fail:=true;end;if not fail then raise exception 'non-admin cleared a participant';end if;
+ result:=public.stockcount_team_admin_snapshot(test_id,admin_id);
+ if not exists(select 1 from jsonb_array_elements(result->'participants') x where x->>'id'=b::text and x->>'responsible'='Maria') then raise exception 'ADM snapshot missing participant ID';end if;
+ result:=public.stockcount_team_manage_participant(test_id,b,admin_id,'clear');
+ if result->>'status'<>'EM ANDAMENTO' or jsonb_array_length(result->'counts')<>1 or jsonb_array_length(result->'defects')<>0 or (result#>>'{counts,0,quantity}')::int<>1 then raise exception 'admin clear did not isolate the selected participant';end if;
+ if not exists(select 1 from jsonb_array_elements(result->'participants') x where x->>'id'=b::text and x->>'done'='false' and (x->>'units')::int=0) then raise exception 'cleared participant was not reset';end if;
+ state:=public.stockcount_team_snapshot(test_id);
+ if (state->'participants'->0 ? 'id') or (state->'participants'->1 ? 'id') then raise exception 'regular participant snapshot exposed IDs';end if;
+ result:=public.stockcount_team_manage_participant(test_id,b,admin_id,'finish');
+ if result->>'status'<>'FINALIZADA' or jsonb_array_length(result->'counts')<>1 or (result#>>'{counts,0,quantity}')::int<>1 then raise exception 'admin finish lost another participant or failed to finalize';end if;
  -- An empty participant must not clear another participant's products when finishing.
  result:=public.stockcount_team('init',u,empty_id,c,jsonb_build_object('id',empty_id,'store','APAR','date','2026-10-23','label','TESTE VAZIO','kind','CONTAGEM','status','EM ANDAMENTO','responsible','Carlos'));
  result:=public.stockcount_team('join',u,empty_id,d,'{"responsible":"Maria"}');
@@ -66,6 +76,6 @@ begin
  if result->>'deleted'<>'true' then raise exception 'approved deletion did not create a tombstone';end if;
  if exists(select 1 from public.stockcount_team_counts where id=empty_id and not deleted) then raise exception 'approved deletion not hidden';end if;
  if exists(select 1 from information_schema.role_table_grants where table_name in ('stockcount_team_counts','stockcount_team_people') and grantee in ('anon','authenticated','PUBLIC')) then raise exception 'tables exposed';end if;
- raise notice 'PASS: names, replay, altered packet rejection, store isolation, own corrections, finalization barrier, 5000 rows + defects';
+ raise notice 'PASS: names, replay, store isolation, admin-only person clear/finish, private participant IDs, 5000 rows + defects';
 end $$;
 rollback;

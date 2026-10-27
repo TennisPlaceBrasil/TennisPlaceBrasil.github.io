@@ -4,7 +4,7 @@ let auth=null,user=null,stores=[],sessions=[],sessionsLoaded=false,loadingSessio
 let inventoryHome=false,openingCount=false,cameraCandidate=null,cameraLookup=false,cameraGeneration=0,cameraLastEan='',cameraLastAt=0,cameraFallbackStarted=false,scanAudio=null;
 let analysisCache=null,analysisRequest=0,subgroupCatalogReady=false;
 let accessUsers=[],accessStores=[],accessAudit=[];
-let teamScope='own',teamBusy=false,teamListBusy=false,teamLockId=null,teamUnlock=null;
+let teamScope='own',teamBusy=false,teamListBusy=false,teamLockId=null,teamUnlock=null,teamAdminActionBusy=false,selectedSessionId='';
 let serial=0,saved=0,inflight=null,timer=null,retry=null,conflict=false,xlsxPromise,recounts=[],loadingRecounts=false,recountSourceId=null,recountPage=0,pendingImport=null,cameraStream=null,cameraControls=null,cameraFrame=0,cameraActive=false,zxingPromise=null,deletionRequests=[],loadingDeletions=false,activeDeletionReviewId=null,unknownOrigin='LEITOR / DIGITAÇÃO',auditSessionPromise=null;
 const uuid=()=>crypto.randomUUID?crypto.randomUUID():Array.from(crypto.getRandomValues(new Uint8Array(16)),v=>v.toString(16).padStart(2,'0')).join('');
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -64,7 +64,7 @@ function renderTeam(){
  const when=current.teamFetchedAt?new Date(current.teamFetchedAt).toLocaleTimeString('pt-BR'):null;
  $('#team-state').textContent=current.collabReadOnly?'Outra aba deste aparelho está usando esta contagem. Feche-a e reabra aqui.':current.collabViewOnly?'Consulta administrativa. Os participantes alteram somente a própria parte.':
   (teamScope==='total'?'TOTAL · somente consulta. ':'MINHA PARTE · edite apenas o que você contou. ')+(when?'Última soma recebida às '+when+'. ':'')+(current.mirroredVersion<current.version?'Planilha aguardando espelhamento; dados recebidos no servidor.':'Planilha atualizada.');
- $('#team-people').innerHTML=(current.participants||[]).map(p=>'<div class="team-person"><strong>'+esc(p.responsible)+'</strong> · '+(p.done?'PARTE FINALIZADA':'CONTANDO / AGUARDANDO FINALIZAÇÃO')+' · '+Number(p.units||0)+' unidades · '+Number(p.defects||0)+' defeitos<br><span>Último envio: '+esc(new Date(p.updatedAt).toLocaleString('pt-BR'))+' · '+esc(p.device||'Dispositivo não informado')+' · '+esc(p.ip||'IP não capturado')+'</span></div>').join('');
+ $('#team-people').innerHTML=(current.participants||[]).map(p=>'<div class="team-person"><div class="team-person-info"><strong>'+esc(p.responsible)+'</strong> · '+(p.done?'PARTE FINALIZADA':'CONTANDO / AGUARDANDO FINALIZAÇÃO')+' · '+Number(p.units||0)+' unidades · '+Number(p.defects||0)+' defeitos<br><span>Último envio: '+esc(new Date(p.updatedAt).toLocaleString('pt-BR'))+' · '+esc(p.device||'Dispositivo não informado')+' · '+esc(p.ip||'IP não capturado')+'</span></div>'+(user?.allStores&&p.id?'<div class="team-person-actions"><button class="button button-quiet" type="button" data-person-action="finish" data-person-id="'+esc(p.id)+'" '+(p.done||teamAdminActionBusy?'disabled':'')+'>FINALIZAR</button><button class="button button-quiet" type="button" data-person-action="clear" data-person-id="'+esc(p.id)+'" '+(teamAdminActionBusy?'disabled':'')+'>LIMPAR</button></div>':'')+'</div>').join('');
  $('#team-own').disabled=!!current.collabViewOnly;$('#team-total').disabled=false;
 }
 async function loadTeamCounts(){
@@ -290,22 +290,29 @@ async function createAccessUser(event){
 }
 
 function picker(){
-  $('#session-picker-wrap').hidden=!(user?.allStores||user?.multiStore);
-  const filter=$('#history-store-filter');
-  if(filter){filter.hidden=!(user?.allStores||user?.multiStore);filter.value=historyStoreFilter||'';}
-  $('#session-picker').hidden=!sessions.length;
-  $('#session-picker').innerHTML='<option value="">Selecione uma contagem</option>'+sessions.slice().reverse().map(s=>'<option value="'+esc(s.id)+'">'+esc(s.label)+' · '+esc(s.status)+(s.sheetMissing?' · ABA AUSENTE':'')+'</option>').join('');
-  $('#session-picker').value=current?.id||'';
-  $('#load-sessions').disabled=loadingSessions;
-  $('#load-sessions').textContent=loadingSessions?'CARREGANDO…':sessionsLoaded?'ATUALIZAR CONTAGENS':'CARREGAR CONTAGENS';
-  $('#delete-session').hidden=!user?.allStores||!$('#session-picker').value;
-  $('#delete-session').disabled=loadingSessions;
-  const selected=sessions.find(s=>s.id===$('#session-picker').value);
-  $('#request-recount').hidden=!user?.allStores||!selected||selected.kind==='RECONTAGEM'||selected.status!=='FINALIZADA';
-  $('#request-delete-session').hidden=!!user?.allStores||!current||current.deleteStatus==='PENDENTE';
-  $('#share-count').hidden=!user?.allStores||!selected;
-  $('#share-count').disabled=loadingSessions||!selected;
-}
+   $('#session-picker-wrap').hidden=!(user?.allStores||user?.multiStore);
+   const filter=$('#history-store-filter');
+   if(filter){filter.hidden=!(user?.allStores||user?.multiStore);filter.value=historyStoreFilter||'';}
+   const pickerEl=$('#session-picker'),prior=selectedSessionId||pickerEl.value;
+   const selected=sessions.find(s=>s.id===prior)||sessions.find(s=>s.id===current?.id)||null;
+   selectedSessionId=selected?.id||'';
+   pickerEl.hidden=!sessions.length;
+   pickerEl.innerHTML='<option value="">Selecione uma contagem</option>'+sessions.slice().reverse().map(s=>'<option value="'+esc(s.id)+'">'+esc(s.label)+' · '+esc(s.status)+(s.sheetMissing?' · ABA AUSENTE':'')+'</option>').join('');
+   pickerEl.value=selectedSessionId;
+   const chosen=sessions.find(s=>s.id===pickerEl.value)||null;
+   $('#view-session').hidden=!chosen;
+   $('#view-session').disabled=loadingSessions||openingCount||!chosen;
+   $('#reopen-session').hidden=!user?.allStores||!chosen||chosen.status!=='FINALIZADA'||chosen.kind==='RECONTAGEM'||chosen.deleteStatus==='PENDENTE';
+   $('#reopen-session').disabled=loadingSessions||openingCount||teamAdminActionBusy;
+   $('#load-sessions').disabled=loadingSessions;
+   $('#load-sessions').textContent=loadingSessions?'CARREGANDO…':sessionsLoaded?'ATUALIZAR CONTAGENS':'CARREGAR CONTAGENS';
+   $('#delete-session').hidden=!user?.allStores||!pickerEl.value;
+   $('#delete-session').disabled=loadingSessions;
+   $('#request-recount').hidden=!user?.allStores||!chosen||chosen.kind==='RECONTAGEM'||chosen.status!=='FINALIZADA';
+   $('#request-delete-session').hidden=!!user?.allStores||!current||current.deleteStatus==='PENDENTE';
+   $('#share-count').hidden=!user?.allStores||!chosen;
+   $('#share-count').disabled=loadingSessions||!chosen;
+ }
 function render(){
   const compactCounting=!!current&&!inventoryHome&&!$('#count-view').hidden;
   document.body?.classList.toggle('is-counting',compactCounting);
@@ -552,19 +559,39 @@ async function scan(origin='LEITOR / DIGITAÇÃO'){
   }catch(e){showUnknown(ean,origin,'Não foi possível consultar o cadastro. Confira o EAN e informe produto e marca para conferência.');}
   finally{lookingUp=false;updateOfflineStatus();}
 }
-async function reopenCount(){
- const target=current;if(!target||!user?.allStores||target.status!=='FINALIZADA'||target.kind==='RECONTAGEM'||openingCount)return;
+async function reopenCount(target=current){
+ if(!target||!user?.allStores||target.status!=='FINALIZADA'||target.kind==='RECONTAGEM'||target.deleteStatus==='PENDENTE'||openingCount)return;
  if(!confirm('Reabrir '+target.label+'? A contagem ficará disponível para edição novamente. Se uma recontagem havia ajustado o total, esse ajuste será removido e poderá ser refeito depois.'))return;
- const button=$('#reopen-count');button.disabled=true;
+ const buttons=[$('#reopen-count'),$('#reopen-session')];buttons.forEach(button=>button.disabled=true);
  try{
   await api('reopen',{id:target.id});
-  target.status='EM ANDAMENTO';target.localFinished=false;target.participantDone=false;
+  if(current?.id===target.id){current.status='EM ANDAMENTO';current.localFinished=false;current.participantDone=false;}
   sessions=sessions.map(item=>item.id===target.id?{...item,status:'EM ANDAMENTO'}:item);
+  selectedSessionId=target.id;
   await openCount(target.id,'read');
   sessions=sessions.map(item=>item.id===target.id?{...item,status:'EM ANDAMENTO'}:item);
   $('#app-error').textContent='Contagem reaberta. Os responsáveis podem continuar os lançamentos.';
  }catch(e){note(e.message,true);}
- finally{button.disabled=false;render();}
+ finally{buttons.forEach(button=>button.disabled=false);picker();render();}
+}
+async function manageTeamPerson(personId,operation){
+ if(!current?.collaborative||!user?.allStores||!personId||!['finish','clear'].includes(operation)||teamAdminActionBusy)return;
+ const person=(current.participants||[]).find(p=>p.id===personId);if(!person)return;
+ const message=operation==='finish'
+  ?'Finalizar a parte de '+person.responsible+' agora? Somente os dados já sincronizados serão considerados. O responsável não poderá continuar lançando até que a parte seja reaberta.'
+  :'Limpar todos os produtos e defeitos de '+person.responsible+'? Apenas os lançamentos sincronizados desta pessoa serão apagados; os demais responsáveis serão preservados.';
+ if(!confirm(message))return;
+ teamAdminActionBusy=true;renderTeam();picker();
+ try{
+  const response=await api('teamManage',{id:current.id,participantId:personId,operation});
+  const snapshot=response.data;
+  Object.assign(current,snapshot);
+  current.collaborative=true;current.collabViewOnly=true;current.collabReadOnly=false;current.participantId=null;current.participantDone=false;current.peers=null;
+  current.counts=snapshot.counts||[];current.defects=snapshot.defects||[];current.teamFetchedAt=new Date().toISOString();teamScope='total';
+  sessions=sessions.map(item=>item.id===current.id?{...item,status:current.status}:item);
+  render();sync(operation==='finish'?'Responsável finalizado e contagem sincronizada':'Parte do responsável limpa; demais partes preservadas');
+ }catch(error){note(error.message,true);}
+ finally{teamAdminActionBusy=false;renderTeam();picker();}
 }
 async function finishCount(){
  try{
@@ -762,7 +789,10 @@ $('#share-count').addEventListener('click',async()=>{
 });
 $('#copy-share-link').addEventListener('click',async()=>{const value=$('#share-link-value').value;if(!value)return;try{await navigator.clipboard.writeText(value);$('#copy-share-link').textContent='LINK COPIADO';setTimeout(()=>$('#copy-share-link').textContent='COPIAR LINK',1600);}catch(_){$('#share-link-value').focus();$('#share-link-value').select();document.execCommand('copy');$('#copy-share-link').textContent='LINK COPIADO';}});
 $('#new-count').addEventListener('click',createCount);
-$('#session-picker').addEventListener('change',event=>openCount(event.target.value).catch(e=>note(e.message,true)));
+$('#session-picker').addEventListener('change',event=>{selectedSessionId=event.target.value;picker();});
+ $('#view-session').addEventListener('click',()=>{const selected=sessions.find(s=>s.id===$('#session-picker').value);if(selected)openCount(selected.id).catch(e=>note(e.message,true));});
+ $('#reopen-session').addEventListener('click',()=>{const selected=sessions.find(s=>s.id===$('#session-picker').value);if(selected)reopenCount(selected);});
+ $('#team-people').addEventListener('click',event=>{const button=event.target.closest('[data-person-action]');if(button)manageTeamPerson(button.dataset.personId,button.dataset.personAction);});
 $('#history-store-filter').addEventListener('change',event=>{historyStoreFilter=event.target.value;sessions=[];sessionsLoaded=false;picker();loadSessions();});
 $('#load-sessions').addEventListener('click',loadSessions);
 $('#delete-session').addEventListener('click',()=>openDeleteConfirm('history'));
