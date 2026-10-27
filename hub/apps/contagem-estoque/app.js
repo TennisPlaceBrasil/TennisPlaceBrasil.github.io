@@ -3,6 +3,7 @@ const $=s=>document.querySelector(s),BASE='https://rihvnshexilakojnltox.supabase
 let auth=null,user=null,stores=[],sessions=[],sessionsLoaded=false,loadingSessions=false,historyStoreFilter='',current=null,catalog=new Map(),mode='count',unknown=null,lookingUp=false,deleteConfirmAction=null,largeQuantityEnabled=false,pendingScanQuantity=1;
 let inventoryHome=false,openingCount=false,cameraCandidate=null,cameraLookup=false,cameraGeneration=0,cameraLastEan='',cameraLastAt=0,cameraFallbackStarted=false,scanAudio=null;
 let analysisCache=null,analysisRequest=0,subgroupCatalogReady=false;
+let accessUsers=[],accessStores=[],accessAudit=[];
 let teamScope='own',teamBusy=false,teamListBusy=false,teamLockId=null,teamUnlock=null;
 let serial=0,saved=0,inflight=null,timer=null,retry=null,conflict=false,xlsxPromise,recounts=[],loadingRecounts=false,recountSourceId=null,recountPage=0,pendingImport=null,cameraStream=null,cameraControls=null,cameraFrame=0,cameraActive=false,zxingPromise=null,deletionRequests=[],loadingDeletions=false,activeDeletionReviewId=null,unknownOrigin='LEITOR / DIGITAÇÃO',auditSessionPromise=null;
 const uuid=()=>crypto.randomUUID?crypto.randomUUID():Array.from(crypto.getRandomValues(new Uint8Array(16)),v=>v.toString(16).padStart(2,'0')).join('');
@@ -214,6 +215,57 @@ async function api(action,params={},again=false){
   if(r.status===401&&!again){await refresh();return api(action,params,true);}
   let data;try{data=JSON.parse(await r.text());}catch{throw Error('O servidor respondeu em formato inválido. Tente novamente; seus dados locais estão preservados.');}if(!r.ok){const e=Error(data.error||'Falha de comunicação.');e.status=r.status;throw e;}return data;
 }
+async function adminApi(action,params={},again=false){
+ const response=await fetch(BASE+'/functions/v1/manual-portal-access-admin',{method:'POST',headers:{apikey:KEY,Authorization:'Bearer '+auth?.access_token,'Content-Type':'application/json'},body:JSON.stringify({action,...params}),signal:AbortSignal.timeout(30000)});
+ if(response.status===401&&!again){await refresh();return adminApi(action,params,true);}
+ let result;try{result=await response.json();}catch{throw Error('O servidor respondeu em formato inválido.');}
+ if(!response.ok){const error=Error(result.error||'Falha ao administrar acessos.');error.status=response.status;throw error;}
+ return result;
+}
+function accessRole(account){return account.master?'MASTER':account.administrator?'ADMINISTRATIVO':'LOJA';}
+function renderAccessSettings(){
+ const root=$('#access-user-list');if(!root)return;
+ const query=$('#access-user-search').value.trim().toLocaleLowerCase('pt-BR');
+ const visible=accessUsers.filter(account=>!query||account.email.toLocaleLowerCase('pt-BR').includes(query));
+ root.innerHTML=visible.map(account=>{
+  const fullAccess=account.master||account.administrator;
+  const storeOptions=accessStores.map(store=>{
+   const checked=account.stores.includes(store),fixed=fullAccess||account.homeStores.includes(store)||!account.active;
+   const detail=account.homeStores.includes(store)?' · principal':'';
+   return '<label class="access-store-option"><input type="checkbox" data-access-store="'+esc(store)+'" '+(checked?'checked ':'')+(fixed?'disabled':'')+'><span>'+esc(store)+detail+'</span></label>';
+  }).join('');
+  return '<article class="access-user-card" data-access-user="'+esc(account.id)+'"><header><div><strong>'+esc(account.email||'Conta sem e-mail')+'</strong><small>'+esc(account.id)+'</small></div><span class="access-state '+(account.active?'active':'inactive')+'">'+(account.active?'ATIVO':'INATIVO')+'</span></header><div class="access-role-row"><label class="access-master-toggle"><input type="checkbox" data-access-master '+(account.master?'checked ':'')+(!account.active||!account.administrator?'disabled':'')+'><span>MASTER</span></label><span class="access-current-role">Perfil atual: '+accessRole(account)+'</span></div><fieldset class="access-store-set"><legend>LOJAS COM ACESSO</legend>'+(fullAccess?'<p class="access-all-stores">Acesso a todas as lojas pelo perfil '+accessRole(account)+'.</p>':'<div class="access-store-grid">'+storeOptions+'</div><small>A loja principal fica fixa. Marque outras lojas para liberar acesso compartilhado.</small>')+'</fieldset><div class="access-card-actions"><button class="button button-primary" type="button" data-save-access>SALVAR ACESSO</button></div></article>';
+ }).join('');
+ if(!visible.length)root.innerHTML='<p class="access-empty">Nenhum usuário encontrado.</p>';
+ const auditRoot=$('#access-audit-list');
+ auditRoot.innerHTML=accessAudit.length?accessAudit.map(row=>{
+  const beforeRole=row.previous_master?'MASTER':'sem MASTER',afterRole=row.new_master?'MASTER':'sem MASTER';
+  const beforeStores=(row.previous_stores||[]).join(', ')||'nenhuma loja específica';
+  const afterStores=(row.new_stores||[]).join(', ')||'nenhuma loja específica';
+  return '<article class="access-audit-row"><strong>'+esc(row.target_email||'Conta')+'</strong><span>'+esc(beforeRole)+' · '+esc(beforeStores)+' → '+esc(afterRole)+' · '+esc(afterStores)+'</span><small>'+esc(row.actor_email||'MASTER')+' · '+esc(new Date(row.created_at).toLocaleString('pt-BR'))+'</small></article>';
+ }).join(''):'<p class="access-empty">Ainda não há alterações de acesso registradas.</p>';
+}
+async function loadAccessSettings(keepStatus=false){
+ if(!user?.master)return;
+ const refresh=$('#access-refresh');if(refresh)refresh.disabled=true;
+ if(!keepStatus)$('#access-status').textContent='Carregando usuários e lojas…';
+ try{const result=await adminApi('list');accessUsers=result.users||[];accessStores=result.stores||[];accessAudit=result.audit||[];renderAccessSettings();$('#access-status').textContent='Acessos atualizados. As alterações são aplicadas imediatamente e ficam registradas.';}
+ catch(error){$('#access-status').textContent=error.message;}
+ finally{if(refresh)refresh.disabled=false;}
+}
+async function saveAccess(card){
+ const targetId=card.dataset.accessUser,account=accessUsers.find(item=>item.id===targetId);
+ if(!account||!account.active)return;
+ const master=card.querySelector('[data-access-master]').checked;
+ const stores=account.administrator?accessStores:[...card.querySelectorAll('[data-access-store]:checked')].map(input=>input.dataset.accessStore);
+ const summary=(master?'MASTER':'sem MASTER')+(account.master===master?'':' · perfil alterado')+' · '+(stores.length?stores.join(', '):'sem lojas específicas');
+ if(!window.confirm('Aplicar este acesso para '+(account.email||'a conta')+'?\\n\\n'+summary+'\\n\\nA mudança será aplicada imediatamente e registrada no histórico.'))return;
+ const button=card.querySelector('[data-save-access]');button.disabled=true;$('#access-status').textContent='Salvando acesso…';
+ try{await adminApi('save',{userId:targetId,master,stores});await loadAccessSettings(true);$('#access-status').textContent='Acesso salvo e registrado no histórico.';}
+ catch(error){$('#access-status').textContent=error.message;}
+ finally{button.disabled=false;}
+}
+
 function picker(){
   $('#session-picker-wrap').hidden=!(user?.allStores||user?.multiStore);
   const filter=$('#history-store-filter');
@@ -232,7 +284,7 @@ function picker(){
   $('#share-count').disabled=loadingSessions||!selected;
 }
 function render(){
-  const compactCounting=!!current&&!inventoryHome&&$('#analysis-view').hidden;
+  const compactCounting=!!current&&!inventoryHome&&!$('#count-view').hidden;
   document.body?.classList.toggle('is-counting',compactCounting);
   if(document.body)document.body.dataset.countMode=mode;
   $('#count-options-toggle').hidden=true;
@@ -266,16 +318,18 @@ function render(){
 }
 function displayAccount(){
   $('#login-panel').hidden=true;$('#app-main').hidden=false;$('#logout').hidden=false;
-  $('#account-label').textContent=user.allStores?'ACESSO ADMINISTRATIVO':user.multiStore?'ACESSO A VÁRIAS LOJAS':user.store;
+  $('#account-label').textContent=user.master?'ACESSO MASTER':user.allStores?'ACESSO ADMINISTRATIVO':user.multiStore?'ACESSO A VÁRIAS LOJAS':user.store;
   $('#store-code').innerHTML=((user.allStores||user.multiStore)?'<option value="">Selecione a loja</option>':'')+stores.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('');$('#store-code').value=user.store||'';$('#store-code').disabled=!user.allStores&&!user.multiStore;$('#count-date').value=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());$('#tab-analysis').hidden=!user.allStores;
   const today=$('#count-date').value,from=new Date(today+'T12:00:00-03:00');from.setDate(from.getDate()-89);$('#filter-end').value=today;$('#filter-start').value=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(from);
   $('#filter-store').innerHTML='<option value="">Todas as lojas</option>'+stores.map(s=>'<option>'+esc(s)+'</option>').join('');
   $('#history-store-filter').innerHTML='<option value="">Todas as lojas</option>'+stores.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('');
  $('#count-responsible').value=current?.responsible||$('#count-responsible').value;
- $('#filter-brand').innerHTML='<option value="">Todas as marcas</option>';$('#register-gama').hidden=!user.allStores||(stores.includes('UBRA')&&stores.includes('TESTE'));
+ $('#filter-brand').innerHTML='<option value="">Todas as marcas</option>';$('#register-gama').hidden=!user.allStores||(stores.includes('UBRA')&&stores.includes('TESTE'));$('#tab-settings').hidden=!user.master;
 }
 async function boot(){
- const r=await api('bootstrap');user=r.user;stores=r.stores;sessions=[];sessionsLoaded=false;auditSession();
+ const r=await api('bootstrap');user=r.user;stores=r.stores;
+ if(user.allStores){try{const access=await adminApi('list');user.master=true;accessUsers=access.users||[];accessStores=access.stores||[];accessAudit=access.audit||[];}catch{user.master=false;}}
+ sessions=[];sessionsLoaded=false;auditSession();
  await loadLocalCatalog().catch(e=>{localError=e.message;});
  await TPInventoryLocal.setting('profile',{user,stores,enabled:true}).catch(()=>{});displayAccount();
  const cached=await TPInventoryLocal.restore(user.id).catch(()=>null);if(cached){adoptLocal(cached);await activateTeamLock();}const priorName=await TPInventoryLocal.read('settings','responsible:'+user.id);if(!$('#count-responsible').value&&priorName)$('#count-responsible').value=priorName;loadTeamCounts();
@@ -616,6 +670,9 @@ async function submitRecount(event){
 $('#recount-search').addEventListener('input',()=>{recountPage=0;renderRecount();});
 $('#recount-prev').addEventListener('click',()=>{recountPage--;renderRecount();});
 $('#recount-next').addEventListener('click',()=>{recountPage++;renderRecount();});
+$('#access-user-search').addEventListener('input',renderAccessSettings);
+$('#access-refresh').addEventListener('click',()=>loadAccessSettings());
+$('#access-user-list').addEventListener('click',event=>{const button=event.target.closest('[data-save-access]');const card=event.target.closest('[data-access-user]');if(button&&card)saveAccess(card);});
 $('#register-gama').addEventListener('click',async()=>{
  if(!user?.allStores)return;const button=$('#register-gama');button.disabled=true;
  try{
@@ -688,8 +745,8 @@ document.querySelectorAll('#count-body,#defect-body').forEach(body=>body.addEven
 $('#finish-count').addEventListener('click',finishCount);$('#export-txt').addEventListener('click',exportCsv);
 $('#analysis-filters').addEventListener('submit',analyze);
 $('#filter-brand').addEventListener('change',renderAnalysis);$('#filter-subgroup').addEventListener('change',renderAnalysis);
-function showTab(analysis){$('#count-view').hidden=analysis;$('#analysis-view').hidden=!analysis;$('#tab-count').classList.toggle('active',!analysis);$('#tab-analysis').classList.toggle('active',analysis);render();}
-$('#tab-count').addEventListener('click',()=>showTab(false));$('#tab-analysis').addEventListener('click',()=>{showTab(true);analyze();});
+function showTab(name){const count=name==='count',analysis=name==='analysis',settings=name==='settings';$('#count-view').hidden=!count;$('#analysis-view').hidden=!analysis;$('#settings-view').hidden=!settings;$('#tab-count').classList.toggle('active',count);$('#tab-analysis').classList.toggle('active',analysis);$('#tab-settings').classList.toggle('active',settings);render();if(analysis)analyze();if(settings)loadAccessSettings();}
+$('#tab-count').addEventListener('click',()=>showTab('count'));$('#tab-analysis').addEventListener('click',()=>showTab('analysis'));$('#tab-settings').addEventListener('click',()=>showTab('settings'));
 window.addEventListener('pagehide',()=>stopCamera(false));
 window.addEventListener('beforeunload',event=>{if((localError||localWrites>0)&&current){event.preventDefault();event.returnValue='';}});
 window.addEventListener('online',()=>{updateOfflineStatus();flush();});window.addEventListener('offline',updateOfflineStatus);

@@ -12,8 +12,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Inventário HubTennisPlace">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="stylesheet" href="style.css?v=recent-large-2">
-  <link rel="stylesheet" href="mobile.css?v=recent-large-2">
+  <link rel="stylesheet" href="style.css?v=access-settings1">
+  <link rel="stylesheet" href="mobile.css?v=access-settings1">
   <link rel="stylesheet" href="dashboard.css?v=1">
 </head>
 <body>
@@ -22,7 +22,7 @@
     <div class="account-bar"><button id="count-options-toggle" type="button" class="button button-quiet" aria-expanded="false" hidden>OPÇÕES</button><button id="install-app" type="button" class="button button-quiet">INSTALAR APP</button><button id="fullscreen-app" type="button" class="button button-quiet" hidden>TELA CHEIA</button><span id="account-label" class="local-badge">ACESSO HUBTENNISPLACE</span><button id="logout" class="button button-quiet" hidden>SAIR</button></div>
   </header>
   <section class="login-panel" id="login-panel"><p class="eyebrow">ACESSO TENNIS PLACE</p><h1><em>Inventário</em></h1><p>Use o mesmo acesso dos manuais.</p><form id="login-form"><label for="login-id">Sigla da loja ou e-mail</label><input id="login-id" autocomplete="username" required><label for="login-password">CNPJ da loja ou senha</label><input id="login-password" type="password" autocomplete="current-password" required><button class="button button-primary" id="login-submit">ENTRAR</button><p id="login-error" role="alert"></p><button id="recover-local" class="button button-quiet" type="button" hidden>RETOMAR CONTAGEM DESTE DISPOSITIVO</button></form></section>
-  <main id="app-main" hidden><nav class="tool-tabs"><button id="tab-count" class="active">CONTAGEM</button><button id="tab-analysis" hidden>ANÁLISE DE ESTOQUE</button></nav><p id="app-error" role="alert"></p><div id="offline-panel-home"><section class="offline-panel"><p id="offline-status" class="offline-status" role="status">Preparando uso sem internet…</p><div><button id="prepare-offline" class="button button-quiet" type="button">PREPARAR / ATUALIZAR USO OFFLINE</button><button id="sync-now" class="button button-quiet" type="button">SINCRONIZAR</button></div></section></div><div id="count-view"><button id="back-inventory-home" class="button button-quiet" type="button" hidden>← INÍCIO DO INVENTÁRIO</button><section id="device-drafts" class="recount-inbox" hidden><h3>Em andamento neste dispositivo</h3><p>Continue uma contagem local. Dados pendentes permanecem neste aparelho até sincronizar.</p><div id="device-draft-list"></div></section>
+  <main id="app-main" hidden><nav class="tool-tabs"><button id="tab-count" class="active">CONTAGEM</button><button id="tab-analysis" hidden>ANÁLISE DE ESTOQUE</button><button id="tab-settings" hidden>CONFIGURAÇÕES</button></nav><p id="app-error" role="alert"></p><div id="offline-panel-home"><section class="offline-panel"><p id="offline-status" class="offline-status" role="status">Preparando uso sem internet…</p><div><button id="prepare-offline" class="button button-quiet" type="button">PREPARAR / ATUALIZAR USO OFFLINE</button><button id="sync-now" class="button button-quiet" type="button">SINCRONIZAR</button></div></section></div><div id="count-view"><button id="back-inventory-home" class="button button-quiet" type="button" hidden>← INÍCIO DO INVENTÁRIO</button><section id="device-drafts" class="recount-inbox" hidden><h3>Em andamento neste dispositivo</h3><p>Continue uma contagem local. Dados pendentes permanecem neste aparelho até sincronizar.</p><div id="device-draft-list"></div></section>
     <section class="intro">
       <div>
         <p class="eyebrow">OPERAÇÃO DE LOJA <span> / </span> ESTOQUE</p>
@@ -128,6 +128,14 @@
       <p class="footer-note">A análise utiliza contagens finalizadas e soma as unidades da contagem com os defeitos.</p>
     </section>
     </div><section id="analysis-view" hidden><div class="analysis-heading"><p class="eyebrow">GESTÃO / HISTÓRICO</p><h1>Análise de <em>Estoque</em></h1><p>Estoque físico = contagem + defeitos. Produtos ausentes em uma data aparecem com zero. Consulte até 12 meses por vez.</p></div><form id="analysis-filters" class="analysis-filters"><label>LOJA<select id="filter-store"></select></label><label>MARCA<select id="filter-brand"><option value="">Todas as marcas</option></select></label><label>SUBGRUPO<select id="filter-subgroup"><option value="">Todos os subgrupos</option></select></label><label>DE<input id="filter-start" type="date"></label><label>ATÉ<input id="filter-end" type="date"></label><button class="button button-primary">ANALISAR</button></form><p id="analysis-status" aria-live="polite"></p><section id="analysis-dashboard" aria-label="Dashboard do inventário" aria-live="polite"></section><h2 class="analysis-detail-title">Comparação detalhada por data</h2><div class="analysis-table"><table><thead id="analysis-head"></thead><tbody id="analysis-body"></tbody></table></div></section>
+    <section id="settings-view" hidden>
+      <div class="analysis-heading"><p class="eyebrow">ADMINISTRAÇÃO / ACESSOS</p><h1>Configurações de <em>Acesso</em></h1><p>Defina quais lojas cada conta pode acessar. MASTER administra acessos e visualiza todas as lojas. Somente contas administrativas podem receber MASTER. Acesso de LOJA fica limitado à loja principal e às lojas adicionais marcadas.</p></div>
+      <div class="access-guidance"><strong>Perfis:</strong> MASTER administra acessos e tem visão global; ADMINISTRATIVO mantém os privilégios administrativos atuais; LOJA acessa somente a loja principal e as lojas adicionais marcadas.</div>
+      <div class="access-toolbar"><label for="access-user-search">BUSCAR USUÁRIO</label><input id="access-user-search" type="search" placeholder="E-mail ou conta"><button id="access-refresh" class="button button-quiet" type="button">ATUALIZAR ACESSOS</button></div>
+      <p id="access-status" role="status" aria-live="polite"></p>
+      <div id="access-user-list" class="access-user-list"></div>
+      <section class="recount-inbox access-audit"><div class="list-heading"><div><span class="eyebrow">RASTREABILIDADE</span><h3>Últimas alterações de acesso</h3></div></div><div id="access-audit-list"></div></section>
+    </section>
     <footer><span>HubTennisPlace</span><span>BE BOLD. BE YOU.</span></footer>
   </main>
   <dialog id="delete-confirm-dialog" aria-labelledby="delete-confirm-title"><div class="list-heading"><div><p class="eyebrow">CONFIRMAR AÇÃO</p><h2 id="delete-confirm-title">Excluir contagem?</h2></div></div><p id="delete-confirm-message"></p><div class="dialog-actions"><button id="delete-confirm-no" class="button button-quiet" type="button">NÃO</button><button id="delete-confirm-yes" class="button button-primary" type="button">SIM</button></div></dialog>
@@ -136,7 +144,7 @@
   <dialog id="recount-dialog"><form id="recount-request-form"><p class="eyebrow">SOLICITAÇÃO PARA A LOJA</p><h2>Solicitar recontagem</h2><p id="recount-source-label"></p><p>Envie um TXT com um EAN por linha. A loja verá os códigos e informará as quantidades, sem consultar a contagem anterior.</p><label for="recount-file">ARQUIVO TXT</label><input id="recount-file" type="file" accept=".txt,text/plain" required><p id="recount-file-status" role="status"></p><div class="dialog-actions"><button id="cancel-recount" type="button" class="button button-quiet">CANCELAR</button><button id="send-recount" type="submit" class="button button-primary">ENVIAR À LOJA</button></div></form></dialog>
   <dialog id="install-dialog" aria-labelledby="install-title"><div class="list-heading"><h2 id="install-title">Instalar Inventário</h2><button id="install-close" type="button" class="button button-quiet">FECHAR</button></div><p id="install-instructions"></p><p>Após instalar, abra pelo ícone Inventário TP. O aplicativo acompanha a rotação do dispositivo. A abertura em tela cheia depende do sistema e do navegador.</p><p>Para contar sem internet, entre e aguarde a indicação “Pronto para contar sem internet”.</p><p id="install-feedback" role="status"></p></dialog>
   <script src="pwa.js?v=1"></script>
-  <script src="offline-store.js?v=3"></script><script src="offline-export.js?v=responsible1"></script><script src="dashboard.js?v=1"></script><script src="app.js?v=stores-ubra-teste1"></script>
+  <script src="offline-store.js?v=3"></script><script src="offline-export.js?v=responsible1"></script><script src="dashboard.js?v=1"></script><script src="app.js?v=master-access1"></script>
 </body>
 </html>
 
