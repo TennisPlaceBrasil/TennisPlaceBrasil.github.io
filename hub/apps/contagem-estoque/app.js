@@ -227,6 +227,11 @@ function renderAccessSettings(){
  const root=$('#access-user-list');if(!root)return;
  const query=$('#access-user-search').value.trim().toLocaleLowerCase('pt-BR');
  const visible=accessUsers.filter(account=>!query||account.email.toLocaleLowerCase('pt-BR').includes(query));
+ const createStoreRoot=$('#access-create-store-list');
+ if(createStoreRoot){
+  const selected=new Set([...createStoreRoot.querySelectorAll('[data-new-store]:checked')].map(input=>input.dataset.newStore));
+  createStoreRoot.innerHTML=accessStores.map(store=>'<label class="access-store-option"><input type="checkbox" data-new-store="'+esc(store)+'" '+(selected.has(store)?'checked ':'')+'><span>'+esc(store)+'</span></label>').join('');
+ }
  root.innerHTML=visible.map(account=>{
   const fullAccess=account.master||account.administrator;
   const storeOptions=accessStores.map(store=>{
@@ -234,7 +239,8 @@ function renderAccessSettings(){
    const detail=account.homeStores.includes(store)?' · principal':'';
    return '<label class="access-store-option"><input type="checkbox" data-access-store="'+esc(store)+'" '+(checked?'checked ':'')+(fixed?'disabled':'')+'><span>'+esc(store)+detail+'</span></label>';
   }).join('');
-  return '<article class="access-user-card" data-access-user="'+esc(account.id)+'"><header><div><strong>'+esc(account.email||'Conta sem e-mail')+'</strong><small>'+esc(account.id)+'</small></div><span class="access-state '+(account.active?'active':'inactive')+'">'+(account.active?'ATIVO':'INATIVO')+'</span></header><div class="access-role-row"><label class="access-master-toggle"><input type="checkbox" data-access-master '+(account.master?'checked ':'')+(!account.active||!account.administrator?'disabled':'')+'><span>MASTER</span></label><span class="access-current-role">Perfil atual: '+accessRole(account)+'</span></div><fieldset class="access-store-set"><legend>LOJAS COM ACESSO</legend>'+(fullAccess?'<p class="access-all-stores">Acesso a todas as lojas pelo perfil '+accessRole(account)+'.</p>':'<div class="access-store-grid">'+storeOptions+'</div><small>A loja principal fica fixa. Marque outras lojas para liberar acesso compartilhado.</small>')+'</fieldset><div class="access-card-actions"><button class="button button-primary" type="button" data-save-access>SALVAR ACESSO</button></div></article>';
+  const storeHelp=account.homeStores.length?'A loja principal fica fixa. Marque outras lojas para liberar acesso compartilhado.':'Esta conta não tem loja principal; marque as lojas às quais ela terá acesso.';
+  return '<article class="access-user-card" data-access-user="'+esc(account.id)+'"><header><div><strong>'+esc(account.name?account.name+' · ':'')+esc(account.email||'Conta sem e-mail')+'</strong><small>'+esc(account.id)+'</small></div><span class="access-state '+(account.active?'active':'inactive')+'">'+(account.active?'ATIVO':'INATIVO')+'</span></header><div class="access-role-row"><label class="access-master-toggle"><input type="checkbox" data-access-master '+(account.master?'checked ':'')+(!account.active||!account.administrator?'disabled':'')+'><span>MASTER</span></label><span class="access-current-role">Perfil atual: '+accessRole(account)+'</span></div><fieldset class="access-store-set"><legend>LOJAS COM ACESSO</legend>'+(fullAccess?'<p class="access-all-stores">Acesso a todas as lojas pelo perfil '+accessRole(account)+'.</p>':'<div class="access-store-grid">'+storeOptions+'</div><small>'+storeHelp+'</small>')+'</fieldset><div class="access-card-actions"><button class="button button-primary" type="button" data-save-access>SALVAR ACESSO</button></div></article>';
  }).join('');
  if(!visible.length)root.innerHTML='<p class="access-empty">Nenhum usuário encontrado.</p>';
  const auditRoot=$('#access-audit-list');
@@ -264,6 +270,23 @@ async function saveAccess(card){
  try{await adminApi('save',{userId:targetId,master,stores});await loadAccessSettings(true);$('#access-status').textContent='Acesso salvo e registrado no histórico.';}
  catch(error){$('#access-status').textContent=error.message;}
  finally{button.disabled=false;}
+}
+
+async function createAccessUser(event){
+ event.preventDefault();if(!user?.master)return;
+ const form=$('#access-create-form'),submit=$('#access-create-submit');
+ const name=$('#new-user-name').value.trim(),email=$('#new-user-email').value.trim().toLowerCase(),password=$('#new-user-password').value;
+ const stores=[...form.querySelectorAll('[data-new-store]:checked')].map(input=>input.dataset.newStore);
+ if(!stores.length){$('#access-status').textContent='Selecione pelo menos uma loja.';return;}
+ const summary='Usuário LOJA · '+email+' · '+stores.join(', ');
+ if(!window.confirm('Criar esta conta?\n\n'+summary+'\n\nA senha inicial será definida agora.'))return;
+ submit.disabled=true;$('#access-status').textContent='Criando conta e liberando as lojas…';
+ try{
+  await adminApi('create',{name,email,password,stores});
+  form.reset();form.hidden=true;$('#access-create-toggle').setAttribute('aria-expanded','false');
+  await loadAccessSettings(true);$('#access-status').textContent='Usuário criado e acessos registrados. Compartilhe a senha inicial por canal seguro.';
+ }catch(error){$('#access-status').textContent=error.message;}
+ finally{submit.disabled=false;}
 }
 
 function picker(){
@@ -672,6 +695,9 @@ $('#recount-prev').addEventListener('click',()=>{recountPage--;renderRecount();}
 $('#recount-next').addEventListener('click',()=>{recountPage++;renderRecount();});
 $('#access-user-search').addEventListener('input',renderAccessSettings);
 $('#access-refresh').addEventListener('click',()=>loadAccessSettings());
+$('#access-create-toggle').addEventListener('click',()=>{const form=$('#access-create-form'),open=form.hidden;form.hidden=!open;$('#access-create-toggle').setAttribute('aria-expanded',String(open));if(open)$('#new-user-name').focus();});
+$('#access-create-cancel').addEventListener('click',()=>{$('#access-create-form').reset();$('#access-create-form').hidden=true;$('#access-create-toggle').setAttribute('aria-expanded','false');});
+$('#access-create-form').addEventListener('submit',createAccessUser);
 $('#access-user-list').addEventListener('click',event=>{const button=event.target.closest('[data-save-access]');const card=event.target.closest('[data-access-user]');if(button&&card)saveAccess(card);});
 $('#register-gama').addEventListener('click',async()=>{
  if(!user?.allStores)return;const button=$('#register-gama');button.disabled=true;
