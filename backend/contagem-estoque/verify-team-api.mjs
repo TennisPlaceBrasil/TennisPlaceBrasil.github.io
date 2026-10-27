@@ -31,6 +31,10 @@ currentStore='ARAS';r=await handler(req({action:'save',id:'c',participantId:'p',
 r=await handler(req({action:'save',id:'c',counts:[],defects:[]}));assert.equal(r.status,400,'Old client must not overwrite shared totals');
 r=await handler(req({action:'save',id:'c',participantId:'p',counts:[],defects:[],participantVersion:0,requestId:'test-request-00001'}));assert.equal(r.status,200);assert.equal(lastRPC.p_action,'save');assert.equal(lastRPC.p_user,uid);
 r=await handler(req({action:'read',id:'c'}));assert.equal(r.status,400);assert.match((await r.json()).error,/responsável/);
+r=await handler(req({action:'teamManage',id:'c',participantId:'p',operation:'clear'}));assert.equal(r.status,403,'Regular users cannot clear another participant');
+const adminId='adb6a08e-1a28-4b41-8dde-addd9c06f915';
+r=await handler(req({action:'teamManage',id:'c',participantId:'p',operation:'clear'},adminId));assert.equal(r.status,200);assert.equal(lastRPC.p_action,'clear');assert.equal(lastRPC.p_user,adminId);assert.equal(lastRPC.p_person,'p');
+r=await handler(req({action:'teamManage',id:'c',participantId:'p',operation:'finish'},adminId));assert.equal(r.status,200);assert.equal(lastRPC.p_action,'finish');
 known=false;r=await handler(req({action:'read',id:'legacy'}));assert.equal(r.status,200,'Legacy history is available inside the mapped store');assert.equal(lastBridge.action,'read');
 r=await handler(req({action:'create',store:'APAR',collaborative:true,responsible:'ABC',participantId:'p'}));assert.equal(r.status,400,'Validate before creating Sheets tab');
 r=await handler(req({action:'create',store:'ARAS',allStores:true,secret:'spoof'}));assert.equal(r.status,403,'Client cannot select a store outside its assigned stores');
