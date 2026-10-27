@@ -82,6 +82,12 @@ export async function handleTeam(input:Record<string,any>,user:{id:string},allSt
  if(record.deleted&&allStores&&(input.action==='delete'||input.action==='resolveDelete'&&input.approve===true))return {handled:true,data:await deletionResult(input.id,config)};
  if(record.deleted)throw Error('Esta contagem já não existe. A cópia local permanece disponível.');
  if(input.action==='discardEmpty')return {handled:true,data:{retained:true,empty:false}};
+ if(input.action==='teamManage'){
+  if(!allStores)throw Error('Ação restrita aos administradores.');
+  if(!input.participantId||!['finish','clear'].includes(input.operation))throw Error('Ação do responsável inválida.');
+  const data=await teamRPC('stockcount_team_manage_participant',{p_count_id:String(input.id),p_person:String(input.participantId),p_user:user.id,p_action:input.operation});
+  scheduleTeamMirror(input.id,config);return {handled:true,data};
+ }
  if(input.action==='reopen'){
   if(!allStores)throw Error('Ação restrita aos administradores.');
   const data=await teamRPC('stockcount_team_reopen',{p_id:String(input.id),p_user:user.id});
