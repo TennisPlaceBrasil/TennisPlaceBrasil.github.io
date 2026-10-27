@@ -69,6 +69,7 @@ Deno.serve(async (request: Request) => {
         authUsers.push(...pageUsers);
         if (pageUsers.length < 500) break;
       }
+      const authUserById = new Map(authUsers.map((item) => [item.id, item]));
       const emailById = new Map(authUsers.map((item) => [item.id, item.email || ""]));
       const storeList = (storesResult.data || []).map((row) => row.sigla);
       const homeByUser = new Map();
@@ -87,6 +88,7 @@ Deno.serve(async (request: Request) => {
         return {
           id: member.user_id,
           email: emailById.get(member.user_id) || "",
+          name: authUserById.get(member.user_id)?.user_metadata?.full_name || "",
           active: !!member.active,
           master,
           administrator,
@@ -101,6 +103,70 @@ Deno.serve(async (request: Request) => {
         target_email: emailById.get(row.target_user_id) || "",
       }));
       return response({ ok: true, stores: storeList, users, audit });
+    }
+
+    if (body?.action === "create") {
+      const name = typeof body.name === "string" ? body.name.trim() : "";
+      const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+      const password = typeof body.password === "string" ? body.password : "";
+      if (name.length < 2 || name.length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) || email.length > 254) {
+        return response({ error: "Informe nome e e-mail válidos." }, 400);
+      }
+      if (password.length < 8 || password.length > 128 || new TextEncoder().encode(password).length > 72) {
+        return response({ error: "A senha inicial precisa ter ao menos 8 caracteres e no máximo 72 bytes." }, 400);
+      }
+      if (!Array.isArray(body.stores) || body.stores.length < 1 || body.stores.length > 100 ||
+          body.stores.some((store) => typeof store !== "string")) {
+        return response({ error: "Selecione ao menos uma loja." }, 400);
+      }
+      const stores = [...new Set(body.stores.map((store) => store.trim().toUpperCase()))];
+      const { data: storeRows, error: storeError } = await admin
+        .from("manual_portal_store_logins")
+        .select("sigla");
+      if (storeError) throw new Error("Não foi possível validar as lojas.");
+      const availableStores = new Set((storeRows || []).map((row) => row.sigla));
+      if (stores.some((store) => !availableStores.has(store))) {
+        return response({ error: "A lista contém uma loja inexistente." }, 400);
+      }
+
+      const { data: created, error: createError } = await admin.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: { full_name: name },
+      });
+      if (createError || !created?.user?.id) {
+        const duplicate = /already|registered|duplicate|exists/i.test(createError?.message || "");
+        return response({ error: duplicate ? "Este e-mail já possui uma conta." : "Não foi possível criar o usuário." }, duplicate ? 409 : 400);
+      }
+
+      const targetId = created.user.id;
+      try {
+        const { error: memberError } = await admin.from("manual_portal_members").insert({
+          user_id: targetId,
+          profiles: ["loja"],
+          active: true,
+          is_master: false,
+        });
+        if (memberError) throw memberError;
+        const { error: accessError } = await admin.from("stockcount_user_store_access")
+          .insert(stores.map((sigla) => ({ user_id: targetId, sigla })));
+        if (accessError) throw accessError;
+        const { error: auditError } = await admin.from("manual_portal_access_audit").insert({
+          actor_user_id: actor.id,
+          target_user_id: targetId,
+          previous_master: false,
+          new_master: false,
+          previous_stores: [],
+          new_stores: stores,
+        });
+        if (auditError) throw auditError;
+      } catch (provisionError) {
+        const { error: rollbackError } = await admin.auth.admin.deleteUser(targetId);
+        if (rollbackError) console.error("Falha ao limpar conta incompleta após erro de cadastro.");
+        throw provisionError;
+      }
+      return response({ ok: true, user: { id: targetId, email, name, stores } }, 201);
     }
 
     if (body?.action === "save") {
