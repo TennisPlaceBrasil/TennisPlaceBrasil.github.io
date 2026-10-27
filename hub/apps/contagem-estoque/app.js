@@ -331,6 +331,8 @@ function render(){
   ['#open-camera','#import-count','#import-defects'].forEach(id=>{if($(id))$(id).disabled=done||deletePending;});
   $('#finish-count').disabled=current.status==='FINALIZADA'||current.localFinished||current.collabViewOnly||current.collabReadOnly||deletePending;$('#finish-count').textContent=done?(current.localFinished&&current.status!=='FINALIZADA'?'FINALIZADA · ENVIO PENDENTE':'CONTAGEM FINALIZADA'):deletePending?'AGUARDANDO ADM':'FINALIZAR CONTAGEM';
   if(current.collaborative)$('#finish-count').textContent=current.participantDone?'CONTAGEM FINALIZADA':current.localFinished?'FINALIZADA · ENVIO PENDENTE':current.status==='FINALIZADA'?'CONTAGEM FINALIZADA':'FINALIZAR CONTAGEM';
+  $('#reopen-count').hidden=!user?.allStores||current.status!=='FINALIZADA'||current.kind==='RECONTAGEM'||deletePending;
+  $('#reopen-count').disabled=openingCount||loadingSessions;
   $('#delete-pending-status').hidden=!deletePending;
   $('#request-delete-session').hidden=!!user?.allStores||deletePending;$('#request-delete-session').disabled=deletePending||!!current.collabReadOnly||!!current.collabViewOnly;
   document.querySelectorAll('.qty-actions button,.quantity-input,.remove-row').forEach(b=>b.disabled=done||deletePending);
@@ -550,6 +552,20 @@ async function scan(origin='LEITOR / DIGITAÇÃO'){
   }catch(e){showUnknown(ean,origin,'Não foi possível consultar o cadastro. Confira o EAN e informe produto e marca para conferência.');}
   finally{lookingUp=false;updateOfflineStatus();}
 }
+async function reopenCount(){
+ const target=current;if(!target||!user?.allStores||target.status!=='FINALIZADA'||target.kind==='RECONTAGEM'||openingCount)return;
+ if(!confirm('Reabrir '+target.label+'? A contagem voltará a ficar disponível para edição pelos responsáveis.'))return;
+ const button=$('#reopen-count');button.disabled=true;
+ try{
+  await api('reopen',{id:target.id});
+  target.status='EM ANDAMENTO';target.localFinished=false;target.participantDone=false;
+  sessions=sessions.map(item=>item.id===target.id?{...item,status:'EM ANDAMENTO'}:item);
+  await openCount(target.id,'read');
+  sessions=sessions.map(item=>item.id===target.id?{...item,status:'EM ANDAMENTO'}:item);
+  $('#app-error').textContent='Contagem reaberta. Os responsáveis podem continuar os lançamentos.';
+ }catch(e){note(e.message,true);}
+ finally{button.disabled=false;render();}
+}
 async function finishCount(){
  try{
   if(!current||current.localFinished||current.status==='FINALIZADA')return;
@@ -768,7 +784,7 @@ document.querySelectorAll('#count-body,#defect-body').forEach(body=>body.addEven
   if(!Number.isInteger(value)||value<1||value>1000000){input.value=String(row.quantity);note('Informe uma quantidade inteira entre 1 e 1.000.000.',true);return;}
   if(value!==row.quantity){row.quantity=value;row.origin='AJUSTE MANUAL';row.lastScannedAt=new Date().toISOString();changed();}
 }));
-$('#finish-count').addEventListener('click',finishCount);$('#export-txt').addEventListener('click',exportCsv);
+$('#finish-count').addEventListener('click',finishCount);$('#reopen-count').addEventListener('click',reopenCount);$('#export-txt').addEventListener('click',exportCsv);
 $('#analysis-filters').addEventListener('submit',analyze);
 $('#filter-brand').addEventListener('change',renderAnalysis);$('#filter-subgroup').addEventListener('change',renderAnalysis);
 function showTab(name){const count=name==='count',analysis=name==='analysis',settings=name==='settings';$('#count-view').hidden=!count;$('#analysis-view').hidden=!analysis;$('#settings-view').hidden=!settings;$('#tab-count').classList.toggle('active',count);$('#tab-analysis').classList.toggle('active',analysis);$('#tab-settings').classList.toggle('active',settings);render();if(analysis)analyze();if(settings)loadAccessSettings();}
