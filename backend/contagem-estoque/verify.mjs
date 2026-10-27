@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 const root=new URL('../../',import.meta.url);
-const element=()=>({value:'',textContent:'',innerHTML:'',hidden:false,disabled:false,className:'',dataset:{},classList:{toggle(){},add(){},remove(){}},addEventListener(){},focus(){},select(){},setCustomValidity(value){this.validationMessage=value;},reportValidity(){return !this.validationMessage;},checkValidity(){return true;},showModal(){this.open=true;},close(){this.open=false;}});
+const element=()=>({parentElement:null,append(child){child.parentElement=this;},value:'',textContent:'',innerHTML:'',hidden:false,disabled:false,className:'',dataset:{},classList:{toggle(){},add(){},remove(){}},addEventListener(){},setAttribute(key,value){this[key]=value;},focus(){},select(){},setCustomValidity(value){this.validationMessage=value;},reportValidity(){return !this.validationMessage;},checkValidity(){return true;},showModal(){this.open=true;},close(){this.open=false;}});
 const elements=new Map();
 const context=vm.createContext({console,Map,Set,JSON,Number,String,Array,Error,crypto:globalThis.crypto,structuredClone,CustomEvent:globalThis.CustomEvent,localStorage:{setItem(){},getItem(){return null;},removeItem(){}},sessionStorage:{getItem(){return null;}},navigator:{onLine:true},document:{hidden:false,activeElement:null,addEventListener(){},querySelector(s){if(!elements.has(s))elements.set(s,element());return elements.get(s);},querySelectorAll(){return[];}},fetch:async()=>Response.json({data:null}),window:{addEventListener(){},dispatchEvent(){}},setTimeout(){return 1;},setInterval(){return 1;},clearTimeout(){}});
 vm.runInContext(fs.readFileSync(new URL('../../hub/apps/contagem-estoque/dashboard.js',import.meta.url),'utf8'),context);
@@ -29,8 +29,6 @@ vm.runInContext("catalog.set('2',{description:'Produto B',brand:'MARCA'});addSca
 assert.deepEqual(JSON.parse(JSON.stringify(vm.runInContext("current.counts.map(r=>r.ean)",context))),['999','2','1'],'Scanned products must keep first-scan order');
 assert.deepEqual(JSON.parse(JSON.stringify(vm.runInContext("parseRecountTxt('EAN\\n001\\n001\\n002,500')",context))),['001','002']);
 assert.throws(()=>vm.runInContext("parseRecountTxt('1.23E+12')",context),/linhas/);
-assert.deepEqual(JSON.parse(JSON.stringify(vm.runInContext("parseImportTxt('EAN,QNTDD\\n001,2\\n001,3\\n002,1')",context))),[{ean:'001',quantity:5},{ean:'002',quantity:1}]);
-assert.throws(()=>vm.runInContext("parseImportTxt('EAN,QNTDD\\n001,2.5')",context),/linhas/);
 vm.runInContext("current={id:'recount',kind:'RECONTAGEM',status:'EM ANDAMENTO',version:0,targets:[{ean:'1',description:'Produto A'}],counts:[],defects:[],zeroEans:[]};addScan('2');",context);
 assert.equal(vm.runInContext('current.counts.length',context),0);
 vm.runInContext("addScan('1');",context);

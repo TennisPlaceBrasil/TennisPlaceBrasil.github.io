@@ -44,7 +44,7 @@ const save={action:'save',id:created.id,store:'APAR',allStores:false,version:0,r
 assert.throws(()=>call({...save,counts:[{ean:'002',quantity:1}]}),/solicitação/);
 assert.throws(()=>call({...save,zeroEans:['001']}),/bipado/);
 assert.throws(()=>call({...save,action:'finish'}),/cada EAN/);
-const saved=call({...save,zeroEans:['003']});assert.equal(saved.version,1);assert.equal(saved.zeroEans[0],'003');const recountSheet=sheets.get(created.sheet);assert.equal(recountSheet.getMaxColumns(),22,'Saving a recount must preserve its requested-EAN columns');assert.deepEqual(recountSheet.getRange(5,19,2,1).getDisplayValues().map(r=>r[0]),['001','003'],'Saving a recount must preserve its target list');
+const saved=call({...save,zeroEans:['003']});assert.equal(saved.version,1);assert.equal(saved.zeroEans[0],'003');const recountSheet=sheets.get(created.sheet);assert.equal(recountSheet.getMaxColumns(),24,'Saving a recount must preserve its requested-EAN columns');assert.deepEqual(recountSheet.getRange(5,21,2,1).getDisplayValues().map(r=>r[0]),['001','003'],'Saving a recount must preserve its target list');
 assert.throws(()=>call({...save,requestId:'stale-save'}),/CONFLICT/);
 const finished=call({...save,action:'finish',version:1,requestId:'finish-1',zeroEans:['003']});assert.equal(finished.status,'FINALIZADA');
 const updated=call({action:'read',id:'source',allStores:true});assert.equal(updated.counts.find(r=>r.ean==='001').quantity,3);assert.equal(updated.counts.find(r=>r.ean==='002').quantity,5);assert.equal(updated.defects[0].quantity,2);assert.equal(updated.version,3);
@@ -56,14 +56,14 @@ const createdCount=call({action:'create',store:'APAR',date:'2026-10-22',userId:'
 const importBase={action:'importRows',id:createdCount.id,store:'APAR',allStores:false,version:0,kind:'counts',rows:[{ean:'001',quantity:4},{ean:'999',quantity:2}],requestId:'import-request-123456'};
 const needsConfirmation=call(importBase);assert.equal(needsConfirmation.requiresConfirmation,true);assert.deepEqual(needsConfirmation.unknown,['999']);
 const imported=call({...importBase,includeUnknown:true});assert.equal(imported.version,1);assert.equal(imported.counts.length,2);assert.equal(imported.counts[0].quantity,4);assert.equal(imported.counts[1].unknown,true);
-const blank=call({action:'create',store:'JOIN',date:'2026-10-22',userId:'store'});const removed=call({action:'finish',id:blank.id,store:'JOIN',allStores:false,version:0,requestId:'finish-empty-123456',counts:[],defects:[],zeroEans:[]});assert.equal(removed.empty,true);assert.equal(sheets.has(blank.sheet),false,'Finishing with no products should delete the tab');
+const blank=call({action:'create',store:'JOIN',date:'2026-10-22',userId:'store'});const emptyFinish=call({action:'finish',id:blank.id,store:'JOIN',allStores:false,version:0,requestId:'finish-empty-123456',counts:[],defects:[],zeroEans:[]});assert.equal(emptyFinish.status,'FINALIZADA');assert.equal(emptyFinish.counts.length,0);assert.equal(sheets.has(blank.sheet),true,'Finishing an empty count must preserve its audit tab');
 meta.appendRow(['deleted','JOIN','2026-10-21','JOIN-21-10-2026 #1','FINALIZADA',0,'deleted-tab','admin','2026-10-21T10:00:00Z','2026-10-21T10:00:00Z','','CONTAGEM','','']);meta.appendRow(['orphan','JOIN','2026-10-21','JOIN recount','EM ANDAMENTO',0,'orphan-tab','admin','2026-10-21T10:00:00Z','2026-10-21T10:00:00Z','','RECONTAGEM','deleted','']);ss.insertSheet('orphan-tab');
-const visible=call({action:'list',allStores:true});assert.equal(visible.some(m=>m.id==='deleted'||m.id==='orphan'),false,'Manually deleted sheets and dependent recounts disappear from the Hub');assert.equal(vm.runInContext('reconcileDeletedCounts()',ctx),2);assert.equal(meta.getLastRow(),2);assert.equal(sheets.has(createdCount.sheet),true);assert.equal(sheets.size,2);
+const visible=call({action:'list',allStores:true});assert.equal(visible.some(m=>m.id==='deleted'||m.id==='orphan'),false,'Manually deleted sheets and dependent recounts disappear from the Hub');assert.equal(vm.runInContext('reconcileDeletedCounts()',ctx),2);assert.equal(meta.getLastRow(),3);assert.equal(sheets.has(createdCount.sheet),true);assert.equal(sheets.has(blank.sheet),true);assert.equal(sheets.size,3);
 console.log('Verified: store-scoped recount inbox, no original quantities, EAN deduplication, idempotent requests, pending-only access, target validation, explicit zero, version conflicts, targeted merge, independent audit, history deletion cascade.');
 
 
 assert.equal(vm.runInContext("verifyInventoryRuntime().length",ctx),8);
-assert.equal(sheets.size,2,"Runtime test must leave existing counts intact and remove its QA sheets");
+assert.equal(sheets.size,3,"Runtime test must leave existing counts intact and remove its QA sheets");
 
 
 // Compatibility migration inserts adjacent columns and preserves every existing quantity/time.
@@ -73,5 +73,5 @@ legacy.getRange(5,1,1,15).setValues([['001',4,'Produto A','MARCA','NÃO','2026-1
 ctx.legacyMeta={id:'legacy',sheet:'legacy-subgroup-test',kind:'CONTAGEM'};
 const before=vm.runInContext('state_(legacyMeta)',ctx);assert.equal(before.counts[0].subgroup,'TENIS');assert.equal(before.defects[0].subgroup,'MEIA');
 ctx.legacyState=before;vm.runInContext('writeState_(legacyMeta,legacyState.counts,legacyState.defects,legacyState)',ctx);
-const after=vm.runInContext('state_(legacyMeta)',ctx);assert.equal(after.counts[0].quantity,4);assert.equal(after.defects[0].quantity,2);assert.equal(after.counts[0].lastScannedAt,before.counts[0].lastScannedAt);assert.equal(legacy.getRange('E5').getDisplayValues()[0][0],'TENIS');assert.equal(legacy.getRange('L5').getDisplayValues()[0][0],'MEIA');assert.equal(legacy.getRange('O5').getDisplayValues()[0][0],'002');ss.deleteSheet(legacy);
+const after=vm.runInContext('state_(legacyMeta)',ctx);assert.equal(after.counts[0].quantity,4);assert.equal(after.defects[0].quantity,2);assert.equal(after.counts[0].lastScannedAt,before.counts[0].lastScannedAt);assert.equal(legacy.getRange('E5').getDisplayValues()[0][0],'TENIS');assert.equal(legacy.getRange('M5').getDisplayValues()[0][0],'MEIA');assert.equal(legacy.getRange('I5').getDisplayValues()[0][0],'002');ss.deleteSheet(legacy);
 console.log('PASS: subgroup enrichment, adjacent spreadsheet columns, legacy migration, timestamps and import schema preserved');
