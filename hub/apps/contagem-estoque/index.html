@@ -12,8 +12,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Inventário HubTennisPlace">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="stylesheet" href="style.css?v=access-settings1">
-  <link rel="stylesheet" href="mobile.css?v=access-settings1">
+  <link rel="stylesheet" href="style.css?v=master-access-user-create1">
+  <link rel="stylesheet" href="mobile.css?v=master-access-user-create1">
   <link rel="stylesheet" href="dashboard.css?v=1">
 </head>
 <body>
@@ -131,6 +131,18 @@
     <section id="settings-view" hidden>
       <div class="analysis-heading"><p class="eyebrow">ADMINISTRAÇÃO / ACESSOS</p><h1>Configurações de <em>Acesso</em></h1><p>Defina quais lojas cada conta pode acessar. MASTER administra acessos e visualiza todas as lojas. Somente contas administrativas podem receber MASTER. Acesso de LOJA fica limitado à loja principal e às lojas adicionais marcadas.</p></div>
       <div class="access-guidance"><strong>Perfis:</strong> MASTER administra acessos e tem visão global; ADMINISTRATIVO mantém os privilégios administrativos atuais; LOJA acessa somente a loja principal e as lojas adicionais marcadas.</div>
+      <div class="access-create-wrap">
+        <button id="access-create-toggle" class="button button-primary" type="button" aria-expanded="false" aria-controls="access-create-form">＋ CADASTRAR NOVO USUÁRIO</button>
+        <form id="access-create-form" class="access-create-form" hidden>
+          <div class="access-create-fields">
+            <label>NOME COMPLETO<input id="new-user-name" name="name" type="text" autocomplete="name" minlength="2" maxlength="100" required></label>
+            <label>E-MAIL<input id="new-user-email" name="email" type="email" autocomplete="off" maxlength="254" required></label>
+            <label>SENHA INICIAL<input id="new-user-password" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="72" required></label>
+          </div>
+          <fieldset class="access-store-set"><legend>LOJAS LIBERADAS</legend><p class="access-create-note">A conta será criada com perfil LOJA e acesso somente às lojas selecionadas. Defina uma senha inicial e compartilhe com a pessoa por um canal seguro. A senha não fica visível no histórico.</p><div id="access-create-store-list" class="access-store-grid access-create-store-grid"></div></fieldset>
+          <div class="access-create-actions"><button id="access-create-cancel" class="button button-quiet" type="button">CANCELAR</button><button id="access-create-submit" class="button button-primary" type="submit">CRIAR USUÁRIO</button></div>
+        </form>
+      </div>
       <div class="access-toolbar"><label for="access-user-search">BUSCAR USUÁRIO</label><input id="access-user-search" type="search" placeholder="E-mail ou conta"><button id="access-refresh" class="button button-quiet" type="button">ATUALIZAR ACESSOS</button></div>
       <p id="access-status" role="status" aria-live="polite"></p>
       <div id="access-user-list" class="access-user-list"></div>
@@ -144,7 +156,7 @@
   <dialog id="recount-dialog"><form id="recount-request-form"><p class="eyebrow">SOLICITAÇÃO PARA A LOJA</p><h2>Solicitar recontagem</h2><p id="recount-source-label"></p><p>Envie um TXT com um EAN por linha. A loja verá os códigos e informará as quantidades, sem consultar a contagem anterior.</p><label for="recount-file">ARQUIVO TXT</label><input id="recount-file" type="file" accept=".txt,text/plain" required><p id="recount-file-status" role="status"></p><div class="dialog-actions"><button id="cancel-recount" type="button" class="button button-quiet">CANCELAR</button><button id="send-recount" type="submit" class="button button-primary">ENVIAR À LOJA</button></div></form></dialog>
   <dialog id="install-dialog" aria-labelledby="install-title"><div class="list-heading"><h2 id="install-title">Instalar Inventário</h2><button id="install-close" type="button" class="button button-quiet">FECHAR</button></div><p id="install-instructions"></p><p>Após instalar, abra pelo ícone Inventário TP. O aplicativo acompanha a rotação do dispositivo. A abertura em tela cheia depende do sistema e do navegador.</p><p>Para contar sem internet, entre e aguarde a indicação “Pronto para contar sem internet”.</p><p id="install-feedback" role="status"></p></dialog>
   <script src="pwa.js?v=1"></script>
-  <script src="offline-store.js?v=3"></script><script src="offline-export.js?v=responsible1"></script><script src="dashboard.js?v=1"></script><script src="app.js?v=master-access1"></script>
+  <script src="offline-store.js?v=3"></script><script src="offline-export.js?v=responsible1"></script><script src="dashboard.js?v=1"></script><script src="app.js?v=master-access-user-create1"></script>
 </body>
 </html>
 
