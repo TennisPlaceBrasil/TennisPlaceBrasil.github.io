@@ -33,6 +33,11 @@ export async function mirrorTeam(id:string,config:Config){
   if(current.lastRequestId!==requestId){
    // CAS in Apps Script prevents a delayed older HTTP request overwriting a newer projection.
    if(current.status==='FINALIZADA'){
+     if(snapshot.status==='EM ANDAMENTO'){
+       const reopened=await bridge(config,{action:'reopen',id,store:snapshot.store,allStores:true,userId:'team-mirror'});
+       await bridge(config,{action:'save',id,store:snapshot.store,allStores:true,userId:'team-mirror',version:reopened.version,requestId,counts:snapshot.counts,defects:snapshot.defects});
+       await teamRPC('stockcount_team_mirror',{p_id:id,p_action:'complete',p_lease:lease,p_revision:snapshot.version,p_error:null});return true;
+     }
      const quantities=(rows:any[])=>JSON.stringify(rows.map(r=>[r.ean,Number(r.quantity)]).sort((a,b)=>String(a[0]).localeCompare(String(b[0]))));
      if(snapshot.status==='FINALIZADA'&&quantities(current.counts)===quantities(snapshot.counts)&&quantities(current.defects)===quantities(snapshot.defects)){
        await bridge(config,{action:'syncAttribution',id,store:snapshot.store,allStores:true,userId:'team-mirror',version:current.version,counts:snapshot.counts,defects:snapshot.defects});
@@ -77,6 +82,11 @@ export async function handleTeam(input:Record<string,any>,user:{id:string},allSt
  if(record.deleted&&allStores&&(input.action==='delete'||input.action==='resolveDelete'&&input.approve===true))return {handled:true,data:await deletionResult(input.id,config)};
  if(record.deleted)throw Error('Esta contagem já não existe. A cópia local permanece disponível.');
  if(input.action==='discardEmpty')return {handled:true,data:{retained:true,empty:false}};
+ if(input.action==='reopen'){
+  if(!allStores)throw Error('Ação restrita aos administradores.');
+  const data=await teamRPC('stockcount_team_reopen',{p_id:String(input.id),p_user:user.id});
+  scheduleTeamMirror(input.id,config);return {handled:true,data};
+ }
  const mapping:Record<string,string>={teamJoin:'join',teamRead:'read',save:'save',finish:'finish',requestDelete:'requestDelete',resolveDelete:'resolveDelete',delete:'delete'};
  if(input.action==='read'){
   if(!allStores&&!allowedStores.includes(record.store))throw Error('Contagem sem permissão.');
