@@ -1,3 +1,74 @@
+-- Only ADM snapshots include participant IDs, so regular participants never receive
+-- identifiers that could target another person's contribution.
+create or replace function public.stockcount_team_admin_snapshot(
+  p_id text,
+  p_user uuid
+)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_snapshot jsonb;
+  v_people jsonb;
+begin
+  if not exists (
+    select 1
+    from public.manual_portal_members m
+    where m.user_id = p_user
+      and m.active
+      and (
+        p_user in (
+          'adb6a08e-1a28-4b41-8dde-addd9c06f915'::uuid,
+          '42eb08bc-5fa7-4d74-8be5-cbe5c909ef30'::uuid
+        )
+        or m.profiles @> array['adm']::text[]
+      )
+  ) then
+    raise exception 'Ação restrita aos administradores.';
+  end if;
+
+  v_snapshot := public.stockcount_team_snapshot(p_id, null);
+  if v_snapshot is null then
+    raise exception 'Esta contagem não está disponível.';
+  end if;
+
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'id', x.id,
+        'responsible', x.responsible,
+        'done', x.done,
+        'updatedAt', x.updated_at,
+        'device', x.audit->>'device',
+        'ip', x.audit->>'ip',
+        'units', (
+          select coalesce(sum((r->>'quantity')::bigint), 0)
+          from jsonb_array_elements(coalesce(x.state->'counts', '[]'::jsonb)) r
+        ),
+        'defects', (
+          select coalesce(sum((r->>'quantity')::bigint), 0)
+          from jsonb_array_elements(coalesce(x.state->'defects', '[]'::jsonb)) r
+        )
+      )
+      order by x.updated_at
+    ),
+    '[]'::jsonb
+  )
+  into v_people
+  from public.stockcount_team_people x
+  where x.count_id = p_id;
+
+  return jsonb_set(v_snapshot, '{participants}', v_people, true);
+end;
+$$;
+
+revoke all on function public.stockcount_team_admin_snapshot(text, uuid)
+from public, anon, authenticated;
+grant execute on function public.stockcount_team_admin_snapshot(text, uuid)
+to service_role;
+
 -- ADM-only per-responsible actions for collaborative stock counts.
 -- Incrementing participant versions invalidates stale offline submissions without deleting local drafts.
 create or replace function public.stockcount_team_manage_participant(
@@ -109,7 +180,7 @@ begin
     where id = p_count_id;
   end if;
 
-  return public.stockcount_team_snapshot(p_count_id, null);
+  return public.stockcount_team_admin_snapshot(p_count_id, p_user);
 end;
 $$;
 
@@ -118,90 +189,3 @@ from public, anon, authenticated;
 grant execute on function public.stockcount_team_manage_participant(text, uuid, uuid, text)
 to service_role;
 
--- Include participant IDs in the ADM-visible snapshot so actions target one device/person.
-create or replace function public.stockcount_team_snapshot(
-  p_id text,
-  p_person uuid default null
-)
-returns jsonb
-language sql
-stable
-security invoker
-set search_path = public
-as $$
-  select
-    (c.meta - 'adjustedCounts' - 'adjustedDefects')
-    || jsonb_build_object(
-      'id', c.id,
-      'store', c.store,
-      'collaborative', true,
-      'version', c.revision,
-      'updatedAt', c.updated_at,
-      'mirroredVersion', c.mirrored_revision,
-      'mirrorError', c.mirror_error,
-      'counts',
-        case
-          when p_person is null
-            then coalesce(c.meta->'adjustedCounts', public.stockcount_team_rows(c.id, 'counts'))
-          else coalesce(p.state->'counts', '[]'::jsonb)
-        end,
-      'defects',
-        case
-          when p_person is null
-            then coalesce(c.meta->'adjustedDefects', public.stockcount_team_rows(c.id, 'defects'))
-          else coalesce(p.state->'defects', '[]'::jsonb)
-        end,
-      'finalTotals',
-        case
-          when c.meta ? 'adjustedCounts'
-            then jsonb_build_object('counts', c.meta->'adjustedCounts', 'defects', c.meta->'adjustedDefects')
-          else null
-        end,
-      'peers',
-        case
-          when p_person is null then null
-          else jsonb_build_object(
-            'counts', public.stockcount_team_rows(c.id, 'counts', p_person),
-            'defects', public.stockcount_team_rows(c.id, 'defects', p_person)
-          )
-        end,
-      'participantId', p.id,
-      'participantVersion', p.version,
-      'responsible', p.responsible,
-      'participantDone', coalesce(p.done, false),
-      'collabViewOnly', p_person is null,
-      'participants',
-        coalesce(
-          (
-            select jsonb_agg(
-              jsonb_build_object(
-                'id', x.id,
-                'responsible', x.responsible,
-                'done', x.done,
-                'updatedAt', x.updated_at,
-                'device', x.audit->>'device',
-                'ip', x.audit->>'ip',
-                'units', (
-                  select coalesce(sum((r->>'quantity')::bigint), 0)
-                  from jsonb_array_elements(coalesce(x.state->'counts', '[]'::jsonb)) r
-                ),
-                'defects', (
-                  select coalesce(sum((r->>'quantity')::bigint), 0)
-                  from jsonb_array_elements(coalesce(x.state->'defects', '[]'::jsonb)) r
-                )
-              )
-              order by x.updated_at
-            )
-            from public.stockcount_team_people x
-            where x.count_id = c.id
-          ),
-          '[]'::jsonb
-        )
-    )
-  from public.stockcount_team_counts c
-  left join public.stockcount_team_people p
-    on p.count_id = c.id
-   and p.id = p_person
-  where c.id = p_id
-    and not c.deleted;
-$$;
