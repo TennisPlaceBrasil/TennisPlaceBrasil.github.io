@@ -97,7 +97,7 @@ export async function handleTeam(input:Record<string,any>,user:{id:string},allSt
  if(input.action==='read'){
   if(!allStores&&!allowedStores.includes(record.store))throw Error('Contagem sem permissão.');
   if(!allStores&&record.meta?.status!=='FINALIZADA')throw Error('Contagem em andamento: Use ENTRAR NA CONTAGEM e informe seu responsável.');
-  scheduleTeamMirror(input.id,config);return {handled:true,data:await call('read',input.id,null,{})};
+  const data=allStores?await teamRPC('stockcount_team_admin_snapshot',{p_id:String(input.id),p_user:user.id}):await call('read',input.id,null,{});scheduleTeamMirror(input.id,config);return {handled:true,data};
  }
  if(input.action==='requestRecount'&&record.mirrored_revision<record.revision){scheduleTeamMirror(input.id,config);throw Error('Aguarde a atualização da planilha antes de solicitar recontagem.');}
  const action=mapping[input.action];if(!action)return {handled:false,record};
