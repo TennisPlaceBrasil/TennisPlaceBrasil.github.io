@@ -11,7 +11,7 @@ Deno.serve(async req=>{
   const raw=typeof body.login==="string"?body.login:(typeof body.cnpj==="string"?body.cnpj:"");
   const cnpj=raw.replace(/\D/g,"");
   const sigla=raw.trim().toUpperCase();
-  const isStore=/^[A-Z]{4}$/.test(sigla);
+  const isStore=/^[A-Z]{4,5}$/.test(sigla);
   if((!isStore&&(!/^[0-9.\/\s-]+$/.test(raw)||cnpj.length!==14))||typeof body.password!=="string"||!body.password||body.password.length>512)return reply({error:"Informe a sigla da loja e a senha."},400);
   const url=Deno.env.get("SUPABASE_URL")!,serviceKey=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,anonKey=Deno.env.get("SUPABASE_ANON_KEY")!;
   const admin=createClient(url,serviceKey,{auth:{persistSession:false,autoRefreshToken:false}});

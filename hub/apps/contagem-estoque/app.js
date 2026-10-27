@@ -272,7 +272,7 @@ function displayAccount(){
   $('#filter-store').innerHTML='<option value="">Todas as lojas</option>'+stores.map(s=>'<option>'+esc(s)+'</option>').join('');
   $('#history-store-filter').innerHTML='<option value="">Todas as lojas</option>'+stores.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('');
  $('#count-responsible').value=current?.responsible||$('#count-responsible').value;
- $('#filter-brand').innerHTML='<option value="">Todas as marcas</option>';$('#register-gama').hidden=!user.allStores||stores.includes('GAMA');
+ $('#filter-brand').innerHTML='<option value="">Todas as marcas</option>';$('#register-gama').hidden=!user.allStores||(stores.includes('UBRA')&&stores.includes('TESTE'));
 }
 async function boot(){
  const r=await api('bootstrap');user=r.user;stores=r.stores;sessions=[];sessionsLoaded=false;auditSession();
@@ -617,9 +617,14 @@ $('#recount-search').addEventListener('input',()=>{recountPage=0;renderRecount()
 $('#recount-prev').addEventListener('click',()=>{recountPage--;renderRecount();});
 $('#recount-next').addEventListener('click',()=>{recountPage++;renderRecount();});
 $('#register-gama').addEventListener('click',async()=>{
-  if(!user?.allStores)return;$('#register-gama').disabled=true;
-  try{const r=await fetch(BASE+'/functions/v1/register-gama-admin',{method:'POST',headers:{apikey:KEY,Authorization:'Bearer '+auth.access_token,'Content-Type':'application/json'},body:'{}'});const result=await r.json();if(!r.ok||!result.ok)throw Error(result.error||'Não foi possível liberar a loja.');$('#app-error').textContent='Acesso GAMA liberado. Login: GAMA. Senha: CNPJ da loja, somente números.';$('#register-gama').hidden=true;if(!stores.includes('GAMA')){stores.push('GAMA');stores.sort();$('#store-code').insertAdjacentHTML('beforeend','<option value="GAMA">GAMA</option>');$('#filter-store').insertAdjacentHTML('beforeend','<option value="GAMA">GAMA</option>');}}
-  catch(e){$('#app-error').textContent=e.message;}finally{$('#register-gama').disabled=false;}
+ if(!user?.allStores)return;const button=$('#register-gama');button.disabled=true;
+ try{
+ const r=await fetch(BASE+'/functions/v1/register-gama-admin',{method:'POST',headers:{apikey:KEY,Authorization:'Bearer '+auth.access_token,'Content-Type':'application/json'},body:'{}'}),result=await r.json();
+ if(!r.ok||!result.ok)throw Error(result.error||'Não foi possível configurar as lojas.');
+ stores=Array.from(new Set(stores.filter(s=>s!=='GAMA').concat(result.stores))).sort();
+ displayAccount();picker();render();loadTeamCounts();
+ $('#app-error').textContent='UBRA configurada com o mesmo cadastro e senha CNPJ. Loja TESTE cadastrada com acesso próprio.';
+ }catch(e){$('#app-error').textContent=e.message;}finally{button.disabled=false;}
 });
 $('#request-recount').addEventListener('click',requestRecountDialog);
 $('#recount-request-form').addEventListener('submit',submitRecount);
