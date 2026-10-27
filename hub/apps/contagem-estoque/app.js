@@ -554,7 +554,7 @@ async function scan(origin='LEITOR / DIGITAÇÃO'){
 }
 async function reopenCount(){
  const target=current;if(!target||!user?.allStores||target.status!=='FINALIZADA'||target.kind==='RECONTAGEM'||openingCount)return;
- if(!confirm('Reabrir '+target.label+'? A contagem voltará a ficar disponível para edição pelos responsáveis.'))return;
+ if(!confirm('Reabrir '+target.label+'? A contagem ficará disponível para edição novamente. Se uma recontagem havia ajustado o total, esse ajuste será removido e poderá ser refeito depois.'))return;
  const button=$('#reopen-count');button.disabled=true;
  try{
   await api('reopen',{id:target.id});
