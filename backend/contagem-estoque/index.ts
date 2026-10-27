@@ -54,7 +54,7 @@ Deno.serve(async req=>{
     let user:{id:string,email:string|null};
     try{user=verifiedClaims(auth.slice(7));}catch{return reply({error:"Sessão expirada. Entre novamente."},401);}
     const input=await req.json();
-    const actions=new Set(["teamList","teamJoin","teamRead","shareCreate","bootstrap","catalog","list","create","read","save","finish","analysis","delete","recountInbox","requestRecount","openRecount","checkCount","discardEmpty","importRows","requestDelete","deletionInbox","resolveDelete"]);
+    const actions=new Set(["teamList","teamJoin","teamRead","shareCreate","bootstrap","catalog","list","create","read","save","finish","reopen","analysis","delete","recountInbox","requestRecount","openRecount","checkCount","discardEmpty","importRows","requestDelete","deletionInbox","resolveDelete"]);
     if(!actions.has(input.action))return reply({error:"Ação inválida."},400);
     const userId=encodeURIComponent(user.id);
     const [members,mapping,extraAccess]=await Promise.all([
@@ -95,7 +95,7 @@ Deno.serve(async req=>{
     const team=await handleTeam(input,user,allStores,store,config[0],allowedStores);
     if(team.handled)return reply({data:team.data});
     if(["list","read"].includes(input.action)&&!allStores&&!allowedStores.length)return reply({error:"Histórico sem loja autorizada."},403);
-    if(["analysis","delete","requestRecount","deletionInbox","resolveDelete"].includes(input.action)&&!allStores)return reply({error:"Ação restrita aos administradores."},403);
+    if(["analysis","delete","requestRecount","deletionInbox","resolveDelete","reopen"].includes(input.action)&&!allStores)return reply({error:"Ação restrita aos administradores."},403);
     if(input.action==="shareCreate"){
       if(!allStores)return reply({error:"Somente administradores podem gerar links de acompanhamento."},403);
       return reply({data:await createSharedCount(String(input.id||""),String(input.store||""),user.id,config[0])});
