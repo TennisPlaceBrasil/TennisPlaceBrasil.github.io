@@ -12,8 +12,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Inventário HubTennisPlace">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="stylesheet" href="style.css?v=count-layout2">
-  <link rel="stylesheet" href="mobile.css?v=count-layout2">
+  <link rel="stylesheet" href="style.css?v=recent-large-2">
+  <link rel="stylesheet" href="mobile.css?v=recent-large-2">
   <link rel="stylesheet" href="dashboard.css?v=1">
 </head>
 <body>
@@ -85,11 +85,22 @@
         <form id="scan-form">
         <div class="scanner-tools"><button id="open-camera" class="button button-primary" type="button">▣ LER PELA CÂMERA</button></div>
           <label for="ean-input">BIPAR OU DIGITAR EAN</label>
-          <div class="scan-field">
-            <span class="scan-icon">⌁</span>
-            <input id="ean-input" inputmode="numeric" autocomplete="off" placeholder="Aguardando leitura do código…" aria-label="Bipar ou digitar EAN">
-            <button type="submit">REGISTRAR <span>↵</span></button>
+          <div class="scan-entry-controls">
+            <div class="scan-field">
+              <span class="scan-icon">⌁</span>
+              <input id="ean-input" inputmode="numeric" autocomplete="off" placeholder="Aguardando leitura do código…" aria-label="Bipar ou digitar EAN">
+              <button type="submit">REGISTRAR <span>↵</span></button>
+            </div>
+            <div class="large-quantity-row">
+              <button id="large-quantity-toggle" class="large-quantity-toggle" type="button" role="switch" aria-checked="false" aria-label="Grande Quantidade"><span class="toggle-track"><span></span></span><span>Grande Quantidade</span><b id="large-quantity-state">DESLIGADO</b></button>
+              <label id="large-quantity-field" class="large-quantity-field" for="large-quantity-input" hidden>QUANTIDADE
+                <input id="large-quantity-input" type="number" min="1" max="1000000" step="1" inputmode="numeric" placeholder="Informe a quantidade" aria-label="Quantidade de produtos">
+              </label>
+            </div>
           </div>
+          <section id="recent-scans" class="recent-scans" aria-live="polite" aria-label="Três últimos produtos contados" hidden>
+            <div class="recent-scans-heading">ÚLTIMOS 3 PRODUTOS CONTADOS</div><ol id="recent-scans-list"></ol>
+          </section>
           <p id="scan-message" class="scan-message" aria-live="polite">O leitor de código de barras pode ser usado como teclado.</p>
         </form>
         <div class="catalog-status" id="catalog-status"><span class="status-dot"></span> Carregando base de produtos…</div>
@@ -125,7 +136,7 @@
   <dialog id="recount-dialog"><form id="recount-request-form"><p class="eyebrow">SOLICITAÇÃO PARA A LOJA</p><h2>Solicitar recontagem</h2><p id="recount-source-label"></p><p>Envie um TXT com um EAN por linha. A loja verá os códigos e informará as quantidades, sem consultar a contagem anterior.</p><label for="recount-file">ARQUIVO TXT</label><input id="recount-file" type="file" accept=".txt,text/plain" required><p id="recount-file-status" role="status"></p><div class="dialog-actions"><button id="cancel-recount" type="button" class="button button-quiet">CANCELAR</button><button id="send-recount" type="submit" class="button button-primary">ENVIAR À LOJA</button></div></form></dialog>
   <dialog id="install-dialog" aria-labelledby="install-title"><div class="list-heading"><h2 id="install-title">Instalar Inventário</h2><button id="install-close" type="button" class="button button-quiet">FECHAR</button></div><p id="install-instructions"></p><p>Após instalar, abra pelo ícone Inventário TP. O aplicativo acompanha a rotação do dispositivo. A abertura em tela cheia depende do sistema e do navegador.</p><p>Para contar sem internet, entre e aguarde a indicação “Pronto para contar sem internet”.</p><p id="install-feedback" role="status"></p></dialog>
   <script src="pwa.js?v=1"></script>
-  <script src="offline-store.js?v=3"></script><script src="offline-export.js?v=responsible1"></script><script src="dashboard.js?v=1"></script><script src="app.js?v=responsible1"></script>
+  <script src="offline-store.js?v=3"></script><script src="offline-export.js?v=responsible1"></script><script src="dashboard.js?v=1"></script><script src="app.js?v=recent-large-2"></script>
 </body>
 </html>
 
