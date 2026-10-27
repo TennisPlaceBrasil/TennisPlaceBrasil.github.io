@@ -124,3 +124,8 @@ O Supabase mantém a decisão de exclusão e suas revisões mesmo após ocultar 
 As listas usam os IDs centrais como autoridade, impedindo que metadados antigos da planilha restaurem contagens excluídas ou ocultadas para revisão. Uma aba ausente sem exclusão aprovada é sinalizada no histórico sem apagar os produtos centrais. Pedidos de exclusão pendentes permanecem na planilha até aprovação ADM.
 
 Regressões: `node --experimental-strip-types backend/contagem-estoque/verify-deletion.mjs`, `verify-team-api.mjs`, e `verify-deletion.sql` (transação com rollback).
+
+
+## Reabertura administrativa de contagens
+
+Um ADM pode reabrir uma contagem finalizada pelo botão **REABRIR CONTAGEM** na tela da contagem. A ação valida o perfil no servidor, preserva as linhas já registradas e permite que os responsáveis continuem. Recontagens permanecem bloqueadas para evitar reaplicar resultados de forma ambígua. As contagens colaborativas são reabertas no registro central e depois espelhadas na planilha; as antigas são reabertas diretamente na aba de metadados e mantêm as quantidades atuais.
