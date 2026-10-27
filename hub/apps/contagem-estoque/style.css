@@ -92,3 +92,13 @@ body.is-counting .offline-panel{margin-top:14px}
 .access-create-note{margin:0 0 12px;color:#babbaf;font-size:10px;line-height:1.6}
 .access-create-store-grid{max-height:210px;overflow:auto;padding:4px 0}
 .access-create-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
+
+/* Admin count selection and per-responsible controls. */
+.session-picker-wrap{flex-wrap:wrap}
+.session-picker-wrap #session-picker{flex:1 1 220px;min-width:min(220px,100%)}
+.session-picker-wrap #view-session,.session-picker-wrap #reopen-session{flex:0 0 auto}
+.team-person{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.team-person-info{min-width:0;flex:1}
+.team-person-actions{display:flex;flex:0 0 auto;gap:8px}
+.team-person-actions .button{height:32px;padding:0 11px}
+@media(max-width:620px){.session-picker-wrap{justify-content:flex-start}.session-picker-wrap #session-picker{flex:1 1 100%;min-width:0}.team-person{align-items:flex-start;flex-direction:column}.team-person-actions{width:100%}.team-person-actions .button{flex:1}}
