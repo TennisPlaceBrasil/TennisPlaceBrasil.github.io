@@ -64,8 +64,8 @@ Deno.serve(async req=>{
     ]);
     const member=members[0];
     if(!member?.active)return reply({error:"Acesso não autorizado."},403);
-    const analysts=new Set(["adb6a08e-1a28-4b41-8dde-addd9c06f915","42eb08bc-5fa7-4d74-8be5-cbe5c909ef30"]);
-    const allStores=analysts.has(user.id);
+    const analysts=new Set(["adb6a08e-1a28-4b41-8dde-addd9c06f915","42eb08bc-5fa7-4d74-8be5-cbe5c909ef30"]);const isAdmin=analysts.has(user.id)||member.profiles?.includes("adm");
+    const allStores=isAdmin;
     const allowedStores=Array.from(new Set([...mapping,...extraAccess].map((s:{sigla:string})=>s.sigla).filter(Boolean)));
     const store=allowedStores.length===1?allowedStores[0]:undefined;
     const multiStore=!allStores&&allowedStores.length>1;

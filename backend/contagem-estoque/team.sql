@@ -77,7 +77,7 @@ returns jsonb language plpgsql security invoker set search_path=public as $$
 declare v_count public.stockcount_team_counts%rowtype; p public.stockcount_team_people%rowtype; adm boolean; st text; nm text; k text; r jsonb; req text; payload jsonb; n integer; lease uuid;
 begin
  if not exists(select 1 from public.manual_portal_members where user_id=p_user and active) then raise exception 'Acesso inativo.'; end if;
- adm:=p_user in ('adb6a08e-1a28-4b41-8dde-addd9c06f915'::uuid,'42eb08bc-5fa7-4d74-8be5-cbe5c909ef30'::uuid);
+ adm:=p_user in ('adb6a08e-1a28-4b41-8dde-addd9c06f915'::uuid,'42eb08bc-5fa7-4d74-8be5-cbe5c909ef30'::uuid) or exists(select 1 from public.manual_portal_members where user_id=p_user and active and profiles @> array['adm']::text[]);
  select sigla into st from public.manual_portal_store_logins where user_id=p_user;
  if p_action='find' then
   select count_id into p_id from public.stockcount_team_people where id=p_person and user_id=p_user;
