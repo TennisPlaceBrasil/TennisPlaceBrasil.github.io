@@ -167,6 +167,14 @@ function route_(p){
     if(!p.allStores&&!Array.isArray(p.allowedStores))throw new Error('Histórico sem lojas autorizadas.');
     return list.filter(m=>p.allStores||p.allowedStores.includes(m.store)).filter(m=>!p.filterStore||m.store===p.filterStore).map(publicMeta_);
   }
+  if(p.action==='reopen'){
+    if(!p.allStores)throw new Error('Ação restrita aos administradores.');
+    const meta=list.find(m=>m.id===p.id);
+    if(!meta)throw new Error('Esta contagem não existe no histórico.');
+    if(meta.kind==='RECONTAGEM')throw new Error('Recontagens não podem ser reabertas diretamente.');
+    if(meta.status!=='FINALIZADA')throw new Error('Somente contagens finalizadas podem ser reabertas.');
+    meta.status='EM ANDAMENTO';meta.version++;meta.updatedAt=new Date().toISOString();meta.requestId='';saveMeta_(meta);SpreadsheetApp.flush();return state_(meta);
+  }
   if(p.action==='delete'){
     if(!p.allStores)throw new Error('Exclusão restrita aos administradores.');
     const meta=list.find(m=>m.id===p.id);
