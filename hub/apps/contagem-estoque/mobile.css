@@ -107,3 +107,5 @@ dialog{max-height:calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-
  .is-counting:not(.count-options-open) .offline-panel>div{display:flex!important}
  .is-counting:not(.count-options-open) #request-delete-session:not([hidden]),.is-counting:not(.count-options-open) #delete-current-session:not([hidden]){display:inline-flex}
 }
+
+@media(max-width:1100px),(pointer:coarse){.large-quantity-row{gap:8px}.large-quantity-toggle{min-height:40px;font-size:11px}.large-quantity-field input{height:40px;font-size:16px}.recent-scans{margin-top:8px;padding:8px}.recent-scans li{grid-template-columns:58px minmax(0,1fr) auto;font-size:11px}.recent-scan-kind{font-size:8px}.scan-entry-controls{align-items:stretch}.scan-entry-controls>.scan-field{min-width:100%}.scan-entry-controls>.large-quantity-row{margin-top:0;align-self:flex-start}}

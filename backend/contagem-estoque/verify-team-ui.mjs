@@ -12,9 +12,12 @@ assert.ok(html.indexOf('id="offline-panel-count"')>html.indexOf('id="export-pane
 assert.ok(html.indexOf('id="share-link-panel"')>html.indexOf('id="offline-panel-count"'));
 assert.ok(!/IMPORTAR (?:CONTAGEM|DEFEITOS) TXT/.test(html));
 assert.ok(html.includes('id="delete-confirm-dialog"'));
+assert.ok(html.includes('id="large-quantity-toggle"'));
+assert.ok(html.includes('id="large-quantity-input"'));
+assert.ok(html.includes('id="recent-scans-list"'));
 function device(){
  const els=new Map(),records=new Map(),settings=new Map(),events=[];
- const element=()=>({parentElement:null,append(child){child.parentElement=this;},value:'',textContent:'',innerHTML:'',hidden:false,disabled:false,readOnly:false,dataset:{},className:'',classList:{toggle(){},add(){},remove(){}},addEventListener(type,fn){events.push([this,type,fn]);},setCustomValidity(s){this.validationMessage=s;},reportValidity(){return !this.validationMessage;},checkValidity(){return true;},focus(){},select(){},scrollIntoView(){},showModal(){this.open=true;},close(){this.open=false;},matches(){return false;}});
+ const element=()=>({parentElement:null,append(child){child.parentElement=this;},value:'',textContent:'',innerHTML:'',hidden:false,disabled:false,readOnly:false,dataset:{},className:'',classList:{toggle(){},add(){},remove(){}},addEventListener(type,fn){events.push([this,type,fn]);},setAttribute(k,v){this[k]=v;},setCustomValidity(s){this.validationMessage=s;},reportValidity(){return !this.validationMessage;},checkValidity(){return true;},focus(){},select(){},scrollIntoView(){},showModal(){this.open=true;},close(){this.open=false;},matches(){return false;}});
  const $=s=>{if(!els.has(s))els.set(s,element());return els.get(s);};
  const local={ready:async()=>{},drain:async()=>{},setting:async(k,v)=>settings.set(k,structuredClone(v)),read:async(_,k)=>settings.get(k),list:async()=>[...records.values()],restore:async(_,id)=>structuredClone(records.get(id)||null),remove:async(_,id)=>records.delete(id),save:async(owner,state,info)=>{records.set(state.id,structuredClone({...state,...info,owner}));}};
  const sandbox={console,Map,Set,JSON,Number,String,Array,Error,Date,Intl,Blob,Response,AbortSignal,crypto:globalThis.crypto,structuredClone,CustomEvent:class{},setTimeout(){return 1;},clearTimeout(){},setInterval(){},navigator:{onLine:true,userAgent:'Chrome Windows',locks:{request:async(_,options,callback)=>callback({name:'lock'})}},TPInventoryLocal:local,sessionStorage:{getItem(){return null;},setItem(){},removeItem(){}},localStorage:{getItem(){return null;},setItem(){},removeItem(){}},window:{addEventListener(){},dispatchEvent(){}},document:{hidden:false,addEventListener(){},querySelector:$,querySelectorAll(){return[];},activeElement:null},confirm:()=>true,alert:()=>{},fetch:async()=>Response.json({data:null})};
@@ -31,6 +34,22 @@ for(const d of [a,b]){
 }
 a.run("addScan('001');addScan('001');current.peers.counts=[{ean:'001',quantity:3,description:'Produto',brand:'MARCA',responsible:'João'}];");
 assert.equal(a.run('teamExportState().counts[0].quantity'),5);
+const bulk=device();bulk.run("user={id:'u',store:'APAR',allStores:false};auth={access_token:'test'};catalogComplete=true;catalog=new Map([['001',{description:'Produto',brand:'MARCA'}]]);current={id:'bulk',label:'APAR TESTE',store:'APAR',kind:'CONTAGEM',date:'2026-10-23',responsible:'Maria',status:'EM ANDAMENTO',counts:[],defects:[],version:0};largeQuantityEnabled=true;$('#large-quantity-input').value='7';addScan('001',false,'LEITOR',null,7);addScan('001',false,'LEITOR',null,4);");
+assert.equal(bulk.run("current.counts.find(r=>r.ean==='001').quantity"),11,'Large quantity adds to an existing EAN');
+bulk.run("mode='defects';addScan('001',false,'LEITOR',null,3);");
+assert.equal(bulk.run("current.defects.find(r=>r.ean==='001').quantity"),3,'Large quantity works in defect mode');
+bulk.run("renderRecentScans({counts:[{ean:'old',description:'ANTIGO',quantity:1,lastScannedAt:'2026-10-23T10:00:00Z'},{ean:'new',description:'NOVO',quantity:9,lastScannedAt:'2026-10-23T12:00:00Z'}],defects:[{ean:'def',description:'DEFEITO',quantity:2,lastScannedAt:'2026-10-23T11:00:00Z'},{ean:'newer',description:'NOVO MAIS RECENTE',quantity:1,lastScannedAt:'2026-10-23T13:00:00Z'}]});");
+assert.equal((bulk.$('#recent-scans-list').innerHTML.match(/<li>/g)||[]).length,3,'Recent list combines both modes and caps at three products');
+assert.match(bulk.$('#recent-scans-list').innerHTML,/NOVO MAIS RECENTE/);
+assert.match(bulk.$('#recent-scans-list').innerHTML,/DEFEITO/);
+assert.doesNotMatch(bulk.$('#recent-scans-list').innerHTML,/ANTIGO/);
+bulk.run("largeQuantityEnabled=false;$('#large-quantity-input').value='';");
+assert.equal(bulk.run('readScanQuantity()'),1,'Normal scan keeps a quantity of one');
+bulk.run("largeQuantityEnabled=true;$('#large-quantity-input').value='';");
+assert.equal(bulk.run('readScanQuantity()'),null,'Large quantity requires a value');
+bulk.run("$('#large-quantity-input').value='1.5';");
+assert.equal(bulk.run('readScanQuantity()'),null,'Large quantity must be a whole number');
+console.log('PASS: large-quantity accumulation and validation; recent list combines count and defect modes');
 a.run('inventoryHome=false;renderTeam()');assert.equal(a.$('#team-open').hidden,false,'Open team counts remain available while a session is active');
 a.context.fetch=async()=>Response.json({data:[{id:'c',label:'ECOM TESTE',date:'2026-10-23',participants:[{responsible:'Maria',done:false}]}]});
 await a.run('loadTeamCounts()');assert.match(a.$('#team-open-list').innerHTML,/ECOM TESTE/);assert.match(a.$('#team-open-list').innerHTML,/>CONTINUAR<\/button>/);
