@@ -113,9 +113,9 @@ history.run("historyStoreFilter='JOIN';sessions=[];sessionsLoaded=false;");await
 assert.equal(listPayloads[1].filterStore,'JOIN');assert.equal(history.run('sessions.length'),1);assert.equal(history.run('sessions[0].id'),'join');
 console.log('PASS: multi-store history defaults to all authorized stores and filters by store');
 const selection=device();selection.run("user={id:'admin',allStores:true};sessions=[{id:'selected',label:'APAR FINAL',status:'FINALIZADA',kind:'CONTAGEM'}];current=null;picker();");
+const onChange=selection.events.find(([element,type])=>element===selection.$('#session-picker')&&type==='change')[2];selection.$('#session-picker').value='selected';onChange({target:selection.$('#session-picker')});
 assert.equal(selection.$('#view-session').hidden,false,'selected count should be opened only by VISUALIZAR');
 assert.equal(selection.$('#reopen-session').hidden,false,'ADM should see REABRIR CONTAGEM for a finalized standard count');
-const onChange=selection.events.find(([element,type])=>element===selection.$('#session-picker')&&type==='change')[2];selection.$('#session-picker').value='selected';onChange({target:selection.$('#session-picker')});
 assert.equal(selection.run('current'),null,'choosing an option must not open the count');
 assert.equal(selection.run('selectedSessionId'),'selected');
 const adm=device();adm.run("user={id:'admin',allStores:true};current={id:'c',label:'APAR TESTE',store:'APAR',collaborative:true,collabViewOnly:true,status:'EM ANDAMENTO',participants:[{id:'p1',responsible:'Maria',done:false,units:3,defects:1,updatedAt:'2026-10-27T12:00:00Z'}],counts:[],defects:[],version:1,mirroredVersion:1};renderTeam();");
