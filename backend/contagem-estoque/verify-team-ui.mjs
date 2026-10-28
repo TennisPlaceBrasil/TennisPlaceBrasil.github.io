@@ -38,6 +38,9 @@ assert.match(source,/Não foi possível consultar o cadastro agora[\s\S]*scanSou
 assert.match(source,/description:existingUnknown\.description,gender:existingUnknown\.gender,color:existingUnknown\.color,size:existingUnknown\.size/);
 assert.match(exporter,/r\.unknown\?\[r\.description,r\.gender,r\.color,r\.size\]\.filter\(Boolean\)\.join\(' '\)/);
 assert.match(sheetBackend,/description:product\?product\[1\]:\[model,gender,color,size\]\.join\(' '\)/);
+const exportVm=vm.createContext({window:{},TextEncoder,Blob});vm.runInContext(exporter,exportVm);
+const sampleWorkbook=await exportVm.window.TPInventoryExport.workbook({counts:[{ean:'001',quantity:1,description:'MODELO',unknown:true,gender:'MASCULINO',color:'AZUL',size:'38'}],defects:[]});
+assert.ok(Buffer.from(await sampleWorkbook.arrayBuffer()).includes(Buffer.from('MODELO MASCULINO AZUL 38')),'downloaded workbook PRODUCT cell must contain the four-field concatenation');
 function device(){
  const els=new Map(),records=new Map(),settings=new Map(),events=[];
  const element=()=>({parentElement:null,append(child){child.parentElement=this;},value:'',textContent:'',innerHTML:'',hidden:false,disabled:false,readOnly:false,dataset:{},className:'',classList:{toggle(){},add(){},remove(){}},addEventListener(type,fn){events.push([this,type,fn]);},setAttribute(k,v){this[k]=v;},setCustomValidity(s){this.validationMessage=s;},reportValidity(){return !this.validationMessage;},checkValidity(){return true;},focus(){},select(){},scrollIntoView(){},showModal(){this.open=true;},close(){this.open=false;},matches(){return false;}});
