@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-let handler;let currentStore='APAR',mappedStores=[{sigla:'APAR'}],extraStores=[],known=true,deleted=false,listData=null,liveList=[],lastRPC,lastBridge,lastCreate,calls=0;
+let handler;let currentStore='APAR',mappedStores=[{sigla:'APAR'}],extraStores=[],known=true,deleted=false,listData=null,liveList=[],lastRPC,lastBridge,lastCreate,calls=0,lastTeamRead=null,adminSnapshotCalls=0;
 globalThis.Deno={env:{get:n=>n==='SUPABASE_URL'?'https://db.test':'server-secret'},serve:fn=>handler=fn};
 globalThis.EdgeRuntime={waitUntil:p=>p.catch(()=>{})};
 const uid='7a23b121-c29c-4513-8a26-d7822f04149d';
@@ -8,9 +8,11 @@ globalThis.fetch=async(url,options={})=>{
  if(path.includes('/rpc/')){
   if(path.endsWith('stockcount_team_mirror'))return Response.json(null);
   if(path.endsWith('stockcount_team_pending_mirrors'))return Response.json([]);
+  if(path.endsWith('stockcount_team_admin_snapshot')){adminSnapshotCalls++;return Response.json({id:'c',collaborative:true,participants:[{id:'p',responsible:'Maria',done:false}]});}
   lastRPC=JSON.parse(options.body);
   if(lastRPC.p_action==='list')return Response.json(liveList);
   if(lastRPC.p_action==='find')return Response.json(null);
+  if(lastRPC.p_action==='read'){lastTeamRead=lastRPC;return Response.json({id:'c',store:'APAR',collaborative:true,participantId:lastRPC.p_person,participantVersion:2,counts:[{ean:'1',quantity:2}],defects:[],participants:[{responsible:'Maria',done:false}],status:'EM ANDAMENTO',collabViewOnly:!lastRPC.p_person});}
   return Response.json({id:'c',store:'APAR',collaborative:true,counts:[],defects:[],participants:[],participantVersion:1,version:2,status:'EM ANDAMENTO'});
  }
  if(path.endsWith('manual_portal_members'))return Response.json([{active:true,profiles:['loja']}]);
@@ -35,6 +37,16 @@ r=await handler(req({action:'teamManage',id:'c',participantId:'p',operation:'cle
 const adminId='adb6a08e-1a28-4b41-8dde-addd9c06f915';
 r=await handler(req({action:'teamManage',id:'c',participantId:'p',operation:'clear'},adminId));assert.equal(r.status,200);assert.equal(lastRPC.p_action,'clear');assert.equal(lastRPC.p_user,adminId);assert.equal(lastRPC.p_person,'p');
 r=await handler(req({action:'teamManage',id:'c',participantId:'p',operation:'finish'},adminId));assert.equal(r.status,200);assert.equal(lastRPC.p_action,'finish');
+const beforeAdminSnapshot=adminSnapshotCalls;
+r=await handler(req({action:'teamRead',id:'c',participantId:'p'},adminId));assert.equal(r.status,200);
+const adminTeamRead=await r.json();assert.equal(lastTeamRead.p_person,'p','ADM keeps its current participant snapshot');
+assert.equal(adminTeamRead.data.participantId,'p','ADM can still see its own participant state');
+assert.equal(adminTeamRead.data.participants[0].id,'p','ADM teamRead receives participant IDs for controls');
+assert.equal(adminSnapshotCalls,beforeAdminSnapshot+1,'Only ADM teamRead fetches the privileged participant list');
+const beforeRegularSnapshot=adminSnapshotCalls;
+r=await handler(req({action:'teamRead',id:'c',participantId:'p'},uid));assert.equal(r.status,200);
+const regularTeamRead=await r.json();assert.equal(regularTeamRead.data.participants[0].id,undefined,'Non-admin teamRead never receives participant IDs');
+assert.equal(adminSnapshotCalls,beforeRegularSnapshot,'Non-admin teamRead never requests the privileged snapshot');
 known=false;r=await handler(req({action:'read',id:'legacy'}));assert.equal(r.status,200,'Legacy history is available inside the mapped store');assert.equal(lastBridge.action,'read');
 r=await handler(req({action:'create',store:'APAR',collaborative:true,responsible:'ABC',participantId:'p'}));assert.equal(r.status,400,'Validate before creating Sheets tab');
 r=await handler(req({action:'create',store:'ARAS',allStores:true,secret:'spoof'}));assert.equal(r.status,403,'Client cannot select a store outside its assigned stores');
