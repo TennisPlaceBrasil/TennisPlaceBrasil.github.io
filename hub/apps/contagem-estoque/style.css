@@ -104,3 +104,11 @@ body.is-counting .offline-panel{margin-top:14px}
 @media(max-width:620px){.session-picker-wrap{justify-content:flex-start}.session-picker-wrap #session-picker{flex:1 1 100%;min-width:0}.team-person{align-items:flex-start;flex-direction:column}.team-person-actions{width:100%}.team-person-actions .button{flex:1}}
 
 .divergence-table td.delta{font-weight:700}.divergence-table td.positive{color:#ffda28}.divergence-table td.negative{color:#ff9c82}.divergence-note{color:#ffda28}
+
+/* Improve native dropdown contrast and unknown-product form spacing. */
+.session-picker-wrap select{background-color:#20211b;color:#f1f2e9;color-scheme:dark}
+.session-picker-wrap select option{background-color:#20211b;color:#f1f2e9}
+.session-picker-wrap select option:checked{background-color:#3a3b31;color:#ffda28}
+#unknown-form label{display:block;margin:12px 0 6px;color:#d9ddce;font-size:11px}
+#unknown-form select{display:block;width:100%;height:48px;margin:6px 0 14px;padding:0 12px;border:1px solid #555;border-radius:6px;background:#10110f;color:#f1f2e9;color-scheme:dark}
+#unknown-form select option{background-color:#191a16;color:#f1f2e9}
