@@ -49,6 +49,7 @@ assert.equal(a.run('teamExportState().counts[0].quantity'),5);
 a.run("addScan('999',true,'LEITOR',{description:'Modelo X',gender:'FEMININO',color:'Azul',size:'38'},1);");
 for(const field of ['description','gender','color','size'])assert.ok(a.run(`current.counts.find(r=>r.ean==='999').${field}`),`unknown product ${field} is saved on the count row`);
 assert.equal(a.run("current.counts.find(r=>r.ean==='999').brand"),'','unknown product no longer requires a brand');
+a.run("current.counts=current.counts.filter(r=>r.ean!=='999');");
 const bulk=device();bulk.run("user={id:'u',store:'APAR',allStores:false};auth={access_token:'test'};catalogComplete=true;catalog=new Map([['001',{description:'Produto',brand:'MARCA'}]]);current={id:'bulk',label:'APAR TESTE',store:'APAR',kind:'CONTAGEM',date:'2026-10-23',responsible:'Maria',status:'EM ANDAMENTO',counts:[],defects:[],version:0};largeQuantityEnabled=true;$('#large-quantity-input').value='7';addScan('001',false,'LEITOR',null,7);addScan('001',false,'LEITOR',null,4);");
 assert.equal(bulk.run("current.counts.find(r=>r.ean==='001').quantity"),11,'Large quantity adds to an existing EAN');
 bulk.run("mode='defects';addScan('001',false,'LEITOR',null,3);");
