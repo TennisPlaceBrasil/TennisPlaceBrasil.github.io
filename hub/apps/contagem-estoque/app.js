@@ -2,7 +2,7 @@
 const $=s=>document.querySelector(s),BASE='https://rihvnshexilakojnltox.supabase.co',KEY='sb_publishable_7coOHeG2tOc9XfS0qeKvPg_z2fh0KWz',AUTH_KEY='tp-manuais-supabase-v1';
 let auth=null,user=null,stores=[],sessions=[],sessionsLoaded=false,loadingSessions=false,historyStoreFilter='',current=null,catalog=new Map(),mode='count',unknown=null,lookingUp=false,deleteConfirmAction=null,largeQuantityEnabled=false,pendingScanQuantity=1;
 let inventoryHome=false,openingCount=false,cameraCandidate=null,cameraLookup=false,cameraGeneration=0,cameraLastEan='',cameraLastAt=0,cameraFallbackStarted=false,scanAudio=null;
-let analysisCache=null,analysisRequest=0,subgroupCatalogReady=false;
+let analysisCache=null,analysisRequest=0,subgroupCatalogReady=false,divergenceRequest=0;
 let accessUsers=[],accessStores=[],accessAudit=[];
 let teamScope='own',teamBusy=false,teamListBusy=false,teamLockId=null,teamUnlock=null,teamAdminActionBusy=false,selectedSessionId='';
 let serial=0,saved=0,inflight=null,timer=null,retry=null,conflict=false,xlsxPromise,recounts=[],loadingRecounts=false,recountSourceId=null,recountPage=0,pendingImport=null,cameraStream=null,cameraControls=null,cameraFrame=0,cameraActive=false,zxingPromise=null,deletionRequests=[],loadingDeletions=false,activeDeletionReviewId=null,unknownOrigin='LEITOR / DIGITAÇÃO',auditSessionPromise=null;
@@ -354,7 +354,7 @@ function render(){
 function displayAccount(){
   $('#login-panel').hidden=true;$('#app-main').hidden=false;$('#logout').hidden=false;
   $('#account-label').textContent=user.master?'ACESSO MASTER':user.allStores?'ACESSO ADMINISTRATIVO':user.multiStore?'ACESSO A VÁRIAS LOJAS':user.store;
-  $('#store-code').innerHTML=((user.allStores||user.multiStore)?'<option value="">Selecione a loja</option>':'')+stores.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('');$('#store-code').value=user.store||'';$('#store-code').disabled=!user.allStores&&!user.multiStore;$('#count-date').value=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());$('#tab-analysis').hidden=!user.allStores;
+  $('#store-code').innerHTML=((user.allStores||user.multiStore)?'<option value="">Selecione a loja</option>':'')+stores.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('');$('#store-code').value=user.store||'';$('#store-code').disabled=!user.allStores&&!user.multiStore;$('#count-date').value=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());$('#tab-analysis').hidden=!user.allStores;$('#tab-divergence').hidden=!user.allStores;
   const today=$('#count-date').value,from=new Date(today+'T12:00:00-03:00');from.setDate(from.getDate()-89);$('#filter-end').value=today;$('#filter-start').value=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(from);
   $('#filter-store').innerHTML='<option value="">Todas as lojas</option>'+stores.map(s=>'<option>'+esc(s)+'</option>').join('');
   $('#history-store-filter').innerHTML='<option value="">Todas as lojas</option>'+stores.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('');
@@ -390,7 +390,7 @@ async function loadSessions(){
     else if(latest){const metadata=sessions.find(s=>s.id===latest.id);latest.label=metadata.label;sessions=sessions.map(s=>s.id===latest.id?latest:s);render();}
     if(r.deletionSync?.length)$('#app-error').textContent=r.deletionSync.length+' exclusão(ões) aguardando confirmação da planilha. A sincronização será repetida automaticamente ao atualizar as contagens.';
     else if(sessions.some(s=>s.sheetMissing))$('#app-error').textContent='Há contagem com a aba ausente na planilha. Os dados centrais foram preservados; nenhuma exclusão automática foi feita.';
-    sessionsLoaded=true;picker();
+    sessionsLoaded=true;picker();renderDivergenceOptions();
   }catch(e){$('#app-error').textContent=e.message;}
   finally{loadingSessions=false;picker();}
 }
@@ -640,6 +640,57 @@ async function analyze(event){
  }catch(e){if(request===analysisRequest){$('#analysis-dashboard').innerHTML='';$('#analysis-body').innerHTML='';$('#analysis-status').textContent=e.message;}}
  finally{if(request===analysisRequest)$('#analysis-dashboard').setAttribute?.('aria-busy','false');}
 }
+function divergenceLabel(session){
+ const source=session.kind==='RECONTAGEM'?sessions.find(s=>s.id===session.sourceId):null;
+ const date=new Date(session.kind==='RECONTAGEM'?(session.updatedAt||session.createdAt):session.date+'T12:00:00').toLocaleDateString('pt-BR');
+ return (source?.label||session.label)+' · '+(session.kind==='RECONTAGEM'?'RECONTAGEM':'CONTAGEM')+' · '+date;
+}
+function renderDivergenceOptions(){
+ if(!user?.allStores)return;
+ const eligible=sessions.filter(s=>s.status==='FINALIZADA'&&!s.sheetMissing&&s.deleteStatus!=='PENDENTE');
+ const optionList='<option value="">Selecione uma contagem</option>'+eligible.slice().sort((a,b)=>String(b.createdAt||b.date).localeCompare(String(a.createdAt||a.date))).map(s=>'<option value="'+esc(s.id)+'">'+esc(s.store)+' · '+esc(divergenceLabel(s))+'</option>').join('');
+ for(const id of ['#divergence-first','#divergence-second']){const el=$(id),old=el.value;el.innerHTML=(id==='#divergence-first'?optionList:'<option value="">Comparar com a primeira</option>'+eligible.slice().sort((a,b)=>String(b.createdAt||b.date).localeCompare(String(a.createdAt||a.date))).map(s=>'<option value="'+esc(s.id)+'">'+esc(s.store)+' · '+esc(divergenceLabel(s))+'</option>').join(''));if(eligible.some(s=>s.id===old))el.value=old;}
+}
+function sumRows(state){
+ const quantities=new Map(),products=new Map();
+ (state.counts||[]).concat(state.defects||[]).forEach(row=>{quantities.set(row.ean,(quantities.get(row.ean)||0)+Number(row.quantity||0));if(!products.has(row.ean))products.set(row.ean,row);});
+ return {quantities,products};
+}
+async function compareDivergence(event){
+ event?.preventDefault();if(!user?.allStores)return;
+ const request=++divergenceRequest,first=sessions.find(s=>s.id===$('#divergence-first').value),second=sessions.find(s=>s.id===$('#divergence-second').value)||null;
+ const status=$('#divergence-status');$('#divergence-body').innerHTML='';$('#divergence-head').innerHTML='';
+ if(!first){status.textContent='Escolha uma contagem ou recontagem.';return;}
+ try{
+  status.textContent='Carregando dados para comparação…';
+  let rows=[],leftLabel='',rightLabel='',note='';
+  const recount=first.kind==='RECONTAGEM'?first:second?.kind==='RECONTAGEM'?second:null;
+  if(recount){
+   if(second&&first.id!==recount.id&&first.id!==recount.sourceId)throw Error('Selecione a contagem original junto com a recontagem.');
+   const source=sessions.find(s=>s.id===recount.sourceId);
+   if(!source)throw Error('A contagem original desta recontagem não está disponível para este acesso.');
+   const result=await api('read',{id:recount.id});if(request!==divergenceRequest)return;
+   const state=result.data,targets=state.targets||[],baseline=Array.isArray(state.baseline)?new Map(state.baseline.map(r=>[r.ean,Number(r.quantity)||0])):null;
+   const current=sumRows(state),scanned=new Set(current.quantities.keys()),zeros=new Set(state.zeroEans||[]);
+   leftLabel=divergenceLabel(source);rightLabel=divergenceLabel(recount);
+   if(!baseline)note='Esta recontagem é anterior ao registro do histórico original; a quantidade inicial não está disponível e será exibida como —.';
+   rows=targets.map(target=>({ean:target.ean,description:target.description||current.products.get(target.ean)?.description||'',brand:target.brand||current.products.get(target.ean)?.brand||'',subgroup:target.subgroup||current.products.get(target.ean)?.subgroup||'',left:baseline?.has(target.ean)?baseline.get(target.ean):null,right:scanned.has(target.ean)?current.quantities.get(target.ean):zeros.has(target.ean)?0:current.quantities.get(target.ean)||0})).sort((a,b)=>a.description.localeCompare(b.description)||a.ean.localeCompare(b.ean));
+  }else{
+   if(!second)throw Error('Escolha uma segunda contagem para comparar.');
+   if(first.id===second.id)throw Error('Escolha duas contagens diferentes.');
+   
+   const [a,b]=await Promise.all([api('read',{id:first.id}),api('read',{id:second.id})]);if(request!==divergenceRequest)return;
+   const aa=sumRows(a.data),bb=sumRows(b.data),eans=new Set([...aa.quantities.keys(),...bb.quantities.keys()]);
+   leftLabel=divergenceLabel(first);rightLabel=divergenceLabel(second);
+   rows=[...eans].map(ean=>{const product=aa.products.get(ean)||bb.products.get(ean);return {ean,description:product?.description||'',brand:product?.brand||'',subgroup:product?.subgroup||'',left:aa.quantities.get(ean)||0,right:bb.quantities.get(ean)||0};}).sort((a,b)=>a.description.localeCompare(b.description)||a.ean.localeCompare(b.ean));
+  }
+  $('#divergence-head').innerHTML='<tr><th>EAN</th><th>PRODUTO</th><th>MARCA</th><th>SUBGRUPO</th><th>'+esc(leftLabel)+'</th><th>'+esc(rightLabel)+'</th><th>DIFERENÇA</th></tr>';
+  $('#divergence-body').innerHTML=rows.map(r=>{const delta=r.left===null?null:r.right-r.left;return '<tr><td>'+esc(r.ean)+'</td><td>'+esc(r.description)+'</td><td>'+esc(r.brand)+'</td><td>'+esc(r.subgroup)+'</td><td>'+(r.left===null?'—':r.left)+'</td><td>'+r.right+'</td><td class="delta '+(delta===null?'':delta>0?'positive':delta<0?'negative':'')+'">'+(delta===null?'—':delta>0?'+'+delta:String(delta))+'</td></tr>';}).join('');
+  status.innerHTML=esc(rows.length+' produtos · valores representam contagem + defeitos.')+(note?' <span class="divergence-note">'+esc(note)+'</span>':'');
+  if(!rows.length)status.textContent='Nenhum produto dentro do escopo selecionado.';
+ }catch(error){if(request===divergenceRequest)status.textContent=error.message;}
+}
+$('#divergence-filters').addEventListener('submit',compareDivergence);
 function imports(){const state=teamExportState();warnTeamExport();return state.defects.concat(state.counts).map(r=>({EAN:r.ean,QNTD:r.quantity,'CÓDIGO IMPORTAÇÃO':r.ean+','+r.quantity}));}
 function exportCsv(){
   if(!current)return;const blob=new Blob([imports().map(r=>r.EAN+','+r.QNTD).join('\r\n')],{type:'text/plain;charset=utf-8'}),url=window.URL.createObjectURL(blob),a=document.createElement('a');
@@ -829,8 +880,8 @@ document.querySelectorAll('#count-body,#defect-body').forEach(body=>body.addEven
 $('#finish-count').addEventListener('click',finishCount);$('#reopen-count').addEventListener('click',reopenCount);$('#export-txt').addEventListener('click',exportCsv);
 $('#analysis-filters').addEventListener('submit',analyze);
 $('#filter-brand').addEventListener('change',renderAnalysis);$('#filter-subgroup').addEventListener('change',renderAnalysis);
-function showTab(name){const count=name==='count',analysis=name==='analysis',settings=name==='settings';$('#count-view').hidden=!count;$('#analysis-view').hidden=!analysis;$('#settings-view').hidden=!settings;$('#tab-count').classList.toggle('active',count);$('#tab-analysis').classList.toggle('active',analysis);$('#tab-settings').classList.toggle('active',settings);render();if(analysis)analyze();if(settings)loadAccessSettings();}
-$('#tab-count').addEventListener('click',()=>showTab('count'));$('#tab-analysis').addEventListener('click',()=>showTab('analysis'));$('#tab-settings').addEventListener('click',()=>showTab('settings'));
+function showTab(name){const count=name==='count',analysis=name==='analysis',divergence=name==='divergence',settings=name==='settings';$('#count-view').hidden=!count;$('#analysis-view').hidden=!analysis;$('#divergence-view').hidden=!divergence;$('#settings-view').hidden=!settings;$('#tab-count').classList.toggle('active',count);$('#tab-analysis').classList.toggle('active',analysis);$('#tab-divergence').classList.toggle('active',divergence);$('#tab-settings').classList.toggle('active',settings);render();if(analysis)analyze();if(divergence)renderDivergenceOptions();if(settings)loadAccessSettings();}
+$('#tab-count').addEventListener('click',()=>showTab('count'));$('#tab-analysis').addEventListener('click',()=>showTab('analysis'));$('#tab-divergence').addEventListener('click',()=>showTab('divergence'));$('#tab-settings').addEventListener('click',()=>showTab('settings'));
 window.addEventListener('pagehide',()=>stopCamera(false));
 window.addEventListener('beforeunload',event=>{if((localError||localWrites>0)&&current){event.preventDefault();event.returnValue='';}});
 window.addEventListener('online',()=>{updateOfflineStatus();flush();});window.addEventListener('offline',updateOfflineStatus);
