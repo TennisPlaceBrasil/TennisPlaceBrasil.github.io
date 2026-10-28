@@ -350,6 +350,10 @@ function verifyInventoryRuntime(){
     check(count.status==='FINALIZADA','finalização de contagem');
     const requested=call({action:'requestRecount',id:count.id,eans:[a,b],requestId:Utilities.getUuid()});ids.push(requested.id);
     let recount=call({action:'openRecount',id:requested.id});
+    const baseline=new Map((recount.baseline||[]).map(r=>[r.ean,r.quantity]));
+    check(baseline.get(a)===3&&baseline.get(b)===3,'preservação das quantidades originais da recontagem');
+    const storeView=route_({action:'openRecount',id:requested.id,store,userId:'runtime-store',allStores:false});
+    check(!Object.prototype.hasOwnProperty.call(storeView,'baseline'),'ocultação das quantidades originais para acessos de loja');
     recount=call({action:'save',id:recount.id,version:recount.version,requestId:Utilities.getUuid(),counts:[{ean:a,quantity:4,lastScannedAt:time}],defects:[{ean:a,quantity:1,lastScannedAt:time}],zeroEans:[b]});
     check(recount.targets.length===2,'preservação dos produtos solicitados na recontagem');
     recount=call({action:'finish',id:recount.id,version:recount.version,requestId:Utilities.getUuid(),counts:recount.counts,defects:[],zeroEans:[b]});
