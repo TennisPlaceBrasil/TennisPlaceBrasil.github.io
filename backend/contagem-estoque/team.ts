@@ -94,10 +94,18 @@ export async function handleTeam(input:Record<string,any>,user:{id:string},allSt
   scheduleTeamMirror(input.id,config);return {handled:true,data};
  }
  const mapping:Record<string,string>={teamJoin:'join',teamRead:'read',save:'save',finish:'finish',requestDelete:'requestDelete',resolveDelete:'resolveDelete',delete:'delete'};
- if(input.action==='read'){
+ if(input.action==='read'||input.action==='teamRead'){
   if(!allStores&&!allowedStores.includes(record.store))throw Error('Contagem sem permissão.');
-  if(!allStores&&record.meta?.status!=='FINALIZADA')throw Error('Contagem em andamento: Use ENTRAR NA CONTAGEM e informe seu responsável.');
-  const data=allStores?await teamRPC('stockcount_team_admin_snapshot',{p_id:String(input.id),p_user:user.id}):await call('read',input.id,null,{});scheduleTeamMirror(input.id,config);return {handled:true,data};
+  if(input.action==='read'&&!allStores&&record.meta?.status!=='FINALIZADA')throw Error('Contagem em andamento: Use ENTRAR NA CONTAGEM e informe seu responsável.');
+  const data=input.action==='read'&&allStores
+   ?await teamRPC('stockcount_team_admin_snapshot',{p_id:String(input.id),p_user:user.id})
+   :await call('read',input.id,input.action==='teamRead'?(input.participantId||null):null,{});
+  // Keep the local participant snapshot intact while exposing participant IDs only to verified admins.
+  if(input.action==='teamRead'&&allStores){
+   const adminSnapshot=await teamRPC('stockcount_team_admin_snapshot',{p_id:String(input.id),p_user:user.id});
+   data.participants=adminSnapshot?.participants||[];
+  }
+  scheduleTeamMirror(input.id,config);return {handled:true,data};
  }
  if(input.action==='requestRecount'&&record.mirrored_revision<record.revision){scheduleTeamMirror(input.id,config);throw Error('Aguarde a atualização da planilha antes de solicitar recontagem.');}
  const action=mapping[input.action];if(!action)return {handled:false,record};
