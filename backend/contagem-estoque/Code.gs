@@ -104,15 +104,18 @@ function normalizeRows_(rows,products){
   const result=new Map();
   rows.forEach(r=>{
     const ean=String(r.ean||'').trim(),quantity=Number(r.quantity);
-    if(!/^\d{1,30}$/.test(ean)||!Number.isInteger(quantity)||quantity<1||quantity>1000000)throw new Error('EAN ou quantidade inválida.');
+    if(!/^\d{1,15}$/.test(ean)||!Number.isInteger(quantity)||quantity<1||quantity>1000000)throw new Error('EAN ou quantidade inválida.');
     const product=products.get(ean);
     if(!product&&!r.unknown)throw new Error('Produto inexistente: '+ean);
+    const model=normalizeUnknownText_(r.description,180),gender=String(r.gender||'').trim().toLocaleUpperCase('pt-BR'),color=normalizeUnknownText_(r.color,80),size=String(r.size||'').trim().toLocaleUpperCase('pt-BR');
+    if(!product&&(!model||!['MASCULINO','FEMININO','UNISSEX','INFANTIL'].includes(gender)||!color||!/^[A-Z0-9]{1,4}$/.test(size)))throw new Error('Preencha MODELO, GÊNERO, COR e TAMANHO do EAN '+ean+'.');
     const inputTime=String(r.lastScannedAt||'').trim(),inputMs=Date.parse(inputTime),safeTime=inputTime&&!isNaN(inputMs)?new Date(inputMs).toISOString():'';
-    const item=result.get(ean)||{ean,quantity:0,description:product?product[1]:String(r.description||'PRODUTO INEXISTENTE').trim().slice(0,180),brand:product?product[2]:String(r.brand||'NÃO CADASTRADA').trim().slice(0,80),subgroup:product?product[3]||'':'',unknown:!product,lastScannedAt:safeTime};
+    const item=result.get(ean)||{ean,quantity:0,description:product?product[1]:[model,gender,color,size].join(' '),brand:product?product[2]:'',subgroup:product?product[3]||'':'',unknown:!product,lastScannedAt:safeTime};
     item.responsible=[item.responsible,responsibleText_(r)].filter(Boolean).join('; ').slice(0,4000);item.quantity+=quantity;if(Date.parse(safeTime)>Date.parse(item.lastScannedAt||0))item.lastScannedAt=safeTime;result.set(ean,item);
   });
   return Array.from(result.values());
 }
+function normalizeUnknownText_(value,max){return String(value||'').toLocaleUpperCase('pt-BR').replace(/[^\p{L}\p{N} ]/gu,'').replace(/\s+/g,' ').trim().slice(0,max);}
 function mergeRows_(existing,incoming){
   const rows=existing.map(r=>Object.assign({},r)),byEan=new Map(rows.map((r,i)=>[r.ean,i]));
   incoming.forEach(r=>{const i=byEan.get(r.ean);if(i===undefined){byEan.set(r.ean,rows.length);rows.push(Object.assign({},r));}else{const quantity=rows[i].quantity+r.quantity;if(quantity>1000000)throw new Error('A quantidade total do EAN '+r.ean+' ultrapassa 1.000.000.');rows[i].quantity=quantity;rows[i].lastScannedAt=r.lastScannedAt||rows[i].lastScannedAt;}});
@@ -235,7 +238,7 @@ function route_(p){
     if(!['counts','defects'].includes(p.kind))throw new Error('Escolha Contagem ou Defeitos.');
     if(!p.requestId||!/^[a-zA-Z0-9-]{16,80}$/.test(p.requestId))throw new Error('Identificador de importação inválido.');
     if(!Array.isArray(p.rows)||!p.rows.length||p.rows.length>40000)throw new Error('O TXT deve conter entre 1 e 40.000 linhas.');
-    const missing=Array.from(new Set(p.rows.map(r=>String(r.ean||'').trim()).filter(e=>/^\d{1,30}$/.test(e)&&!products.has(e))));
+    const missing=Array.from(new Set(p.rows.map(r=>String(r.ean||'').trim()).filter(e=>/^\d{1,15}$/.test(e)&&!products.has(e))));
     if(missing.length&&!p.includeUnknown)return {requiresConfirmation:true,unknown:missing.slice(0,100),unknownCount:missing.length};
     const current=state_(meta),incoming=normalizeRows_(p.rows.map(r=>Object.assign({},r,{unknown:!!p.includeUnknown})),products);
     const merged=mergeRows_(current[p.kind],incoming),counts=p.kind==='counts'?merged:current.counts,defects=p.kind==='defects'?merged:current.defects,zeroEans=(current.zeroEans||[]).filter(e=>!incoming.some(r=>r.ean===e));
@@ -268,7 +271,7 @@ function requestRecount_(p,list){
   if(list.some(m=>m.kind==='RECONTAGEM'&&m.sourceId===source.id&&m.status!=='FINALIZADA'))throw new Error('Já existe uma recontagem pendente para esta contagem.');
   if(!Array.isArray(p.eans)||!p.eans.length||p.eans.length>40000)throw new Error('Envie entre 1 e 40.000 EANs.');
   const eans=Array.from(new Set(p.eans.map(e=>String(e).trim())));
-  if(eans.some(e=>!/^\d{1,30}$/.test(e)))throw new Error('TXT com EAN inválido. Use um código por linha.');
+  if(eans.some(e=>!/^\d{1,15}$/.test(e)))throw new Error('TXT com EAN inválido. Use um código com até 15 caracteres por linha.');
   const original=state_(source),products=new Map(original.counts.concat(original.defects).map(r=>[r.ean,r]));
   const now=new Date(),ss=db_(),base=source.label+' RECONTAGEM';let number=1+Math.max(0,...list.filter(m=>m.kind==='RECONTAGEM'&&m.sourceId===source.id).map(m=>Number((m.label.match(/#(\d+)$/)||[])[1]||1))),label=base+' #'+number;while(ss.getSheetByName(label))label=base+' #'+(++number);
   const sheet=ss.insertSheet(label),meta={id:Utilities.getUuid(),store:source.store,date:source.date,label,status:'EM ANDAMENTO',version:0,sheet:label,createdBy:p.userId,createdAt:now.toISOString(),updatedAt:now.toISOString(),requestId:'',kind:'RECONTAGEM',sourceId:source.id,createdRequestId:p.requestId};
