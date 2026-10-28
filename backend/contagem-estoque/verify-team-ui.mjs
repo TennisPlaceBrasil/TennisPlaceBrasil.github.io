@@ -6,6 +6,7 @@ const file=new URL('../../hub/apps/contagem-estoque/app.js',import.meta.url);
 const source=fs.readFileSync(file,'utf8').replace(/initializeDevice\(\)\.then\(async\(\)=>\{.*\}\s*\);/,'');
 const html=fs.readFileSync(new URL('../../hub/apps/contagem-estoque/index.html',import.meta.url),'utf8');
 const exporter=fs.readFileSync(new URL('../../hub/apps/contagem-estoque/offline-export.js',import.meta.url),'utf8');
+const sheetBackend=fs.readFileSync(new URL('./Code.gs',import.meta.url),'utf8');
 assert.ok(html.includes('FINALIZAR CONTAGEM'));
 assert.ok(html.includes('EXCLUIR CONTAGEM'));
 assert.ok(html.includes('EXPORTAR ARQUIVO'));
@@ -20,6 +21,9 @@ assert.ok(html.includes('id="unknown-description"'));
 assert.ok(html.includes('id="unknown-gender"'));
 assert.ok(html.includes('id="unknown-color"'));
 assert.ok(html.includes('id="unknown-size"'));
+assert.match(html,/id="ean-input"[^>]*maxlength="15"/);
+assert.match(html,/id="unknown-gender"[^>]*><option value="">Selecione<\/option><option value="MASCULINO">/);
+assert.match(html,/id="unknown-size"[^>]*maxlength="4"/);
 assert.ok(!html.includes('id="unknown-brand"'));
 assert.match(exporter,/\['EAN','QNTD','PRODUTO','MARCA','GÊNERO','COR','TAMANHO'/);
 assert.ok(html.includes('GÊNERO')&&html.includes('TAMANHO'));
@@ -29,6 +33,11 @@ assert.match(source, /#session-picker'\)\.addEventListener\('change',event=>\{se
 assert.doesNotMatch(source, /#session-picker'\)\.addEventListener\('change',event=>openCount/);
 assert.match(source, /data-person-action="finish"/);
 assert.match(source, /data-person-action="clear"/);
+assert.match(source,/const MAX_EAN_LENGTH=15/);
+assert.match(source,/Não foi possível consultar o cadastro agora[\s\S]*scanSound\(false\)/);
+assert.match(source,/description:existingUnknown\.description,gender:existingUnknown\.gender,color:existingUnknown\.color,size:existingUnknown\.size/);
+assert.match(exporter,/r\.unknown\?\[r\.description,r\.gender,r\.color,r\.size\]\.filter\(Boolean\)\.join\(' '\)/);
+assert.match(sheetBackend,/description:product\?product\[1\]:\[model,gender,color,size\]\.join\(' '\)/);
 function device(){
  const els=new Map(),records=new Map(),settings=new Map(),events=[];
  const element=()=>({parentElement:null,append(child){child.parentElement=this;},value:'',textContent:'',innerHTML:'',hidden:false,disabled:false,readOnly:false,dataset:{},className:'',classList:{toggle(){},add(){},remove(){}},addEventListener(type,fn){events.push([this,type,fn]);},setAttribute(k,v){this[k]=v;},setCustomValidity(s){this.validationMessage=s;},reportValidity(){return !this.validationMessage;},checkValidity(){return true;},focus(){},select(){},scrollIntoView(){},showModal(){this.open=true;},close(){this.open=false;},matches(){return false;}});
@@ -53,6 +62,26 @@ for(const field of ['description','gender','color','size'])assert.ok(a.run(`curr
 a.run('render()');assert.match(a.$('#count-body').innerHTML,/GÊNERO FEMININO · COR Azul · TAMANHO 38/,'unknown product attributes are visible in the count list');
 assert.equal(a.run("current.counts.find(r=>r.ean==='999').brand"),'','unknown product no longer requires a brand');
 a.run("current.counts=current.counts.filter(r=>r.ean!=='999');");
+// Unknown-product cells are uppercase, punctuation-free, and concatenated in required order for Sheets.
+const normalizer=sheetBackend.slice(sheetBackend.indexOf('function normalizeRows_'),sheetBackend.indexOf('\nfunction mergeRows_',sheetBackend.indexOf('function normalizeRows_')));
+const sheetVm=vm.createContext({responsibleText_:r=>r.responsible||''});vm.runInContext(normalizer,sheetVm);
+const normalized=sheetVm.normalizeRows_([{ean:'000000000000001',quantity:2,unknown:true,description:'modelo-x',gender:'feminino',color:'azul/vermelho',size:'2xl'}],new Map());
+assert.equal(normalized[0].description,'MODELOX FEMININO AZULVERMELHO 2XL');assert.equal(normalized[0].brand,'');
+assert.throws(()=>sheetVm.normalizeRows_([{ean:'123',quantity:1,unknown:true,description:'MODELO',color:'AZUL',size:'38'}],new Map()),/MODELO, GÊNERO, COR e TAMANHO/);
+assert.throws(()=>sheetVm.normalizeRows_([{ean:'1234567890123456',quantity:1,unknown:true,description:'MODELO',gender:'MASCULINO',color:'AZUL',size:'38'}],new Map()),/EAN ou quantidade inválida/);
+assert.throws(()=>sheetVm.normalizeRows_([{ean:'123',quantity:1,unknown:true,description:'MODELO',gender:'MASCULINO',color:'AZUL',size:'38/2'}],new Map()),/MODELO, GÊNERO, COR e TAMANHO/);
+// Existing unknown EAN from another participant is reused and adds quantity without reopening the form.
+const shared=device();shared.run("user={id:'u',store:'APAR',allStores:false};auth={access_token:'test'};catalogComplete=true;catalog=new Map();current={id:'shared',kind:'CONTAGEM',status:'EM ANDAMENTO',responsible:'Maria',counts:[],defects:[],peers:{counts:[{ean:'12345',quantity:3,unknown:true,description:'MODELO',gender:'FEMININO',color:'AZUL',size:'38'}],defects:[]}};$('#ean-input').value='12345';");
+await shared.run('scan()');assert.equal(shared.run("current.counts[0].quantity"),1);assert.equal(shared.$('#unknown-dialog').open,undefined,'known shared unknown EAN should bypass the identification dialog');assert.equal(shared.run("current.counts[0].description"),'MODELO');
+// A definitive online miss opens identification; a transport failure only shows an inline message.
+const classification=device();classification.run("user={id:'u',store:'APAR',allStores:false};auth={access_token:'test'};current={id:'lookup',kind:'CONTAGEM',status:'EM ANDAMENTO',responsible:'Maria',counts:[],defects:[]};catalogComplete=false;catalog=new Map();$('#ean-input').value='123456789012345';");
+classification.context.fetch=async()=>Response.json({data:null});await classification.run('scan()');assert.equal(classification.$('#unknown-dialog').open,true,'confirmed absence opens the unknown-product form');
+classification.$('#unknown-dialog').close();classification.$('#ean-input').value='123456789012346';classification.context.fetch=async()=>({ok:false,status:503,text:async()=>JSON.stringify({error:'offline'})});await classification.run('scan()');assert.equal(classification.$('#unknown-dialog').open,false,'query failure must not open a product form');assert.match(classification.$('#scan-message').textContent,/Não foi possível consultar/);
+// An offline cache miss stays provisional and remains usable.
+classification.context.navigator.onLine=false;classification.$('#ean-input').value='111111111111111';await classification.run('scan()');assert.equal(classification.$('#unknown-dialog').open,true,'offline unknown EAN permits provisional identification');
+// Camera-detected unknown EAN routes to the same four-field form.
+const camera=device();camera.run("user={id:'u',store:'APAR',allStores:false};auth={access_token:'test'};current={id:'cam',kind:'CONTAGEM',status:'EM ANDAMENTO',responsible:'Maria',counts:[],defects:[]};catalogComplete=true;catalog=new Map();cameraActive=true;cameraGeneration=1;");
+await camera.run("cameraDetected('123456789012345')");assert.equal(camera.$('#unknown-dialog').open,true);assert.equal(camera.run('unknown'),'123456789012345');assert.equal(camera.run('unknownOrigin'),'CÂMERA');
 const bulk=device();bulk.run("user={id:'u',store:'APAR',allStores:false};auth={access_token:'test'};catalogComplete=true;catalog=new Map([['001',{description:'Produto',brand:'MARCA'}]]);current={id:'bulk',label:'APAR TESTE',store:'APAR',kind:'CONTAGEM',date:'2026-10-23',responsible:'Maria',status:'EM ANDAMENTO',counts:[],defects:[],version:0};largeQuantityEnabled=true;$('#large-quantity-input').value='7';addScan('001',false,'LEITOR',null,7);addScan('001',false,'LEITOR',null,4);");
 assert.equal(bulk.run("current.counts.find(r=>r.ean==='001').quantity"),11,'Large quantity adds to an existing EAN');
 bulk.run("mode='defects';addScan('001',false,'LEITOR',null,3);");
