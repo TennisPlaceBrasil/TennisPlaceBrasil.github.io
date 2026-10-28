@@ -15,6 +15,12 @@ assert.ok(html.includes('id="delete-confirm-dialog"'));
 assert.ok(html.includes('id="large-quantity-toggle"'));
 assert.ok(html.includes('id="large-quantity-input"'));
 assert.ok(html.includes('id="recent-scans-list"'));
+assert.ok(html.includes('id="unknown-description"'));
+assert.ok(html.includes('id="unknown-gender"'));
+assert.ok(html.includes('id="unknown-color"'));
+assert.ok(html.includes('id="unknown-size"'));
+assert.ok(!html.includes('id="unknown-brand"'));
+assert.ok(html.includes('GÊNERO')&&html.includes('TAMANHO'));
 assert.match(html, /id="view-session"[^>]*>VISUALIZAR<\/button>/);
 assert.match(html, /id="reopen-session"[^>]*>REABRIR CONTAGEM<\/button>/);
 assert.match(source, /#session-picker'\)\.addEventListener\('change',event=>\{selectedSessionId=event\.target\.value;picker\(\);\}\)/);
@@ -40,6 +46,9 @@ for(const d of [a,b]){
 }
 a.run("addScan('001');addScan('001');current.peers.counts=[{ean:'001',quantity:3,description:'Produto',brand:'MARCA',responsible:'João'}];");
 assert.equal(a.run('teamExportState().counts[0].quantity'),5);
+a.run("addScan('999',true,'LEITOR',{description:'Modelo X',gender:'FEMININO',color:'Azul',size:'38'},1);");
+for(const field of ['description','gender','color','size'])assert.ok(a.run(`current.counts.find(r=>r.ean==='999').${field}`),`unknown product ${field} is saved on the count row`);
+assert.equal(a.run("current.counts.find(r=>r.ean==='999').brand"),'','unknown product no longer requires a brand');
 const bulk=device();bulk.run("user={id:'u',store:'APAR',allStores:false};auth={access_token:'test'};catalogComplete=true;catalog=new Map([['001',{description:'Produto',brand:'MARCA'}]]);current={id:'bulk',label:'APAR TESTE',store:'APAR',kind:'CONTAGEM',date:'2026-10-23',responsible:'Maria',status:'EM ANDAMENTO',counts:[],defects:[],version:0};largeQuantityEnabled=true;$('#large-quantity-input').value='7';addScan('001',false,'LEITOR',null,7);addScan('001',false,'LEITOR',null,4);");
 assert.equal(bulk.run("current.counts.find(r=>r.ean==='001').quantity"),11,'Large quantity adds to an existing EAN');
 bulk.run("mode='defects';addScan('001',false,'LEITOR',null,3);");
