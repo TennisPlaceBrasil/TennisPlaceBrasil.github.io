@@ -102,3 +102,5 @@ body.is-counting .offline-panel{margin-top:14px}
 .team-person-actions{display:flex;flex:0 0 auto;gap:8px}
 .team-person-actions .button{height:32px;padding:0 11px}
 @media(max-width:620px){.session-picker-wrap{justify-content:flex-start}.session-picker-wrap #session-picker{flex:1 1 100%;min-width:0}.team-person{align-items:flex-start;flex-direction:column}.team-person-actions{width:100%}.team-person-actions .button{flex:1}}
+
+.divergence-table td.delta{font-weight:700}.divergence-table td.positive{color:#ffda28}.divergence-table td.negative{color:#ff9c82}.divergence-note{color:#ffda28}
