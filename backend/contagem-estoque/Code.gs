@@ -136,7 +136,7 @@ function writeState_(meta,counts,defects,previous){
   const size=Math.max(counts.length,defects.length,combined.length,1);
   const oldSize=Math.max((previous.counts||[]).length+(previous.defects||[]).length,1),clearSize=Math.max(size,oldSize);
   resizeRows_(sheet,Math.max(clearSize,isRecount?(previous.targets||[]).length:0)+4);
-  ensureResponsibleColumns_(sheet);resizeColumns_(sheet,isRecount?24:19);
+  ensureResponsibleColumns_(sheet);resizeColumns_(sheet,isRecount?26:19);
   sheet.getRange(4,1,1,19).setValues([stateHeaders_()]);
   sheet.getRange(5,1,clearSize,19).clearContent();
   const matrix=Array.from({length:size},()=>Array(19).fill(''));
@@ -356,7 +356,12 @@ function verifyInventoryRuntime(){
     check(!Object.prototype.hasOwnProperty.call(storeView,'baseline'),'ocultação das quantidades originais para acessos de loja');
     recount=call({action:'save',id:recount.id,version:recount.version,requestId:Utilities.getUuid(),counts:[{ean:a,quantity:4,lastScannedAt:time}],defects:[{ean:a,quantity:1,lastScannedAt:time}],zeroEans:[b]});
     check(recount.targets.length===2,'preservação dos produtos solicitados na recontagem');
+    recount=call({action:'openRecount',id:recount.id});
+    const savedBaseline=new Map((recount.baseline||[]).map(r=>[r.ean,r.quantity]));
+    check(savedBaseline.get(a)===3&&savedBaseline.get(b)===3,'preservação do histórico original após salvamento');
     recount=call({action:'finish',id:recount.id,version:recount.version,requestId:Utilities.getUuid(),counts:recount.counts,defects:[],zeroEans:[b]});
+    const finishedBaseline=new Map((call({action:'read',id:recount.id}).baseline||[]).map(r=>[r.ean,r.quantity]));
+    check(finishedBaseline.get(a)===3&&finishedBaseline.get(b)===3,'preservação do histórico original após finalização');
     const updated=call({action:'read',id:count.id});
     check(updated.counts.length===1&&updated.counts[0].quantity===4&&!updated.defects.length,'aplicação da recontagem');
     check(db_().getSheetByName(recount.sheet).getRange(6,15).getDisplayValues()[0][0]==='','limpeza da importação antiga');
