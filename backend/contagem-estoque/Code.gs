@@ -92,10 +92,13 @@ function state_(meta,spreadsheet,includeBaseline){
   const modern=sheet.getRange('E4').getDisplayValues()[0][0]==='SUBGRUPO',hasResponsible=sheet.getRange('H4').getDisplayValues()[0][0]==='RESPONSAVEL',width=hasResponsible?8:modern?7:6;
   const values=last>=5?sheet.getRange(5,1,last-4,width*2).getDisplayValues():[];
   let groups=null;const subgroup=(ean,value)=>{if(value)return value;if(!groups)groups=new Map(catalog_().map(p=>[p[0],p[3]||'']));return groups.get(ean)||'';};
-  const parse=(offset)=>values.filter(r=>r[offset]&&Number(r[offset+1])>0).map(r=>({
-    ean:String(r[offset]),quantity:Number(r[offset+1]),description:r[offset+2],brand:r[offset+3],subgroup:subgroup(String(r[offset]),modern?r[offset+4]:''),unknown:r[offset+(modern?5:4)]==='SIM',lastScannedAt:r[offset+(modern?6:5)]||'',responsible:hasResponsible?r[offset+7]||'':''
-  }));
-  const result=Object.assign(publicMeta_(meta),{counts:parse(0),defects:parse(width),responsibleColumns:hasResponsible});
+  const unknownValues=sheet.getMaxColumns()>=34&&sheet.getRange('AA4').getDisplayValues()[0][0]==='MODELO CONTAGEM'?sheet.getRange(5,27,Math.max(1,last-4),8).getDisplayValues():[];
+  const parse=(offset,extraOffset)=>values.map((r,index)=>({r,index})).filter(x=>x.r[offset]&&Number(x.r[offset+1])>0).map(({r,index})=>{
+    const extra=unknownValues[index]||[],unknown=r[offset+(modern?5:4)]==='SIM',model=extra[extraOffset]||'';
+    return {ean:String(r[offset]),quantity:Number(r[offset+1]),description:unknown&&model?model:r[offset+2],brand:r[offset+3],subgroup:subgroup(String(r[offset]),modern?r[offset+4]:''),unknown,
+      gender:extra[extraOffset+1]||'',color:extra[extraOffset+2]||'',size:extra[extraOffset+3]||'',lastScannedAt:r[offset+(modern?6:5)]||'',responsible:hasResponsible?r[offset+7]||'':''};
+  });
+  const result=Object.assign(publicMeta_(meta),{counts:parse(0,0),defects:parse(width,4),responsibleColumns:hasResponsible});
   if(meta.kind==='RECONTAGEM'){const start=hasResponsible?21:modern?19:17,rows=last>=5?sheet.getRange(5,start,last-4,4).getDisplayValues():[];result.targets=rows.filter(r=>r[0]).map(r=>({ean:r[0],description:r[1],brand:r[2],subgroup:subgroup(r[0],'')}));result.zeroEans=rows.filter(r=>r[0]&&r[3]==='SIM').map(r=>r[0]);if(includeBaseline)result.baseline=sheet.getMaxColumns()>=26&&sheet.getRange('Y4').getDisplayValues()[0][0]==='EAN ORIGINAL'?sheet.getRange(5,25,Math.max(0,last-4),2).getDisplayValues().filter(r=>r[0]).map(r=>({ean:r[0],quantity:Number(r[1])||0})):null;}
   return result;
 }
@@ -104,21 +107,27 @@ function normalizeRows_(rows,products){
   const result=new Map();
   rows.forEach(r=>{
     const ean=String(r.ean||'').trim(),quantity=Number(r.quantity);
-    if(!/^\d{1,15}$/.test(ean)||!Number.isInteger(quantity)||quantity<1||quantity>1000000)throw new Error('EAN ou quantidade inválida.');
+    if(!/^\d{1,15}$/.test(ean)||!Number.isInteger(quantity)||quantity<1||quantity>1000)throw new Error('EAN ou quantidade inválida.');
     const product=products.get(ean);
     if(!product&&!r.unknown)throw new Error('Produto inexistente: '+ean);
-    const model=normalizeUnknownText_(r.description,180),gender=String(r.gender||'').trim().toLocaleUpperCase('pt-BR'),color=normalizeUnknownText_(r.color,80),size=String(r.size||'').trim().toLocaleUpperCase('pt-BR');
-    if(!product&&(!model||!['MASCULINO','FEMININO','UNISSEX','INFANTIL'].includes(gender)||!color||!/^[A-Z0-9]{1,4}$/.test(size)))throw new Error('Preencha MODELO, GÊNERO, COR e TAMANHO do EAN '+ean+'.');
+    const model=normalizeUnknownText_(r.description,180),brand=normalizeUnknownText_(r.brand,80),gender=String(r.gender||'').trim().toLocaleUpperCase('pt-BR'),color=normalizeUnknownText_(r.color,80),size=String(r.size||'').trim().toLocaleUpperCase('pt-BR');
+    if(!product&&(!model||!brand||!['MASCULINO','FEMININO','UNISSEX','INFANTIL'].includes(gender)||!color||!/^[A-Z0-9]{1,4}$/.test(size)))throw new Error('Preencha MODELO, MARCA, GÊNERO, COR e TAMANHO do EAN '+ean+'.');
     const inputTime=String(r.lastScannedAt||'').trim(),inputMs=Date.parse(inputTime),safeTime=inputTime&&!isNaN(inputMs)?new Date(inputMs).toISOString():'';
-    const item=result.get(ean)||{ean,quantity:0,description:product?product[1]:[model,gender,color,size].join(' '),brand:product?product[2]:'',subgroup:product?product[3]||'':'',unknown:!product,lastScannedAt:safeTime};
-    item.responsible=[item.responsible,responsibleText_(r)].filter(Boolean).join('; ').slice(0,4000);item.quantity+=quantity;if(Date.parse(safeTime)>Date.parse(item.lastScannedAt||0))item.lastScannedAt=safeTime;result.set(ean,item);
+    const item=result.get(ean)||{ean,quantity:0,description:product?product[1]:model,brand:product?product[2]:brand,gender:product?'':gender,color:product?'':color,size:product?'':size,subgroup:product?product[3]||'':'',unknown:!product,lastScannedAt:safeTime};
+    item.responsible=[item.responsible,responsibleText_(r)].filter(Boolean).join('; ').slice(0,4000);item.quantity+=quantity;if(item.quantity>1000)throw new Error('O EAN '+ean+' ultrapassa 1.000 unidades.');if(Date.parse(safeTime)>Date.parse(item.lastScannedAt||0))item.lastScannedAt=safeTime;result.set(ean,item);
   });
   return Array.from(result.values());
+}
+function validateCountLimits_(counts,defects){
+  const byEan=new Map();let total=0;
+  (counts||[]).concat(defects||[]).forEach(r=>{const quantity=Number(r.quantity)||0;total+=quantity;byEan.set(r.ean,(byEan.get(r.ean)||0)+quantity);});
+  if(total>10000)throw new Error('A loja ultrapassa o limite total de 10.000 unidades contadas.');
+  for(const [ean,quantity] of byEan)if(quantity>1000)throw new Error('O EAN '+ean+' ultrapassa o limite de 1.000 unidades.');
 }
 function normalizeUnknownText_(value,max){return String(value||'').toLocaleUpperCase('pt-BR').replace(/[^\p{L}\p{N} ]/gu,'').replace(/\s+/g,' ').trim().slice(0,max);}
 function mergeRows_(existing,incoming){
   const rows=existing.map(r=>Object.assign({},r)),byEan=new Map(rows.map((r,i)=>[r.ean,i]));
-  incoming.forEach(r=>{const i=byEan.get(r.ean);if(i===undefined){byEan.set(r.ean,rows.length);rows.push(Object.assign({},r));}else{const quantity=rows[i].quantity+r.quantity;if(quantity>1000000)throw new Error('A quantidade total do EAN '+r.ean+' ultrapassa 1.000.000.');rows[i].quantity=quantity;rows[i].lastScannedAt=r.lastScannedAt||rows[i].lastScannedAt;}});
+  incoming.forEach(r=>{const i=byEan.get(r.ean);if(i===undefined){byEan.set(r.ean,rows.length);rows.push(Object.assign({},r));}else{const quantity=rows[i].quantity+r.quantity;if(quantity>1000)throw new Error('A quantidade total do EAN '+r.ean+' ultrapassa 1.000 unidades.');rows[i].quantity=quantity;rows[i].lastScannedAt=r.lastScannedAt||rows[i].lastScannedAt;}});
   return rows;
 }
 function deleteEmptyCount_(meta,list){
@@ -136,14 +145,14 @@ function writeState_(meta,counts,defects,previous){
   const size=Math.max(counts.length,defects.length,combined.length,1);
   const oldSize=Math.max((previous.counts||[]).length+(previous.defects||[]).length,1),clearSize=Math.max(size,oldSize);
   resizeRows_(sheet,Math.max(clearSize,isRecount?(previous.targets||[]).length:0)+4);
-  ensureResponsibleColumns_(sheet);resizeColumns_(sheet,isRecount?26:19);
+  ensureResponsibleColumns_(sheet);resizeColumns_(sheet,34);
   sheet.getRange(4,1,1,19).setValues([stateHeaders_()]);
   sheet.getRange(5,1,clearSize,19).clearContent();
-  const matrix=Array.from({length:size},()=>Array(19).fill(''));
-  const fill=(list,col)=>list.forEach((r,i)=>{matrix[i][col]=r.ean;matrix[i][col+1]=r.quantity;matrix[i][col+2]=String(r.description||'').startsWith('=')?"'"+r.description:r.description;matrix[i][col+3]=String(r.brand||'').startsWith('=')?"'"+r.brand:r.brand;matrix[i][col+4]=String(r.subgroup||'').startsWith('=')?"'"+r.subgroup:r.subgroup||'';matrix[i][col+5]=r.unknown?'SIM':'NÃO';matrix[i][col+6]=r.lastScannedAt||'';const name=responsibleText_(r);matrix[i][col+7]=name.startsWith('=')?"'"+name:name;});
-  fill(counts,0);fill(defects,8);
+  const matrix=Array.from({length:size},()=>Array(19).fill('')),unknownMatrix=Array.from({length:size},()=>Array(8).fill(''));
+  const fill=(list,col,extraOffset)=>list.forEach((r,i)=>{matrix[i][col]=r.ean;matrix[i][col+1]=r.quantity;const productLabel=r.unknown?[r.description,r.gender,r.color,r.size].filter(Boolean).join(' '):r.description;matrix[i][col+2]=String(productLabel||'').startsWith('=')?"'"+productLabel:productLabel;matrix[i][col+3]=String(r.brand||'').startsWith('=')?"'"+r.brand:r.brand;matrix[i][col+4]=String(r.subgroup||'').startsWith('=')?"'"+r.subgroup:r.subgroup||'';matrix[i][col+5]=r.unknown?'SIM':'NÃO';matrix[i][col+6]=r.lastScannedAt||'';const name=responsibleText_(r);matrix[i][col+7]=name.startsWith('=')?"'"+name:name;if(r.unknown){unknownMatrix[i][extraOffset]=r.description||'';unknownMatrix[i][extraOffset+1]=r.gender||'';unknownMatrix[i][extraOffset+2]=r.color||'';unknownMatrix[i][extraOffset+3]=r.size||'';}});
+  fill(counts,0,0);fill(defects,8,4);
   combined.forEach((r,i)=>{matrix[i][16]=r.ean;matrix[i][17]=r.quantity;matrix[i][18]=r.ean+','+r.quantity;});
-  sheet.getRange(5,1,size,19).setNumberFormat('@').setValues(matrix);
+  sheet.getRange(5,1,size,19).setNumberFormat('@').setValues(matrix);sheet.getRange(5,27,clearSize,8).clearContent();if(size){sheet.getRange('AA4:AH4').setValues([['MODELO CONTAGEM','GÊNERO CONTAGEM','COR CONTAGEM','TAMANHO CONTAGEM','MODELO DEFEITO','GÊNERO DEFEITO','COR DEFEITO','TAMANHO DEFEITO']]);sheet.getRange(5,27,size,8).setNumberFormat('@').setValues(unknownMatrix);}
   sheet.getRange(5,2,size,1).setNumberFormat('0');sheet.getRange(5,10,size,1).setNumberFormat('0');sheet.getRange(5,18,size,1).setNumberFormat('0');
   resizeRows_(sheet,Math.max(size,isRecount?(previous.targets||[]).length:0)+4);
   SpreadsheetApp.flush();
@@ -242,13 +251,14 @@ function route_(p){
     if(missing.length&&!p.includeUnknown)return {requiresConfirmation:true,unknown:missing.slice(0,100),unknownCount:missing.length};
     const current=state_(meta),incoming=normalizeRows_(p.rows.map(r=>Object.assign({},r,{unknown:!!p.includeUnknown})),products);
     const merged=mergeRows_(current[p.kind],incoming),counts=p.kind==='counts'?merged:current.counts,defects=p.kind==='defects'?merged:current.defects,zeroEans=(current.zeroEans||[]).filter(e=>!incoming.some(r=>r.ean===e));
-    if(meta.kind==='RECONTAGEM')validateRecount_(meta,counts,defects,zeroEans,false,current);
+    validateCountLimits_(counts,defects);if(meta.kind==='RECONTAGEM')validateRecount_(meta,counts,defects,zeroEans,false,current);
     writeState_(meta,counts,defects,current);meta.version++;meta.updatedAt=new Date().toISOString();meta.requestId=String(p.requestId);
     if(meta.kind==='RECONTAGEM')writeRecountZeros_(meta,zeroEans);
     if(p.auditSession){Object.assign(meta,sessionAudit_(p.auditSession));}saveMeta_(meta);
     const result=state_(meta);result.imported=incoming.length;return result;
   }
   const counts=normalizeRows_(p.counts,products),defects=normalizeRows_(p.defects,products),previous=state_(meta);
+  validateCountLimits_(counts,defects);
   if(meta.kind==='RECONTAGEM'){
     if(!list.some(m=>m.id===meta.sourceId&&m.store===meta.store))throw new Error('A contagem original foi excluída.');
     validateRecount_(meta,counts,defects,p.zeroEans||[],p.action==='finish',previous);
@@ -377,8 +387,8 @@ function verifyInventoryRuntime(){
 
 
 function verifyInventoryProductIdentification(){
- const rows=normalizeRows_([{ean:'0000000000001',quantity:2,unknown:true,description:'PRODUTO PARA CADASTRAR',brand:'MARCA NOVA',lastScannedAt:'2026-10-22T12:00:00.000Z'}],new Map());
- if(rows[0].description!=='PRODUTO PARA CADASTRAR'||rows[0].brand!=='MARCA NOVA'||!rows[0].unknown||rows[0].ean!=='0000000000001')throw Error('Identificação perdida');
+ const rows=normalizeRows_([{ean:'0000000000001',quantity:2,unknown:true,description:'PRODUTO PARA CADASTRAR',brand:'MARCA NOVA',gender:'MASCULINO',color:'PRETO',size:'40',lastScannedAt:'2026-10-22T12:00:00.000Z'}],new Map());
+ if(rows[0].description!=='PRODUTO PARA CADASTRAR'||rows[0].brand!=='MARCA NOVA'||rows[0].gender!=='MASCULINO'||rows[0].color!=='PRETO'||rows[0].size!=='40'||!rows[0].unknown||rows[0].ean!=='0000000000001')throw new Error('Identificação perdida');
  const known=normalizeRows_([{ean:'123',quantity:1,description:'ALTERADO',brand:'ALTERADA'}],new Map([['123',['123','PRODUTO OFICIAL','MARCA OFICIAL']]]));
  if(known[0].description!=='PRODUTO OFICIAL'||known[0].brand!=='MARCA OFICIAL')throw Error('Cadastro oficial alterado');
  console.log('OK: produto e marca informados preservados; EAN com zeros preservado; cadastro oficial prioritário.');
