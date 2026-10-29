@@ -14,6 +14,25 @@ create table if not exists public.stockcount_team_people (
  updated_at timestamptz not null default now(), primary key(count_id,id)
 );
 create unique index if not exists stockcount_team_person_id on public.stockcount_team_people(id);
+-- Unknown EANs must keep their user-entered subgroup in the authoritative record.
+create or replace function public.stockcount_check_unknown_subgroups()
+returns trigger language plpgsql security invoker set search_path=public as $
+declare k text; r jsonb;
+begin
+ foreach k in array array['counts','defects'] loop
+  for r in select value from jsonb_array_elements(coalesce(new.state->k,'[]'::jsonb)) loop
+   if coalesce((r->>'unknown')::boolean,false) and coalesce(nullif(btrim(r->>'subgroup'),''),'')='' then
+    raise exception 'SUBGRUPO obrigatório para EAN não cadastrado: %',r->>'ean';
+   end if;
+  end loop;
+ end loop;
+ return new;
+end;
+$;
+drop trigger if exists stockcount_team_unknown_subgroup_required on public.stockcount_team_people;
+create trigger stockcount_team_unknown_subgroup_required before insert or update of state on public.stockcount_team_people
+for each row execute function public.stockcount_check_unknown_subgroups();
+
 create table if not exists public.stockcount_user_store_access (
  user_id uuid not null references auth.users(id) on delete cascade,
  sigla text not null references public.manual_portal_store_logins(sigla) on delete cascade,
