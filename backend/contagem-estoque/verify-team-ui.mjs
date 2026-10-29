@@ -24,7 +24,10 @@ assert.ok(html.includes('id="unknown-size"'));
 assert.match(html,/id="ean-input"[^>]*maxlength="15"/);
 assert.match(html,/id="unknown-gender"[^>]*><option value="">Selecione<\/option><option value="MASCULINO">/);
 assert.match(html,/id="unknown-size"[^>]*maxlength="4"/);
-assert.ok(!html.includes('id="unknown-brand"'));
+assert.match(html,/id="unknown-brand"[^>]*required/);
+assert.match(html,/id="unknown-quantity"[^>]*max="1000"[^>]*required/);
+assert.match(source,/findUnknownProduct\(ean\)/);
+assert.match(source,/MAX_PRODUCT_QUANTITY=1000,MAX_STORE_QUANTITY=10000/);
 assert.match(exporter,/\['EAN','QNTD','PRODUTO','MARCA','GÊNERO','COR','TAMANHO'/);
 assert.ok(html.includes('GÊNERO')&&html.includes('TAMANHO'));
 assert.match(html, /id="view-session"[^>]*>VISUALIZAR<\/button>/);
@@ -35,9 +38,9 @@ assert.match(source, /data-person-action="finish"/);
 assert.match(source, /data-person-action="clear"/);
 assert.match(source,/const MAX_EAN_LENGTH=15/);
 assert.match(source,/Não foi possível consultar o cadastro agora[\s\S]*scanSound\(false\)/);
-assert.match(source,/description:existingUnknown\.description,gender:existingUnknown\.gender,color:existingUnknown\.color,size:existingUnknown\.size/);
+assert.match(source,/description:existingUnknown\.description,brand:existingUnknown\.brand,gender:existingUnknown\.gender,color:existingUnknown\.color,size:existingUnknown\.size/);
 assert.match(exporter,/r\.unknown\?\[r\.description,r\.gender,r\.color,r\.size\]\.filter\(Boolean\)\.join\(' '\)/);
-assert.match(sheetBackend,/description:product\?product\[1\]:\[model,gender,color,size\]\.join\(' '\)/);
+assert.match(sheetBackend,/description:product\?product\[1\]:model/);
 const exportVm=vm.createContext({window:{},TextEncoder,Blob});vm.runInContext(exporter,exportVm);
 const sampleWorkbook=await exportVm.window.TPInventoryExport.workbook({counts:[{ean:'001',quantity:1,description:'MODELO',unknown:true,gender:'MASCULINO',color:'AZUL',size:'38'}],defects:[]});
 assert.ok(Buffer.from(await sampleWorkbook.arrayBuffer()).includes(Buffer.from('MODELO MASCULINO AZUL 38')),'downloaded workbook PRODUCT cell must contain the four-field concatenation');
@@ -60,22 +63,27 @@ for(const d of [a,b]){
 }
 a.run("addScan('001');addScan('001');current.peers.counts=[{ean:'001',quantity:3,description:'Produto',brand:'MARCA',responsible:'João'}];");
 assert.equal(a.run('teamExportState().counts[0].quantity'),5);
-a.run("addScan('999',true,'LEITOR',{description:'Modelo X',gender:'FEMININO',color:'Azul',size:'38'},1);");
+a.run("addScan('999',true,'LEITOR',{description:'Modelo X',brand:'Marca X',gender:'FEMININO',color:'Azul',size:'38'},1);");
 for(const field of ['description','gender','color','size'])assert.ok(a.run(`current.counts.find(r=>r.ean==='999').${field}`),`unknown product ${field} is saved on the count row`);
 a.run('render()');assert.match(a.$('#count-body').innerHTML,/GÊNERO FEMININO · COR Azul · TAMANHO 38/,'unknown product attributes are visible in the count list');
-assert.equal(a.run("current.counts.find(r=>r.ean==='999').brand"),'','unknown product no longer requires a brand');
+assert.equal(a.run("current.counts.find(r=>r.ean==='999').brand"),'Marca X','unknown product brand is retained');
 a.run("current.counts=current.counts.filter(r=>r.ean!=='999');");
 // Unknown-product cells are uppercase, punctuation-free, and concatenated in required order for Sheets.
 const normalizer=sheetBackend.slice(sheetBackend.indexOf('function normalizeRows_'),sheetBackend.indexOf('\nfunction mergeRows_',sheetBackend.indexOf('function normalizeRows_')));
 const sheetVm=vm.createContext({responsibleText_:r=>r.responsible||''});vm.runInContext(normalizer,sheetVm);
-const normalized=sheetVm.normalizeRows_([{ean:'000000000000001',quantity:2,unknown:true,description:'modelo-x',gender:'feminino',color:'azul/vermelho',size:'2xl'}],new Map());
-assert.equal(normalized[0].description,'MODELOX FEMININO AZULVERMELHO 2XL');assert.equal(normalized[0].brand,'');
-assert.throws(()=>sheetVm.normalizeRows_([{ean:'123',quantity:1,unknown:true,description:'MODELO',color:'AZUL',size:'38'}],new Map()),/MODELO, GÊNERO, COR e TAMANHO/);
-assert.throws(()=>sheetVm.normalizeRows_([{ean:'1234567890123456',quantity:1,unknown:true,description:'MODELO',gender:'MASCULINO',color:'AZUL',size:'38'}],new Map()),/EAN ou quantidade inválida/);
-assert.throws(()=>sheetVm.normalizeRows_([{ean:'123',quantity:1,unknown:true,description:'MODELO',gender:'MASCULINO',color:'AZUL',size:'38/2'}],new Map()),/MODELO, GÊNERO, COR e TAMANHO/);
-// Existing unknown EAN from another participant is reused and adds quantity without reopening the form.
-const shared=device();shared.run("user={id:'u',store:'APAR',allStores:false};auth={access_token:'test'};catalogComplete=true;catalog=new Map();current={id:'shared',kind:'CONTAGEM',status:'EM ANDAMENTO',responsible:'Maria',counts:[],defects:[],peers:{counts:[{ean:'12345',quantity:3,unknown:true,description:'MODELO',gender:'FEMININO',color:'AZUL',size:'38'}],defects:[]}};$('#ean-input').value='12345';");
+const normalized=sheetVm.normalizeRows_([{ean:'000000000000001',quantity:2,unknown:true,description:'modelo-x',brand:'Marca-X',gender:'feminino',color:'azul/vermelho',size:'2xl'}],new Map());
+assert.equal(normalized[0].description,'MODELOX');assert.equal(normalized[0].brand,'MARCAX');assert.equal(normalized[0].gender,'FEMININO');assert.equal(normalized[0].color,'AZULVERMELHO');assert.equal(normalized[0].size,'2XL');
+assert.throws(()=>sheetVm.normalizeRows_([{ean:'123',quantity:1,unknown:true,description:'MODELO',brand:'!!!',gender:'MASCULINO',color:'AZUL',size:'38'}],new Map()),/MODELO, MARCA, GÊNERO, COR e TAMANHO/);
+assert.throws(()=>sheetVm.normalizeRows_([{ean:'1234567890123456',quantity:1,unknown:true,description:'MODELO',brand:'MARCA',gender:'MASCULINO',color:'AZUL',size:'38'}],new Map()),/EAN ou quantidade inválida/);
+assert.throws(()=>sheetVm.normalizeRows_([{ean:'123',quantity:501,unknown:true,description:'MODELO',brand:'MARCA',gender:'MASCULINO',color:'AZUL',size:'38'},{ean:'123',quantity:500,unknown:true,description:'MODELO',brand:'MARCA',gender:'MASCULINO',color:'AZUL',size:'38'}],new Map()),/1.000 unidades/);
+assert.throws(()=>sheetVm.validateCountLimits_([{ean:'1',quantity:1000}],[{ean:'1',quantity:1}]),/1.000 unidades/);
+assert.throws(()=>sheetVm.validateCountLimits_(Array.from({length:11},(_,i)=>({ean:String(i),quantity:1000})),[]),/10.000 unidades/);
+assert.throws(()=>sheetVm.normalizeRows_([{ean:'123',quantity:1,unknown:true,description:'MODELO',gender:'MASCULINO',color:'AZUL',size:'38/2'}],new Map()),/MODELO, MARCA, GÊNERO, COR e TAMANHO/);
+// Existing unknown EAN from another participant is reused, including across count and defect modes.
+const shared=device();shared.run("user={id:'u',store:'APAR',allStores:false};auth={access_token:'test'};catalogComplete=true;catalog=new Map();current={id:'shared',kind:'CONTAGEM',status:'EM ANDAMENTO',responsible:'Maria',counts:[],defects:[],peers:{counts:[{ean:'12345',quantity:3,unknown:true,description:'MODELO',brand:'MARCA X',gender:'FEMININO',color:'AZUL',size:'38'}],defects:[]}};$('#ean-input').value='12345';");
 await shared.run('scan()');assert.equal(shared.run("current.counts[0].quantity"),1);assert.equal(shared.$('#unknown-dialog').open,undefined,'known shared unknown EAN should bypass the identification dialog');assert.equal(shared.run("current.counts[0].description"),'MODELO');
+shared.run("mode='defects';$('#ean-input').value='12345';");await shared.run('scan()');assert.equal(shared.run("current.defects[0].brand"),'MARCA X');assert.equal(shared.run("current.defects[0].gender"),'FEMININO');assert.equal(shared.$('#unknown-dialog').open,undefined,'defect mode reuses the previously identified product');
+const caps=device();caps.run("user={id:'u',store:'APAR',allStores:false};catalogComplete=true;catalog=new Map([['001',{description:'Produto',brand:'MARCA'}]]);current={id:'caps',kind:'CONTAGEM',status:'EM ANDAMENTO',responsible:'Maria',counts:[{ean:'001',quantity:999,description:'Produto',brand:'MARCA'}],defects:[],peers:{counts:[],defects:[]}};");caps.run("addScan('001');addScan('001');");assert.equal(caps.run("current.counts[0].quantity"),1000,'single EAN cap blocks its 1,001st unit');caps.run("mode='defects';addScan('001');");assert.equal(caps.run('current.defects.length'),0,'counts and defects share the per-product limit');caps.run("current.counts=[{ean:'001',quantity:1000,description:'Produto',brand:'MARCA'}];current.defects=[];");caps.run("for(let i=0;i<8;i++)current.defects.push({ean:String(i+2),quantity:1000,description:'P',brand:'M'});current.defects.push({ean:'20',quantity:999,description:'P',brand:'M'});catalog.set('30',{description:'Produto 30',brand:'MARCA'});addScan('30');addScan('30');");assert.equal(caps.run('countTotals().total'),10000,'store tally is not incremented beyond 10,000');
 // A definitive online miss opens identification; a transport failure only shows an inline message.
 const classification=device();classification.run("user={id:'u',store:'APAR',allStores:false};auth={access_token:'test'};current={id:'lookup',kind:'CONTAGEM',status:'EM ANDAMENTO',responsible:'Maria',counts:[],defects:[]};catalogComplete=false;catalog=new Map();$('#ean-input').value='123456789012345';");
 classification.context.fetch=async()=>Response.json({data:null});await classification.run('scan()');assert.equal(classification.$('#unknown-dialog').open,true,'confirmed absence opens the unknown-product form');
