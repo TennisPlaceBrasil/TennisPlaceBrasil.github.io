@@ -563,8 +563,7 @@ async function scan(origin='LEITOR / DIGITAÇÃO'){
   if(!new RegExp('^\\d{1,'+MAX_EAN_LENGTH+'}$').test(ean)){note('Confira o EAN informado: use apenas números e até '+MAX_EAN_LENGTH+' caracteres.',true);scanSound(false);$('#ean-input').select();return;}
   if(current.kind==='RECONTAGEM'&&!current.targets.some(t=>t.ean===ean)){note('Este EAN não está na solicitação de recontagem.',true);scanSound(false);$('#ean-input').select();return;}
   const existingUnknown=findUnknownProduct(ean);
-  if(existingUnknown?.description&&existingUnknown?.brand&&existingUnknown?.gender&&existingUnknown?.color&&existingUnknown?.size&&existingUnknown?.subgroup){addScan(ean,true,origin,{description:existingUnknown.description,brand:existingUnknown.brand,gender:existingUnknown.gender,color:existingUnknown.color,size:existingUnknown.size,subgroup:existingUnknown.subgroup},quantity);return;}
-  if(existingUnknown){showUnknown(ean,origin,'Este EAN já foi lançado como produto inexistente. Complete ou confirme os dados antes de continuar.');return;}
+  if(existingUnknown){addScan(ean,true,origin,{description:existingUnknown.description||'PRODUTO INEXISTENTE',brand:existingUnknown.brand||'',gender:existingUnknown.gender||'',color:existingUnknown.color||'',size:existingUnknown.size||'',subgroup:existingUnknown.subgroup||''},quantity);return;}
   if(catalogComplete||catalog.has(ean)||!navigator.onLine){
     if(catalog.get(ean)){addScan(ean,false,origin,null,quantity);return;}
     showUnknown(ean,origin,catalogComplete?'O EAN não foi encontrado no cadastro. Informe os dados para lançamento provisório.':'Sem acesso ao cadastro offline. O lançamento será provisório até a sincronização.');return;
@@ -750,8 +749,7 @@ async function cameraDetected(value){
   if(!product){
    if(current.kind==='RECONTAGEM'&&!current.targets.some(t=>t.ean===detected)){$('#camera-status').textContent='Código '+detected+' lido, mas não faz parte desta solicitação de recontagem.';scanSound(false);return;}
    const already=findUnknownProduct(detected);
-   if(already?.description&&already?.brand&&already?.gender&&already?.color&&already?.size&&already?.subgroup){const row=addScan(detected,true,'CÂMERA',{description:already.description,brand:already.brand,gender:already.gender,color:already.color,size:already.size,subgroup:already.subgroup});if(row){renderCameraRecent();$('#camera-status').textContent='Produto já identificado. Quantidade lançada. Aponte para o próximo produto.';}return;}
-   if(already)pendingScanQuantity=readScanQuantity()||1;
+   if(already){const quantity=readScanQuantity();if(quantity===null){$('#camera-status').textContent='Informe uma quantidade inteira entre 1 e 1.000 antes de lançar.';$('#large-quantity-input').focus();return;}const row=addScan(detected,true,'CÂMERA',{description:already.description||'PRODUTO INEXISTENTE',brand:already.brand||'',gender:already.gender||'',color:already.color||'',size:already.size||'',subgroup:already.subgroup||''},quantity);if(row){renderCameraRecent();$('#camera-status').textContent='EAN já registrado. Quantidade somada; os dados existentes foram mantidos.';}return;}
    cameraCandidate={ean:detected,session,mode,unknownPending:true};unknownOrigin='CÂMERA';if(!already)pendingScanQuantity=readScanQuantity()||1;$('#ean-input').value=detected;showUnknown(detected,'CÂMERA','O EAN não foi encontrado no cadastro. Informe os dados para lançamento pela câmera.');return;
   }
   cameraLastEan=product.ean;
