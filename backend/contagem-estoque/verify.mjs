@@ -6,7 +6,7 @@ const element=()=>({parentElement:null,append(child){child.parentElement=this;},
 const elements=new Map();
 const context=vm.createContext({console,Map,Set,JSON,Number,String,Array,Error,crypto:globalThis.crypto,structuredClone,CustomEvent:globalThis.CustomEvent,localStorage:{setItem(){},getItem(){return null;},removeItem(){}},sessionStorage:{getItem(){return null;}},navigator:{onLine:true},document:{hidden:false,activeElement:null,addEventListener(){},querySelector(s){if(!elements.has(s))elements.set(s,element());return elements.get(s);},querySelectorAll(){return[];}},fetch:async()=>Response.json({data:null}),window:{addEventListener(){},dispatchEvent(){}},setTimeout(){return 1;},setInterval(){return 1;},clearTimeout(){}});
 vm.runInContext(fs.readFileSync(new URL('../../hub/apps/contagem-estoque/dashboard.js',import.meta.url),'utf8'),context);
-vm.runInContext(fs.readFileSync(new URL('../../hub/apps/contagem-estoque/app.js',import.meta.url),'utf8'),context);
+vm.runInContext(fs.readFileSync(new URL('../../hub/apps/contagem-estoque/app.js',import.meta.url),'utf8').replace(/initializeDevice\(\)\.then\(async\(\)=>\{.*\}\s*\);/,''),context);
 vm.runInContext("catalog=new Map([['1',{description:'Produto A',brand:'MARCA'}]]);",context);
 context.fixture=[
  {store:'APAR',date:'2026-10-20',status:'FINALIZADA',kind:'CONTAGEM',createdAt:'2026-10-20T12:00:00Z',counts:[{ean:'1',quantity:2,description:'A',brand:'MARCA'}],defects:[{ean:'1',quantity:1,description:'A',brand:'MARCA'}]},
@@ -18,12 +18,12 @@ assert.equal(pivot.rows.length,3);
 assert.equal(pivot.rows.find(r=>r.store==='APAR'&&r.ean==='1').values['2026-10-20'],3);
 assert.equal(pivot.rows.find(r=>r.store==='APAR'&&r.ean==='1').values['2026-10-21']||0,0);
 assert.equal(pivot.rows.find(r=>r.store==='JOIN').values['2026-10-21'],8);
-vm.runInContext("current={id:'s',status:'EM ANDAMENTO',version:0,counts:[],defects:[]};user={id:'u'};",context);context.document.querySelector('#count-responsible').value='Maria';
+vm.runInContext("current={id:'s',kind:'CONTAGEM',status:'EM ANDAMENTO',version:0,counts:[],defects:[]};user={id:'u',store:'APAR',allStores:false};auth={access_token:'test'};catalogComplete=true;",context);context.document.querySelector('#count-responsible').value='Maria';
 context.document.querySelector('#ean-input').value='999';
 await vm.runInContext('scan()',context);
-assert.equal(elements.get('#unknown-dialog').open,true);
+assert.equal(elements.get('#unknown-dialog').open,true,'A confirmed unknown EAN opens the identification form');
 assert.equal(vm.runInContext('current.counts.length',context),0,'Unknown EAN must wait for confirmation');
-vm.runInContext("addScan('999',true)",context);
+vm.runInContext("addScan('999',true,'TESTE',{description:'Produto 999',brand:'MARCA',gender:'MASCULINO',color:'AZUL',size:'38'},1)",context);
 assert.equal(vm.runInContext('current.counts[0].unknown',context),true);
 vm.runInContext("catalog.set('2',{description:'Produto B',brand:'MARCA'});addScan('2');addScan('1');",context);
 assert.deepEqual(JSON.parse(JSON.stringify(vm.runInContext("current.counts.map(r=>r.ean)",context))),['999','2','1'],'Scanned products must keep first-scan order');
