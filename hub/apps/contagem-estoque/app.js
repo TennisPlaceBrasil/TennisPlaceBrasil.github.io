@@ -673,7 +673,7 @@ async function compareDivergence(event){
    const state=result.data,targets=state.targets||[],baseline=Array.isArray(state.baseline)?new Map(state.baseline.map(r=>[r.ean,Number(r.quantity)||0])):null;
    const current=sumRows(state),scanned=new Set(current.quantities.keys()),zeros=new Set(state.zeroEans||[]);
    leftLabel=divergenceLabel(source);rightLabel=divergenceLabel(recount);
-   if(!baseline)note='Esta recontagem é anterior ao registro do histórico original; a quantidade inicial não está disponível e será exibida como —.';
+   if(!baseline)note='A quantidade original não foi preservada nesta recontagem; não é possível calcular a diferença histórica.';
    rows=targets.map(target=>({ean:target.ean,description:target.description||current.products.get(target.ean)?.description||'',brand:target.brand||current.products.get(target.ean)?.brand||'',subgroup:target.subgroup||current.products.get(target.ean)?.subgroup||'',left:baseline?.has(target.ean)?baseline.get(target.ean):null,right:scanned.has(target.ean)?current.quantities.get(target.ean):zeros.has(target.ean)?0:current.quantities.get(target.ean)||0})).sort((a,b)=>a.description.localeCompare(b.description)||a.ean.localeCompare(b.ean));
   }else{
    if(!second)throw Error('Escolha uma segunda contagem para comparar.');
