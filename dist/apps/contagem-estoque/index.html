@@ -1,93 +1,21 @@
 <!doctype html>
 <html lang="pt-BR">
-<head><meta name="application-name" content="HubTennisPlace"><meta property="og:site_name" content="HubTennisPlace">
+<head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,follow">
   <meta name="theme-color" content="#10110f">
-  <meta name="description" content="Contagem de estoque do HubTennisPlace com salvamento no Google Drive.">
-  <title>HubTennisPlace | Inventário</title>
-  <link rel="stylesheet" href="style.css?v=inventory3">
+  <link rel="canonical" href="https://tennisplacebrasil.github.io/hub/apps/contagem-estoque/">
+  <title>HubTennisPlace | Inventário atualizado</title>
+  <script>
+    (function () {
+      var destination = '/hub/apps/contagem-estoque/' + window.location.search + window.location.hash;
+      window.location.replace(destination);
+    }());
+  </script>
+  <meta http-equiv="refresh" content="0; url=/hub/apps/contagem-estoque/">
 </head>
 <body>
-  <header class="topbar">
-    <a class="brand" href="../../" aria-label="Voltar ao HubTennisPlace"><img src="../../logo.png" alt="Tennis Place"><span class="brand-tool">INVENTÁRIO</span></a>
-    <div class="account-bar"><span id="account-label" class="local-badge">ACESSO HUBTENNISPLACE</span><button id="logout" class="button button-quiet" hidden>SAIR</button></div>
-  </header>
-  <section class="login-panel" id="login-panel"><p class="eyebrow">ACESSO HUBTENNISPLACE</p><h1><em>Inventário</em></h1><p>Use o mesmo acesso dos manuais.</p><form id="login-form"><label for="login-id">Sigla da loja ou e-mail</label><input id="login-id" autocomplete="username" required><label for="login-password">CNPJ da loja ou senha</label><input id="login-password" type="password" autocomplete="current-password" required><button class="button button-primary" id="login-submit">ENTRAR</button><p id="login-error" role="alert"></p></form></section>
-  <main id="app-main" hidden><nav class="tool-tabs"><button id="tab-count" class="active">CONTAGEM</button><button id="tab-analysis" hidden>ANÁLISE DE ESTOQUE</button></nav><p id="app-error" role="alert"></p><div id="count-view">
-    <section class="intro">
-      <div>
-        <p class="eyebrow">OPERAÇÃO DE LOJA <span> / </span> ESTOQUE</p>
-        <h1><em>Inventário</em></h1>
-        <p class="intro-copy">Bipe os produtos, registre os defeitos e gere o arquivo pronto para conferência.</p>
-      </div>
-      <div class="intro-art" aria-hidden="true">
-        <div class="scan-ring"></div><div class="scan-cross">+</div>
-        <div class="scan-label">EAN<br><b>QNTD</b></div>
-      </div>
-    </section>
-    <div class="privacy-note"><span>●</span><div><strong>Contagens salvas no Google Drive.</strong> Aguarde a confirmação de salvamento antes de fechar a página.</div></div>
-    <section class="session-bar" aria-label="Identificação da contagem">
-      <div class="session-create">
-        <label for="store-code">LOJA / SIGLA</label>
-        <select id="store-code" aria-label="Loja da contagem" required><option value="">Selecione a loja</option></select>
-        <label for="count-date">DATA DA CONTAGEM</label><input id="count-date" type="date" required>
-        <button id="new-count" class="button button-primary" type="button">＋ NOVA CONTAGEM</button>
-      </div>
-      <label class="session-picker-wrap" id="session-picker-wrap" hidden>
-        <span>CONTAGEM ATUAL</span>
-        <select id="session-picker" aria-label="Selecionar contagem salva"></select>
-      </label>
-    </section>
-    <section class="empty-state" id="empty-state">
-      <div class="empty-symbol">01</div>
-      <h2>Comece uma nova contagem</h2>
-      <p>Informe a sigla da loja e toque em <strong>Nova contagem</strong>. Cada sessão fica identificada como LOJA-data.</p>
-    </section>
-    <section class="counting" id="counting" hidden>
-      <div class="count-heading">
-        <div><span class="eyebrow">SESSÃO ATIVA</span><h2 id="session-title">—</h2></div>
-        <div><span id="sync-status" class="sync-status">Salvo no Drive</span><button id="reload-count" class="button button-quiet">REABRIR</button><button id="finish-count" class="button button-quiet">FINALIZAR CONTAGEM</button></div><div class="totals">
-          <div><span>UNIDADES CONTADAS</span><b id="count-total">0</b></div>
-          <div><span>DEFEITOS BIPADOS</span><b id="defect-total">0</b></div>
-        </div>
-      </div>
-      <div class="scanner-panel">
-        <div class="mode-switch" role="group" aria-label="Tipo de registro">
-          <button class="mode-button active" type="button" data-mode="count">CONTAGEM</button>
-          <button class="mode-button" type="button" data-mode="defects">DEFEITOS</button>
-        </div>
-        <form id="scan-form">
-          <label for="ean-input">BIPAR OU DIGITAR EAN</label>
-          <div class="scan-field">
-            <span class="scan-icon">⌁</span>
-            <input id="ean-input" inputmode="numeric" autocomplete="off" placeholder="Aguardando leitura do código…" aria-label="Bipar ou digitar EAN">
-            <button type="submit">REGISTRAR <span>↵</span></button>
-          </div>
-          <p id="scan-message" class="scan-message" aria-live="polite">O leitor de código de barras pode ser usado como teclado.</p>
-        </form>
-        <div class="catalog-status" id="catalog-status"><span class="status-dot"></span> Carregando base de produtos…</div>
-      </div>
-      <div class="lists">
-        <section class="list-panel">
-          <div class="list-heading"><div><span class="eyebrow">01 / CONTAGEM</span><h3>Produtos contados</h3></div><span id="count-rows" class="row-count">0 ITENS</span></div>
-          <div class="table-wrap"><table><thead><tr><th>EAN</th><th>PRODUTO</th><th>MARCA</th><th>QTD.</th><th></th></tr></thead><tbody id="count-body"></tbody></table><p class="table-empty" id="count-empty">Nenhum produto contado ainda.</p></div>
-        </section>
-        <section class="list-panel">
-          <div class="list-heading"><div><span class="eyebrow">02 / DEFEITOS</span><h3>Produtos com defeito</h3></div><span id="defect-rows" class="row-count">0 ITENS</span></div>
-          <div class="table-wrap"><table><thead><tr><th>EAN</th><th>PRODUTO</th><th>MARCA</th><th>QTD.</th><th></th></tr></thead><tbody id="defect-body"></tbody></table><p class="table-empty" id="defect-empty">Nenhum defeito registrado ainda.</p></div>
-        </section>
-      </div>
-      <section class="export-panel">
-        <div><span class="eyebrow">03 / SAÍDA</span><h3>Preparar a contagem</h3><p>O Excel terá abas de Contagem, Defeitos e Importação. A importação lista defeitos primeiro e depois a contagem.</p></div>
-        <div class="export-actions"><button id="export-xlsx" class="button button-primary" type="button">BAIXAR PLANILHA EXCEL</button><button id="export-txt" class="button button-quiet" type="button">BAIXAR IMPORTAÇÃO CSV</button></div>
-      </section>
-      <p class="footer-note">A análise utiliza contagens finalizadas e soma as unidades da contagem com os defeitos.</p>
-    </section>
-    </div><section id="analysis-view" hidden><div class="analysis-heading"><p class="eyebrow">GESTÃO / HISTÓRICO</p><h1>Análise de <em>Estoque</em></h1><p>Estoque físico = contagem + defeitos. Produtos ausentes em uma data aparecem com zero.</p></div><form id="analysis-filters" class="analysis-filters"><label>LOJA<select id="filter-store"></select></label><label>MARCA<select id="filter-brand"><option value="">Todas as marcas</option></select></label><label>DE<input id="filter-start" type="date"></label><label>ATÉ<input id="filter-end" type="date"></label><button class="button button-primary">ANALISAR</button></form><p id="analysis-status" aria-live="polite"></p><div class="analysis-table"><table><thead id="analysis-head"></thead><tbody id="analysis-body"></tbody></table></div></section>
-    <footer><span>HubTennisPlace</span><span>BE BOLD. BE YOU.</span></footer>
-  </main>
-  <dialog id="unknown-dialog"><p class="eyebrow">EAN NÃO RECONHECIDO</p><h2>Produto inexistente</h2><p id="unknown-ean"></p><p>O código não foi encontrado no cadastro de produtos.</p><div class="dialog-actions"><button id="correct-ean" class="button button-quiet">CORRIGIR</button><button id="allow-ean" class="button button-primary">LANÇAR MESMO ASSIM</button></div></dialog>
-  <script src="app.js?v=inventory3"></script>
+  <p>O Inventário foi atualizado. <a href="/hub/apps/contagem-estoque/">Abrir a versão atual do HubTennisPlace</a>.</p>
 </body>
 </html>
