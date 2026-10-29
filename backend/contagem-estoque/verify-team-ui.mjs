@@ -195,3 +195,17 @@ const adm=device();adm.run("user={id:'admin',allStores:true};current={id:'c',lab
 assert.match(adm.$('#team-people').innerHTML,/data-person-action="finish" data-person-id="p1"/);
 assert.match(adm.$('#team-people').innerHTML,/data-person-action="clear" data-person-id="p1"/);
 console.log('PASS: explicit VISUALIZAR, ADM reopen selection, and per-person finish/clear controls');
+const roleAccess=device();roleAccess.run("stores=[];user={id:'admin',allStores:true,master:false};current=null;displayAccount();");
+assert.equal(roleAccess.$('#tab-analysis').hidden,false,'ADM retains the analysis tab');
+assert.equal(roleAccess.$('#tab-divergence').hidden,true,'ADM cannot see the divergence tab');
+assert.equal(roleAccess.$('#tab-settings').hidden,true,'ADM cannot see master settings');
+roleAccess.run("render=()=>{};showTab('divergence')");
+assert.equal(roleAccess.$('#divergence-view').hidden,true,'ADM is redirected away from divergence');
+roleAccess.run("showTab('settings')");
+assert.equal(roleAccess.$('#settings-view').hidden,true,'ADM is redirected away from settings');
+assert.match(roleAccess.$('#app-error').textContent,/somente para usuários MASTER/);
+roleAccess.run("user.master=true;renderDivergenceOptions=()=>{};showTab('divergence')");
+assert.equal(roleAccess.$('#divergence-view').hidden,false,'MASTER can still open divergence');
+roleAccess.run("render=()=>{};showTab('settings')");
+assert.equal(roleAccess.$('#settings-view').hidden,false,'MASTER can still open settings');
+console.log('PASS: divergence and settings are MASTER-only while ADM keeps count and analysis access');
