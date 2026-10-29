@@ -387,11 +387,12 @@ function verifyInventoryRuntime(){
 
 
 function verifyInventoryProductIdentification(){
- const rows=normalizeRows_([{ean:'0000000000001',quantity:2,unknown:true,description:'PRODUTO PARA CADASTRAR',brand:'MARCA NOVA',gender:'MASCULINO',color:'PRETO',size:'40',lastScannedAt:'2026-10-22T12:00:00.000Z'}],new Map());
- if(rows[0].description!=='PRODUTO PARA CADASTRAR'||rows[0].brand!=='MARCA NOVA'||rows[0].gender!=='MASCULINO'||rows[0].color!=='PRETO'||rows[0].size!=='40'||!rows[0].unknown||rows[0].ean!=='0000000000001')throw new Error('Identificação perdida');
- const known=normalizeRows_([{ean:'123',quantity:1,description:'ALTERADO',brand:'ALTERADA'}],new Map([['123',['123','PRODUTO OFICIAL','MARCA OFICIAL']]]));
- if(known[0].description!=='PRODUTO OFICIAL'||known[0].brand!=='MARCA OFICIAL')throw Error('Cadastro oficial alterado');
- console.log('OK: produto e marca informados preservados; EAN com zeros preservado; cadastro oficial prioritário.');
+ const rows=normalizeRows_([{ean:'0000000000001',quantity:2,unknown:true,description:'PRODUTO PARA CADASTRAR',brand:'MARCA NOVA',gender:'MASCULINO',color:'PRETO',size:'40',subgroup:'TENIS',lastScannedAt:'2026-10-22T12:00:00.000Z'}],new Map());
+ if(rows[0].description!=='PRODUTO PARA CADASTRAR'||rows[0].brand!=='MARCA NOVA'||rows[0].gender!=='MASCULINO'||rows[0].color!=='PRETO'||rows[0].size!=='40'||rows[0].subgroup!=='TENIS'||!rows[0].unknown||rows[0].ean!=='0000000000001')throw new Error('Identificação ou subgrupo perdido');
+ let rejected=false;try{normalizeRows_([{ean:'0000000000002',quantity:1,unknown:true,description:'PRODUTO SEM SUBGRUPO',brand:'MARCA',gender:'UNISSEX',color:'PRETO',size:'M'}],new Map());}catch(e){rejected=/SUBGRUPO/.test(e.message);}if(!rejected)throw Error('EAN sem cadastro foi aceito sem subgrupo');
+ const known=normalizeRows_([{ean:'123',quantity:1,description:'ALTERADO',brand:'ALTERADA',subgroup:'TENIS'}],new Map([['123',['123','PRODUTO OFICIAL','MARCA OFICIAL','TENIS']]]));
+ if(known[0].description!=='PRODUTO OFICIAL'||known[0].brand!=='MARCA OFICIAL'||known[0].subgroup!=='TENIS')throw Error('Cadastro oficial alterado');
+ console.log('OK: EAN desconhecido exige e preserva subgrupo; cadastro oficial permanece prioritário.');
 }
 
 
