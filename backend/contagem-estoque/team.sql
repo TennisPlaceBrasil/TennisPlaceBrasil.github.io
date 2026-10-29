@@ -125,15 +125,220 @@ begin
   foreach k in array array['counts','defects'] loop
    if jsonb_typeof(p_payload->k) is distinct from 'array' or jsonb_array_length(p_payload->k)>40000 then raise exception 'Lista de produtos inválida.'; end if;
    for r in select value from jsonb_array_elements(p_payload->k) loop
-    if coalesce(r->>'ean','') !~ '^\d{1,30}$' or coalesce(r->>'quantity','') !~ '^\d+$' or (r->>'quantity')::numeric not between 1 and 1000000
-     or coalesce(length(btrim(r->>'description')),0) not between 1 and 180 or coalesce(length(btrim(r->>'brand')),0) not between 1 and 80 then raise exception 'EAN, quantidade, produto ou marca inválidos.'; end if;
+    if coalesce(r->>'ean','') !~ '^\d{1,30}$' or coalesce(r->>'quantity','') !~ '^\d+$' or (r->>'quantity')::numeric not between 1 and 1000
+     or coalesce(length(btrim(r->>'description')),0) not between 1 and 180 or coalesce(length(btrim(r->>'brand')),0) not between 1 and 80
+     or (coalesce(r->>'unknown','false')='true' and (coalesce(length(btrim(r->>'gender')),0)=0 or r->>'gender' not in ('MASCULINO','FEMININO','UNISSEX','INFANTIL') or coalesce(length(btrim(r->>'color')),0)=0 or coalesce(r->>'size','') !~ '^[A-Z0-9]{1,4}$')) then raise exception 'EAN, quantidade, produto ou marca inválidos.'; end if;
+   end loop;
+   if exists(select 1 from jsonb_array_elements(p_payload->k) a group by a->>'ean' having count(*)>1) then raise exception 'EAN repetido no mesmo envio.'; end if;
+  end loop;
+  if exists(select 1 from jsonb_array_elements(public.stockcount_team_rows(p_id,'counts',p_person)||public.stockcount_team_rows(p_id,'defects',p_person)||p_payload->'counts'||p_payload->'defects') as entry(item) group by entry.item->>'ean' having sum((entry.item->>'quantity')::bigint)>1000) then raise exception 'Um EAN ultrapassa o limite de 1.000 unidades.'; end if;
+  if coalesce((select sum((entry.item->>'quantity')::bigint) from jsonb_array_elements(public.stockcount_team_rows(p_id,'counts',p_person)||public.stockcount_team_rows(p_id,'defects',p_person)||p_payload->'counts'||p_payload->'defects') as entry(item)),0)>10000 then raise exception 'A loja ultrapassa o limite total de 10.000 unidades contadas.'; end if;
+  update public.stockcount_team_people set state=jsonb_build_object('counts',p_payload->'counts','defects',p_payload->'defects'),
+   version=version+1,done=p_action='finish',last_request=req,last_payload=payload,audit=coalesce(p_payload->'auditSession',audit),updated_at=clock_timestamp()
+   where count_id=p_id and id=p_person;
+  update public.stockcount_team_counts set revision=revision+1,updated_at=clock_timestamp(),meta=jsonb_set(meta,'{status}',to_jsonb(case when not exists(select 1 from public.stockcount_team_people where count_id=p_id and not done) then 'FINALIZADA'::text else 'EM ANDAMENTO'::text end)) where id=p_id;
+ elsif p_action='requestDelete' then
+  if exists(select 1 from public.stockcount_team_people where count_id=p_id and id is distinct from p_person and not done) then raise exception 'Aguarde os outros responsáveis finalizarem antes de solicitar exclusão.'; end if;
+  update public.stockcount_team_counts set meta=meta||jsonb_build_object('deleteStatus','PENDENTE','deleteRequestedAt',now(),'deleteRequestedBy',p_user),revision=revision+1,updated_at=now() where id=p_id;
+ elsif p_action='resolveDelete' then
+  if not adm or v_count.meta->>'deleteStatus' is distinct from 'PENDENTE' then raise exception 'Aprovação sem permissão.'; end if;
+  if (p_payload->>'reviewVersion')::bigint is distinct from v_count.revision then raise exception 'Reabra os produtos antes de aprovar.'; end if;
+  update public.stockcount_team_counts set deleted=coalesce((p_payload->>'approve')::boolean,false),meta=meta||jsonb_build_object('deleteStatus',case when (p_payload->>'approve')::boolean then 'APROVADA' else 'RECUSADA' end,'deleteReviewedBy',p_user,'deleteReviewedAt',now(),'deleteReason',left(p_payload->>'reason',200)),revision=revision+1,updated_at=now() where id=p_id;
+  if (p_payload->>'approve')::boolean then return jsonb_build_object('id',p_id,'deleted',true); end if;
+ elsif p_action='delete' then
+  if not adm then raise exception 'Exclusão restrita ao ADM.'; end if;
+  
+  update public.stockcount_team_counts set deleted=true,revision=revision+1,updated_at=now() where id=p_id;
+  return jsonb_build_object('id',p_id,'deleted',true);
+ elsif p_action='adjustRecount' then
+  if not adm and not exists(select 1 from public.manual_portal_store_logins where user_id=p_user and sigla=v_count.store) and not exists(select 1 from public.stockcount_user_store_access where user_id=p_user and sigla=v_count.store) then raise exception 'Recontagem sem permissão.'; end if;
+  if v_count.meta->>'status'<>'FINALIZADA' then raise exception 'A contagem ainda não foi finalizada.'; end if;
+  update public.stockcount_team_counts set meta=meta||jsonb_build_object('adjustedCounts',p_payload->'counts','adjustedDefects',p_payload->'defects'),revision=revision+1,mirrored_revision=revision+1,updated_at=now() where id=p_id;
+ else raise exception 'Ação colaborativa inválida.';
+ end if;
+ return public.stockcount_team_snapshot(p_id,p_person);
+end;
+$$;
+
+-- Lease + revision guards serialize the Sheets projection without holding a database lock over HTTP.
+create or replace function public.stockcount_team_mirror(p_id text,p_action text,p_lease uuid,p_revision bigint default null,p_error text default null)
+returns jsonb language plpgsql security invoker set search_path=public as $$
+declare v_count public.stockcount_team_counts%rowtype;
+begin
+ select * into v_count from public.stockcount_team_counts where id=p_id for update;
+ if not found then return null; end if;
+ if p_action='claim' then
+  if v_count.mirrored_revision>=v_count.revision or v_count.mirror_lease_until>now() then return null; end if;
+  update public.stockcount_team_counts set mirror_lease=p_lease,mirror_lease_until=now()+interval '5 minutes' where id=p_id;
+  if v_count.deleted then
+   return jsonb_build_object('id',v_count.id,'store',v_count.store,'version',v_count.revision,'deleted',true);
+  end if;
+  return public.stockcount_team_snapshot(p_id);
+ end if;
+ if p_action<>'complete' then raise exception 'Ação de sincronização inválida.'; end if;
+ if v_count.mirror_lease is distinct from p_lease or p_revision is null or p_revision>v_count.revision then return null; end if;
+ update public.stockcount_team_counts set mirrored_revision=case when p_error is null then greatest(mirrored_revision,p_revision) else mirrored_revision end,
+  mirror_error=left(p_error,300),mirror_lease=null,mirror_lease_until=null where id=p_id;
+ return null;
+end;
+$$;
+create or replace function public.stockcount_team_pending_mirrors(p_stores text[] default null,p_limit integer default 3)
+returns jsonb language sql stable security invoker set search_path=public as $$
+ select coalesce(jsonb_agg(jsonb_build_object('id',q.id)),'[]'::jsonb)
+ from (select id from public.stockcount_team_counts
+ where revision>mirrored_revision and (mirror_lease_until is null or mirror_lease_until<=now())
+ and (p_stores is null or store=any(p_stores))
+ order by deleted desc,updated_at asc limit greatest(1,least(coalesce(p_limit,3),10))) q;
+$$;
+revoke all on function public.stockcount_team_pending_mirrors(text[],integer) from public,anon,authenticated;
+grant execute on function public.stockcount_team_pending_mirrors(text[],integer) to service_role;
+revoke all on function public.stockcount_team_mirror(text,text,uuid,bigint,text) from public,anon,authenticated;
+grant execute on function public.stockcount_team_mirror(text,text,uuid,bigint,text) to service_role;
+revoke all on function public.stockcount_team_rows(text,text,uuid),public.stockcount_team_snapshot(text,uuid),public.stockcount_team(text,uuid,text,uuid,jsonb),public.stockcount_team_mirror(text,text,uuid,bigint,text),public.stockcount_team_share_people(text) from public,anon,authenticated;
+grant execute on function public.stockcount_team_rows(text,text,uuid),public.stockcount_team_snapshot(text,uuid),public.stockcount_team(text,uuid,text,uuid,jsonb),public.stockcount_team_mirror(text,text,uuid,bigint,text),public.stockcount_team_share_people(text) to service_role;
+)) then raise exception 'EAN, quantidade, produto ou marca inválidos.'; end if;
    end loop;
    if exists(select 1 from jsonb_array_elements(p_payload->k) a group by a->>'ean' having count(*)>1) then raise exception 'EAN repetido no mesmo envio.'; end if;
   end loop;
   update public.stockcount_team_people set state=jsonb_build_object('counts',p_payload->'counts','defects',p_payload->'defects'),
    version=version+1,done=p_action='finish',last_request=req,last_payload=payload,audit=coalesce(p_payload->'auditSession',audit),updated_at=clock_timestamp()
    where count_id=p_id and id=p_person;
-  if exists(select 1 from jsonb_array_elements(public.stockcount_team_rows(p_id,'counts')||public.stockcount_team_rows(p_id,'defects')) a where (a->>'quantity')::bigint>1000000) then raise exception 'Total de um EAN ultrapassa 1.000.000.'; end if;
+  update public.stockcount_team_counts set revision=revision+1,updated_at=clock_timestamp(),meta=jsonb_set(meta,'{status}',to_jsonb(case when not exists(select 1 from public.stockcount_team_people where count_id=p_id and not done) then 'FINALIZADA'::text else 'EM ANDAMENTO'::text end)) where id=p_id;
+ elsif p_action='requestDelete' then
+  if exists(select 1 from public.stockcount_team_people where count_id=p_id and id is distinct from p_person and not done) then raise exception 'Aguarde os outros responsáveis finalizarem antes de solicitar exclusão.'; end if;
+  update public.stockcount_team_counts set meta=meta||jsonb_build_object('deleteStatus','PENDENTE','deleteRequestedAt',now(),'deleteRequestedBy',p_user),revision=revision+1,updated_at=now() where id=p_id;
+ elsif p_action='resolveDelete' then
+  if not adm or v_count.meta->>'deleteStatus' is distinct from 'PENDENTE' then raise exception 'Aprovação sem permissão.'; end if;
+  if (p_payload->>'reviewVersion')::bigint is distinct from v_count.revision then raise exception 'Reabra os produtos antes de aprovar.'; end if;
+  update public.stockcount_team_counts set deleted=coalesce((p_payload->>'approve')::boolean,false),meta=meta||jsonb_build_object('deleteStatus',case when (p_payload->>'approve')::boolean then 'APROVADA' else 'RECUSADA' end,'deleteReviewedBy',p_user,'deleteReviewedAt',now(),'deleteReason',left(p_payload->>'reason',200)),revision=revision+1,updated_at=now() where id=p_id;
+  if (p_payload->>'approve')::boolean then return jsonb_build_object('id',p_id,'deleted',true); end if;
+ elsif p_action='delete' then
+  if not adm then raise exception 'Exclusão restrita ao ADM.'; end if;
+  
+  update public.stockcount_team_counts set deleted=true,revision=revision+1,updated_at=now() where id=p_id;
+  return jsonb_build_object('id',p_id,'deleted',true);
+ elsif p_action='adjustRecount' then
+  if not adm and not exists(select 1 from public.manual_portal_store_logins where user_id=p_user and sigla=v_count.store) and not exists(select 1 from public.stockcount_user_store_access where user_id=p_user and sigla=v_count.store) then raise exception 'Recontagem sem permissão.'; end if;
+  if v_count.meta->>'status'<>'FINALIZADA' then raise exception 'A contagem ainda não foi finalizada.'; end if;
+  update public.stockcount_team_counts set meta=meta||jsonb_build_object('adjustedCounts',p_payload->'counts','adjustedDefects',p_payload->'defects'),revision=revision+1,mirrored_revision=revision+1,updated_at=now() where id=p_id;
+ else raise exception 'Ação colaborativa inválida.';
+ end if;
+ return public.stockcount_team_snapshot(p_id,p_person);
+end;
+$$;
+
+-- Lease + revision guards serialize the Sheets projection without holding a database lock over HTTP.
+create or replace function public.stockcount_team_mirror(p_id text,p_action text,p_lease uuid,p_revision bigint default null,p_error text default null)
+returns jsonb language plpgsql security invoker set search_path=public as $$
+declare v_count public.stockcount_team_counts%rowtype;
+begin
+ select * into v_count from public.stockcount_team_counts where id=p_id for update;
+ if not found then return null; end if;
+ if p_action='claim' then
+  if v_count.mirrored_revision>=v_count.revision or v_count.mirror_lease_until>now() then return null; end if;
+  update public.stockcount_team_counts set mirror_lease=p_lease,mirror_lease_until=now()+interval '5 minutes' where id=p_id;
+  if v_count.deleted then
+   return jsonb_build_object('id',v_count.id,'store',v_count.store,'version',v_count.revision,'deleted',true);
+  end if;
+  return public.stockcount_team_snapshot(p_id);
+ end if;
+ if p_action<>'complete' then raise exception 'Ação de sincronização inválida.'; end if;
+ if v_count.mirror_lease is distinct from p_lease or p_revision is null or p_revision>v_count.revision then return null; end if;
+ update public.stockcount_team_counts set mirrored_revision=case when p_error is null then greatest(mirrored_revision,p_revision) else mirrored_revision end,
+  mirror_error=left(p_error,300),mirror_lease=null,mirror_lease_until=null where id=p_id;
+ return null;
+end;
+$$;
+create or replace function public.stockcount_team_pending_mirrors(p_stores text[] default null,p_limit integer default 3)
+returns jsonb language sql stable security invoker set search_path=public as $$
+ select coalesce(jsonb_agg(jsonb_build_object('id',q.id)),'[]'::jsonb)
+ from (select id from public.stockcount_team_counts
+ where revision>mirrored_revision and (mirror_lease_until is null or mirror_lease_until<=now())
+ and (p_stores is null or store=any(p_stores))
+ order by deleted desc,updated_at asc limit greatest(1,least(coalesce(p_limit,3),10))) q;
+$$;
+revoke all on function public.stockcount_team_pending_mirrors(text[],integer) from public,anon,authenticated;
+grant execute on function public.stockcount_team_pending_mirrors(text[],integer) to service_role;
+revoke all on function public.stockcount_team_mirror(text,text,uuid,bigint,text) from public,anon,authenticated;
+grant execute on function public.stockcount_team_mirror(text,text,uuid,bigint,text) to service_role;
+revoke all on function public.stockcount_team_rows(text,text,uuid),public.stockcount_team_snapshot(text,uuid),public.stockcount_team(text,uuid,text,uuid,jsonb),public.stockcount_team_mirror(text,text,uuid,bigint,text),public.stockcount_team_share_people(text) from public,anon,authenticated;
+grant execute on function public.stockcount_team_rows(text,text,uuid),public.stockcount_team_snapshot(text,uuid),public.stockcount_team(text,uuid,text,uuid,jsonb),public.stockcount_team_mirror(text,text,uuid,bigint,text),public.stockcount_team_share_people(text) to service_role;
+)) then raise exception 'EAN, quantidade, produto ou marca inválidos.'; end if;
+   end loop;
+   if exists(select 1 from jsonb_array_elements(p_payload->k) a group by a->>'ean' having count(*)>1) then raise exception 'EAN repetido no mesmo envio.'; end if;
+  end loop;
+  if exists(select 1 from jsonb_array_elements(public.stockcount_team_rows(p_id,'counts',p_person)||public.stockcount_team_rows(p_id,'defects',p_person)||p_payload->'counts'||p_payload->'defects') as entry(item) group by entry.item->>'ean' having sum((entry.item->>'quantity')::bigint)>1000) then raise exception 'Um EAN ultrapassa o limite de 1.000 unidades.'; end if;
+  if coalesce((select sum((entry.item->>'quantity')::bigint) from jsonb_array_elements(public.stockcount_team_rows(p_id,'counts',p_person)||public.stockcount_team_rows(p_id,'defects',p_person)||p_payload->'counts'||p_payload->'defects') as entry(item)),0)>10000 then raise exception 'A loja ultrapassa o limite total de 10.000 unidades contadas.'; end if;
+  update public.stockcount_team_people set state=jsonb_build_object('counts',p_payload->'counts','defects',p_payload->'defects'),
+   version=version+1,done=p_action='finish',last_request=req,last_payload=payload,audit=coalesce(p_payload->'auditSession',audit),updated_at=clock_timestamp()
+   where count_id=p_id and id=p_person;
+  update public.stockcount_team_counts set revision=revision+1,updated_at=clock_timestamp(),meta=jsonb_set(meta,'{status}',to_jsonb(case when not exists(select 1 from public.stockcount_team_people where count_id=p_id and not done) then 'FINALIZADA'::text else 'EM ANDAMENTO'::text end)) where id=p_id;
+ elsif p_action='requestDelete' then
+  if exists(select 1 from public.stockcount_team_people where count_id=p_id and id is distinct from p_person and not done) then raise exception 'Aguarde os outros responsáveis finalizarem antes de solicitar exclusão.'; end if;
+  update public.stockcount_team_counts set meta=meta||jsonb_build_object('deleteStatus','PENDENTE','deleteRequestedAt',now(),'deleteRequestedBy',p_user),revision=revision+1,updated_at=now() where id=p_id;
+ elsif p_action='resolveDelete' then
+  if not adm or v_count.meta->>'deleteStatus' is distinct from 'PENDENTE' then raise exception 'Aprovação sem permissão.'; end if;
+  if (p_payload->>'reviewVersion')::bigint is distinct from v_count.revision then raise exception 'Reabra os produtos antes de aprovar.'; end if;
+  update public.stockcount_team_counts set deleted=coalesce((p_payload->>'approve')::boolean,false),meta=meta||jsonb_build_object('deleteStatus',case when (p_payload->>'approve')::boolean then 'APROVADA' else 'RECUSADA' end,'deleteReviewedBy',p_user,'deleteReviewedAt',now(),'deleteReason',left(p_payload->>'reason',200)),revision=revision+1,updated_at=now() where id=p_id;
+  if (p_payload->>'approve')::boolean then return jsonb_build_object('id',p_id,'deleted',true); end if;
+ elsif p_action='delete' then
+  if not adm then raise exception 'Exclusão restrita ao ADM.'; end if;
+  
+  update public.stockcount_team_counts set deleted=true,revision=revision+1,updated_at=now() where id=p_id;
+  return jsonb_build_object('id',p_id,'deleted',true);
+ elsif p_action='adjustRecount' then
+  if not adm and not exists(select 1 from public.manual_portal_store_logins where user_id=p_user and sigla=v_count.store) and not exists(select 1 from public.stockcount_user_store_access where user_id=p_user and sigla=v_count.store) then raise exception 'Recontagem sem permissão.'; end if;
+  if v_count.meta->>'status'<>'FINALIZADA' then raise exception 'A contagem ainda não foi finalizada.'; end if;
+  update public.stockcount_team_counts set meta=meta||jsonb_build_object('adjustedCounts',p_payload->'counts','adjustedDefects',p_payload->'defects'),revision=revision+1,mirrored_revision=revision+1,updated_at=now() where id=p_id;
+ else raise exception 'Ação colaborativa inválida.';
+ end if;
+ return public.stockcount_team_snapshot(p_id,p_person);
+end;
+$$;
+
+-- Lease + revision guards serialize the Sheets projection without holding a database lock over HTTP.
+create or replace function public.stockcount_team_mirror(p_id text,p_action text,p_lease uuid,p_revision bigint default null,p_error text default null)
+returns jsonb language plpgsql security invoker set search_path=public as $$
+declare v_count public.stockcount_team_counts%rowtype;
+begin
+ select * into v_count from public.stockcount_team_counts where id=p_id for update;
+ if not found then return null; end if;
+ if p_action='claim' then
+  if v_count.mirrored_revision>=v_count.revision or v_count.mirror_lease_until>now() then return null; end if;
+  update public.stockcount_team_counts set mirror_lease=p_lease,mirror_lease_until=now()+interval '5 minutes' where id=p_id;
+  if v_count.deleted then
+   return jsonb_build_object('id',v_count.id,'store',v_count.store,'version',v_count.revision,'deleted',true);
+  end if;
+  return public.stockcount_team_snapshot(p_id);
+ end if;
+ if p_action<>'complete' then raise exception 'Ação de sincronização inválida.'; end if;
+ if v_count.mirror_lease is distinct from p_lease or p_revision is null or p_revision>v_count.revision then return null; end if;
+ update public.stockcount_team_counts set mirrored_revision=case when p_error is null then greatest(mirrored_revision,p_revision) else mirrored_revision end,
+  mirror_error=left(p_error,300),mirror_lease=null,mirror_lease_until=null where id=p_id;
+ return null;
+end;
+$$;
+create or replace function public.stockcount_team_pending_mirrors(p_stores text[] default null,p_limit integer default 3)
+returns jsonb language sql stable security invoker set search_path=public as $$
+ select coalesce(jsonb_agg(jsonb_build_object('id',q.id)),'[]'::jsonb)
+ from (select id from public.stockcount_team_counts
+ where revision>mirrored_revision and (mirror_lease_until is null or mirror_lease_until<=now())
+ and (p_stores is null or store=any(p_stores))
+ order by deleted desc,updated_at asc limit greatest(1,least(coalesce(p_limit,3),10))) q;
+$$;
+revoke all on function public.stockcount_team_pending_mirrors(text[],integer) from public,anon,authenticated;
+grant execute on function public.stockcount_team_pending_mirrors(text[],integer) to service_role;
+revoke all on function public.stockcount_team_mirror(text,text,uuid,bigint,text) from public,anon,authenticated;
+grant execute on function public.stockcount_team_mirror(text,text,uuid,bigint,text) to service_role;
+revoke all on function public.stockcount_team_rows(text,text,uuid),public.stockcount_team_snapshot(text,uuid),public.stockcount_team(text,uuid,text,uuid,jsonb),public.stockcount_team_mirror(text,text,uuid,bigint,text),public.stockcount_team_share_people(text) from public,anon,authenticated;
+grant execute on function public.stockcount_team_rows(text,text,uuid),public.stockcount_team_snapshot(text,uuid),public.stockcount_team(text,uuid,text,uuid,jsonb),public.stockcount_team_mirror(text,text,uuid,bigint,text),public.stockcount_team_share_people(text) to service_role;
+)) then raise exception 'EAN, quantidade, produto ou marca inválidos.'; end if;
+   end loop;
+   if exists(select 1 from jsonb_array_elements(p_payload->k) a group by a->>'ean' having count(*)>1) then raise exception 'EAN repetido no mesmo envio.'; end if;
+  end loop;
+  update public.stockcount_team_people set state=jsonb_build_object('counts',p_payload->'counts','defects',p_payload->'defects'),
+   version=version+1,done=p_action='finish',last_request=req,last_payload=payload,audit=coalesce(p_payload->'auditSession',audit),updated_at=clock_timestamp()
+   where count_id=p_id and id=p_person;
   update public.stockcount_team_counts set revision=revision+1,updated_at=clock_timestamp(),meta=jsonb_set(meta,'{status}',to_jsonb(case when not exists(select 1 from public.stockcount_team_people where count_id=p_id and not done) then 'FINALIZADA'::text else 'EM ANDAMENTO'::text end)) where id=p_id;
  elsif p_action='requestDelete' then
   if exists(select 1 from public.stockcount_team_people where count_id=p_id and id is distinct from p_person and not done) then raise exception 'Aguarde os outros responsáveis finalizarem antes de solicitar exclusão.'; end if;
