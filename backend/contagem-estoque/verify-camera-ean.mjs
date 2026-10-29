@@ -28,5 +28,6 @@ assert.equal(run('cameraFallbackStarted'),true,'the slower alternative decoder r
 assert.equal(run('cameraCandidate.ean'),'198686799100','alternative reader also resolves the UPC-A alias');
 
 await run("cameraCandidate=null;cameraLastEan='';cameraLastAt=0;catalog=new Map();cameraDetected('198686799100')");
-assert.match($('#camera-status').textContent,/Código lido \(198686799100\), mas não localizado/,'an unknown decoded EAN is explained to the user');
+assert.equal($('#unknown-dialog').open,true,'an unknown decoded EAN opens the required product form');
+assert.equal(run("$('#unknown-quantity').value"),'1','unknown product quantity defaults to one unit');
 console.log('PASS: UPC-A/EAN-13 camera aliases resolve to the catalog EAN; camera preview preserves review-before-launch and explains unknown codes');
