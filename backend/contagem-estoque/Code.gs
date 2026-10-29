@@ -110,10 +110,10 @@ function normalizeRows_(rows,products){
     if(!/^\d{1,15}$/.test(ean)||!Number.isInteger(quantity)||quantity<1||quantity>1000)throw new Error('EAN ou quantidade inválida.');
     const product=products.get(ean);
     if(!product&&!r.unknown)throw new Error('Produto inexistente: '+ean);
-    const model=normalizeUnknownText_(r.description,180),brand=normalizeUnknownText_(r.brand,80),gender=String(r.gender||'').trim().toLocaleUpperCase('pt-BR'),color=normalizeUnknownText_(r.color,80),size=String(r.size||'').trim().toLocaleUpperCase('pt-BR');
-    if(!product&&(!model||!brand||!['MASCULINO','FEMININO','UNISSEX','INFANTIL'].includes(gender)||!color||!/^[A-Z0-9]{1,4}$/.test(size)))throw new Error('Preencha MODELO, MARCA, GÊNERO, COR e TAMANHO do EAN '+ean+'.');
+    const model=normalizeUnknownText_(r.description,180),brand=normalizeUnknownText_(r.brand,80),gender=String(r.gender||'').trim().toLocaleUpperCase('pt-BR'),color=normalizeUnknownText_(r.color,80),size=String(r.size||'').trim().toLocaleUpperCase('pt-BR'),subgroup=normalizeUnknownText_(r.subgroup,80);
+    if(!product&&(!model||!brand||!['MASCULINO','FEMININO','UNISSEX','INFANTIL'].includes(gender)||!color||!/^[A-Z0-9]{1,4}$/.test(size)||!subgroup))throw new Error('Preencha MODELO, MARCA, GÊNERO, COR, TAMANHO e SUBGRUPO do EAN '+ean+'.');
     const inputTime=String(r.lastScannedAt||'').trim(),inputMs=Date.parse(inputTime),safeTime=inputTime&&!isNaN(inputMs)?new Date(inputMs).toISOString():'';
-    const item=result.get(ean)||{ean,quantity:0,description:product?product[1]:model,brand:product?product[2]:brand,gender:product?'':gender,color:product?'':color,size:product?'':size,subgroup:product?product[3]||'':'',unknown:!product,lastScannedAt:safeTime};
+    const item=result.get(ean)||{ean,quantity:0,description:product?product[1]:model,brand:product?product[2]:brand,gender:product?'':gender,color:product?'':color,size:product?'':size,subgroup:product?product[3]||subgroup:subgroup,unknown:!product,lastScannedAt:safeTime};
     item.responsible=[item.responsible,responsibleText_(r)].filter(Boolean).join('; ').slice(0,4000);item.quantity+=quantity;if(item.quantity>1000)throw new Error('O EAN '+ean+' ultrapassa 1.000 unidades.');if(Date.parse(safeTime)>Date.parse(item.lastScannedAt||0))item.lastScannedAt=safeTime;result.set(ean,item);
   });
   return Array.from(result.values());
@@ -127,7 +127,7 @@ function validateCountLimits_(counts,defects){
 function normalizeUnknownText_(value,max){return String(value||'').toLocaleUpperCase('pt-BR').replace(/[^\p{L}\p{N} ]/gu,'').replace(/\s+/g,' ').trim().slice(0,max);}
 function mergeRows_(existing,incoming){
   const rows=existing.map(r=>Object.assign({},r)),byEan=new Map(rows.map((r,i)=>[r.ean,i]));
-  incoming.forEach(r=>{const i=byEan.get(r.ean);if(i===undefined){byEan.set(r.ean,rows.length);rows.push(Object.assign({},r));}else{const quantity=rows[i].quantity+r.quantity;if(quantity>1000)throw new Error('A quantidade total do EAN '+r.ean+' ultrapassa 1.000 unidades.');rows[i].quantity=quantity;rows[i].lastScannedAt=r.lastScannedAt||rows[i].lastScannedAt;}});
+  incoming.forEach(r=>{const i=byEan.get(r.ean);if(i===undefined){byEan.set(r.ean,rows.length);rows.push(Object.assign({},r));}else{const quantity=rows[i].quantity+r.quantity;if(quantity>1000)throw new Error('A quantidade total do EAN '+r.ean+' ultrapassa 1.000 unidades.');rows[i].quantity=quantity;if(!rows[i].subgroup&&r.subgroup)rows[i].subgroup=r.subgroup;rows[i].lastScannedAt=r.lastScannedAt||rows[i].lastScannedAt;}});
   return rows;
 }
 function deleteEmptyCount_(meta,list){
@@ -405,7 +405,7 @@ function ensureSubgroupColumns_(sheet){
 function migrateSubgroups(){
  const lock=LockService.getScriptLock();lock.waitLock(25000);
  try{const groups=new Map(catalog_().map(p=>[p[0],p[3]||'']));let changed=0;
-  metadata_().forEach(meta=>{const state=state_(meta);['counts','defects'].forEach(kind=>state[kind].forEach(r=>r.subgroup=r.subgroup||groups.get(r.ean)||''));writeState_(meta,state.counts,state.defects,state);changed++;});
+  metadata_().forEach(meta=>{const state=state_(meta);['counts','defects'].forEach(kind=>state[kind].forEach(r=>r.subgroup=r.subgroup||groups.get(r.ean)||(r.unknown?'PENDENTE DE CLASSIFICAÇÃO':'')));writeState_(meta,state.counts,state.defects,state);changed++;});
   return {updated:changed};
  }finally{lock.releaseLock();}
 }
