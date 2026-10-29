@@ -7,7 +7,7 @@ let accessUsers=[],accessStores=[],accessAudit=[];
 let teamScope='own',teamBusy=false,teamListBusy=false,teamLockId=null,teamUnlock=null,teamAdminActionBusy=false,selectedSessionId='';
 let serial=0,saved=0,inflight=null,timer=null,retry=null,conflict=false,xlsxPromise,recounts=[],loadingRecounts=false,recountSourceId=null,recountPage=0,pendingImport=null,cameraStream=null,cameraControls=null,cameraFrame=0,cameraActive=false,zxingPromise=null,deletionRequests=[],loadingDeletions=false,activeDeletionReviewId=null,unknownOrigin='LEITOR / DIGITAÇÃO',auditSessionPromise=null;
 const uuid=()=>crypto.randomUUID?crypto.randomUUID():Array.from(crypto.getRandomValues(new Uint8Array(16)),v=>v.toString(16).padStart(2,'0')).join('');
-const MAX_EAN_LENGTH=15;
+const MAX_EAN_LENGTH=15,MAX_PRODUCT_QUANTITY=1000,MAX_STORE_QUANTITY=10000;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function note(s,error=false){$('#scan-message').textContent=s;$('#scan-message').className='scan-message '+(error?'error':'success');}
 function sync(s,type=''){$('#sync-status').textContent=s;$('#sync-status').className='sync-status '+type;}
@@ -122,12 +122,24 @@ function restoreCatalog(){} // The durable catalogue is restored asynchronously 
 function unlockScanAudio(){try{const Audio=window.AudioContext||window.webkitAudioContext;if(!Audio)return;scanAudio=scanAudio||new Audio();if(scanAudio.state==='suspended')scanAudio.resume().catch(()=>{});}catch(_){}}
 function scanSound(positive){try{unlockScanAudio();if(!scanAudio||scanAudio.state!=='running')return;if(scanSound.active){try{scanSound.active.stop();}catch(_){}}const t=scanAudio.currentTime,osc=scanAudio.createOscillator(),gain=scanAudio.createGain(),pulses=positive?[[0,.10,1500],[.13,.10,2100]]:[[0,.14,950],[.19,.14,650],[.38,.14,950]];osc.type='square';gain.gain.setValueAtTime(0,t);for(const [offset,duration,frequency] of pulses){const start=t+offset,end=start+duration;osc.frequency.setValueAtTime(frequency,start);gain.gain.setValueAtTime(0,start);gain.gain.linearRampToValueAtTime(1,start+.004);gain.gain.setValueAtTime(1,end-.006);gain.gain.linearRampToValueAtTime(0,end);}osc.connect(gain);gain.connect(scanAudio.destination);scanSound.active=osc;osc.start(t);const last=pulses[pulses.length-1];osc.stop(t+last[0]+last[1]+.01);osc.onended=()=>{if(scanSound.active===osc)scanSound.active=null;osc.disconnect();gain.disconnect();};}catch(_){}}
 document.addEventListener('pointerdown',unlockScanAudio,{passive:true});document.addEventListener('keydown',unlockScanAudio,{passive:true});
+function findUnknownProduct(ean){
+ return [...(current?.counts||[]),...(current?.defects||[]),...(current?.peers?.counts||[]),...(current?.peers?.defects||[])].find(r=>r.ean===ean&&r.unknown);
+}
 function showUnknown(ean,origin,reason){
- const previous=current.counts.concat(current.defects).find(r=>r.ean===ean&&r.unknown);
+ const previous=findUnknownProduct(ean);
  unknown=ean;unknownOrigin=origin;$('#unknown-ean').textContent=ean;$('#unknown-reason').textContent=reason;
  $('#unknown-description').value=previous?.description==='PRODUTO INEXISTENTE'?'':previous?.description||'';
+ $('#unknown-brand').value=previous?.brand||'';
  $('#unknown-gender').value=previous?.gender||'';$('#unknown-color').value=previous?.color||'';$('#unknown-size').value=previous?.size||'';
+ $('#unknown-quantity').value=String(Math.max(1,Math.min(MAX_PRODUCT_QUANTITY,Number(pendingScanQuantity)||1)));
  scanSound(false);$('#unknown-dialog').showModal();
+}
+function countTotals(state=current){
+ const byEan=new Map();let total=0;
+ for(const row of [...(state?.counts||[]),...(state?.defects||[]),...(state?.peers?.counts||[]),...(state?.peers?.defects||[])]){
+  const quantity=Number(row.quantity)||0;total+=quantity;byEan.set(row.ean,(byEan.get(row.ean)||0)+quantity);
+ }
+ return {byEan,total};
 }
 function cleanUnknownText(value,max){return String(value||'').toLocaleUpperCase('pt-BR').replace(/[^\p{L}\p{N} ]/gu,'').replace(/\s+/g,' ').slice(0,max).trimStart();}
 function validUnknownText(value,max){const text=String(value||'').trim();return text.length>0&&text.length<=max&&/^[\p{L}\p{N} ]+$/u.test(text);}
@@ -333,7 +345,7 @@ function render(){
   $('#defect-total').textContent=(current.collaborative?teamExportState().defects:defects).reduce((n,r)=>n+r.quantity,0).toLocaleString('pt-BR');
   $('#count-rows').textContent=counts.length+' ITENS';$('#defect-rows').textContent=defects.length+' ITENS';
   $('#count-empty').hidden=!!counts.length;$('#defect-empty').hidden=!!defects.length;
-  function table(rows,kind){listPage[kind]=Math.min(listPage[kind],Math.max(0,Math.ceil(rows.length/PAGE_SIZE)-1));return rows.slice(listPage[kind]*PAGE_SIZE,(listPage[kind]+1)*PAGE_SIZE).map(r=>'<tr><td>'+esc(r.ean)+'</td><td><span class="product-name">'+esc(r.description)+'</span><span class="mobile-ean">'+esc(r.ean)+'</span><span class="mobile-subgroup">'+esc(subgroupOf(r)||'Não informado')+'</span>'+(r.gender||r.color||r.size?'<span class="product-sub">'+(r.gender?'GÊNERO '+esc(r.gender):'')+(r.color?' · COR '+esc(r.color):'')+(r.size?' · TAMANHO '+esc(r.size):'')+'</span>':'')+(r.unknown?'<span class="product-sub">Lançado mesmo assim</span>':'')+'</td><td>'+esc(r.brand||'')+'</td><td>'+esc(subgroupOf(r)||'Não informado')+'</td><td><div class="qty-actions"><button type="button" data-kind="'+kind+'" data-ean="'+esc(r.ean)+'" data-delta="-1" aria-label="Diminuir">−</button><input class="quantity-input" type="number" min="1" max="1000000" step="1" inputmode="numeric" value="'+r.quantity+'" data-quantity="1" data-list="'+kind+'" data-ean="'+esc(r.ean)+'" aria-label="Quantidade"><button type="button" data-kind="'+kind+'" data-ean="'+esc(r.ean)+'" data-delta="1" aria-label="Aumentar">+</button></div></td><td><button type="button" class="remove-row" data-kind="'+kind+'" data-ean="'+esc(r.ean)+'" data-remove="1" aria-label="Remover">×</button></td></tr>').join('');}
+  function table(rows,kind){listPage[kind]=Math.min(listPage[kind],Math.max(0,Math.ceil(rows.length/PAGE_SIZE)-1));return rows.slice(listPage[kind]*PAGE_SIZE,(listPage[kind]+1)*PAGE_SIZE).map(r=>'<tr><td>'+esc(r.ean)+'</td><td><span class="product-name">'+esc(r.description)+'</span><span class="mobile-ean">'+esc(r.ean)+'</span><span class="mobile-subgroup">'+esc(subgroupOf(r)||'Não informado')+'</span>'+(r.gender||r.color||r.size?'<span class="product-sub">'+(r.gender?'GÊNERO '+esc(r.gender):'')+(r.color?' · COR '+esc(r.color):'')+(r.size?' · TAMANHO '+esc(r.size):'')+'</span>':'')+(r.unknown?'<span class="product-sub">Lançado mesmo assim</span>':'')+'</td><td>'+esc(r.brand||'')+'</td><td>'+esc(subgroupOf(r)||'Não informado')+'</td><td><div class="qty-actions"><button type="button" data-kind="'+kind+'" data-ean="'+esc(r.ean)+'" data-delta="-1" aria-label="Diminuir">−</button><input class="quantity-input" type="number" min="1" max="1000" step="1" inputmode="numeric" value="'+r.quantity+'" data-quantity="1" data-list="'+kind+'" data-ean="'+esc(r.ean)+'" aria-label="Quantidade"><button type="button" data-kind="'+kind+'" data-ean="'+esc(r.ean)+'" data-delta="1" aria-label="Aumentar">+</button></div></td><td><button type="button" class="remove-row" data-kind="'+kind+'" data-ean="'+esc(r.ean)+'" data-remove="1" aria-label="Remover">×</button></td></tr>').join('');}
   $('#count-body').innerHTML=table(counts,'counts');$('#defect-body').innerHTML=table(defects,'defects');renderRecentScans(view);
   $('#large-quantity-toggle').setAttribute('aria-checked',String(largeQuantityEnabled));$('#large-quantity-state').textContent=largeQuantityEnabled?'LIGADO':'DESLIGADO';$('#large-quantity-field').hidden=!largeQuantityEnabled;$('#large-quantity-input').required=largeQuantityEnabled;$('#large-quantity-input').disabled=done||deletePending||!largeQuantityEnabled;
   for(const kind of ['counts','defects']){const pages=Math.max(1,Math.ceil(view[kind].length/PAGE_SIZE));$('#'+kind+'-page').textContent=(listPage[kind]+1)+' / '+pages;$('#'+kind+'-prev').disabled=listPage[kind]===0;$('#'+kind+'-next').disabled=listPage[kind]>=pages-1;}
@@ -530,28 +542,29 @@ async function createCount(){
     await persistDraft();await TPInventoryLocal.setting(creationKey,null);listPage.counts=0;listPage.defects=0;picker();render();sync(current.shareUrl?'Nova contagem criada · link de acompanhamento disponível':'Nova contagem criada no Drive');if(current.shareError)note('Contagem criada, mas não foi possível gerar o link: '+current.shareError,true);$('#ean-input').focus();
   }catch(e){alert(e.message);}finally{openingCount=false;$('#new-count').disabled=false;}
 }
-function readScanQuantity(){if(!largeQuantityEnabled)return 1;const raw=$('#large-quantity-input').value.trim(),value=Number(raw);return raw&&Number.isInteger(value)&&value>=1&&value<=1000000?value:null;}
+function readScanQuantity(){if(!largeQuantityEnabled)return 1;const raw=$('#large-quantity-input').value.trim(),value=Number(raw);return raw&&Number.isInteger(value)&&value>=1&&value<=MAX_PRODUCT_QUANTITY?value:null;}
 function renderRecentScans(state=current){const rows=['counts','defects'].flatMap(kind=>(state?.[kind]||[]).map(r=>({...r,_kind:kind}))).sort((a,b)=>Date.parse(b.lastScannedAt||0)-Date.parse(a.lastScannedAt||0)).slice(0,3);$('#recent-scans').hidden=!rows.length;$('#recent-scans-list').innerHTML=rows.map(r=>'<li><span class="recent-scan-kind">'+(r._kind==='defects'?'DEFEITO':'CONTAGEM')+'</span><strong>'+esc(r.description||'Produto')+'</strong><span>'+esc(r.ean)+' · '+Number(r.quantity).toLocaleString('pt-BR')+' un.</span></li>').join('');}
 function addScan(ean,allowUnknown=false,origin='LEITOR / DIGITAÇÃO',metadata=null,requestedQuantity=null){
   if(!editableTeam())return;
-  const quantity=requestedQuantity??readScanQuantity();if(!Number.isInteger(quantity)||quantity<1||quantity>1000000){note('Informe uma quantidade inteira entre 1 e 1.000.000.',true);return;}
+  const quantity=requestedQuantity??readScanQuantity();if(!Number.isInteger(quantity)||quantity<1||quantity>MAX_PRODUCT_QUANTITY){note('Informe uma quantidade inteira entre 1 e 1.000.',true);return;}const totals=countTotals(),productTotal=totals.byEan.get(ean)||0;if(productTotal+quantity>MAX_PRODUCT_QUANTITY){note('O EAN ultrapassaria o limite de 1.000 unidades.',true);return;}if(totals.total+quantity>MAX_STORE_QUANTITY){note('A loja atingiu o limite total de 10.000 unidades contadas.',true);return;}
   if(current.kind==='RECONTAGEM'&&!current.targets.some(t=>t.ean===ean)){note('Este EAN não está na solicitação de recontagem.',true);return;}
   current.zeroEans=(current.zeroEans||[]).filter(e=>e!==ean);
   if(current.kind==='RECONTAGEM'){recountPage=Math.floor(current.targets.findIndex(r=>r.ean===ean)/80);$('#recount-search').value='';}
   const kind=mode==='count'?'counts':'defects',p=catalog.get(ean);
   let row=current[kind].find(r=>r.ean===ean);
-  if(!row){row={ean,quantity:0,description:p?.description||metadata?.description||'PRODUTO INEXISTENTE',brand:allowUnknown?'':p?.brand||metadata?.brand||'NÃO CADASTRADA',gender:metadata?.gender||'',color:metadata?.color||'',size:metadata?.size||'',subgroup:p?.subgroup||'',unknown:allowUnknown,origin,lastScannedAt:new Date().toISOString()};current[kind].push(row);}else{row.subgroup=row.subgroup||p?.subgroup||'';row.origin=origin;row.lastScannedAt=new Date().toISOString();}
-  if(allowUnknown&&metadata){row.description=metadata.description;row.brand='';row.gender=metadata.gender;row.color=metadata.color;row.size=metadata.size;row.unknown=true;}
-  if(row.quantity+quantity>1000000){note('A quantidade total deste EAN ultrapassaria 1.000.000.',true);return;}row.quantity+=quantity;if(origin==='CÂMERA')current.recentCamera=[{ean:row.ean,description:row.description,brand:row.brand,subgroup:subgroupOf(row),mode,at:row.lastScannedAt},...(current.recentCamera||[])].slice(0,3);listPage[kind]=Math.floor(current[kind].indexOf(row)/PAGE_SIZE);changed({kind,ean});note(row.description);scanSound(true);$('#ean-input').value='';if(!$('#camera-dialog').open)$('#ean-input').focus();return row;
+  if(!row){row={ean,quantity:0,description:p?.description||metadata?.description||'PRODUTO INEXISTENTE',brand:allowUnknown?String(metadata?.brand||''):p?.brand||metadata?.brand||'NÃO CADASTRADA',gender:metadata?.gender||'',color:metadata?.color||'',size:metadata?.size||'',subgroup:p?.subgroup||'',unknown:allowUnknown,origin,lastScannedAt:new Date().toISOString()};current[kind].push(row);}else{row.subgroup=row.subgroup||p?.subgroup||'';row.origin=origin;row.lastScannedAt=new Date().toISOString();}
+  if(allowUnknown&&metadata){for(const existing of [...current.counts,...current.defects])if(existing.ean===ean&&existing.unknown)Object.assign(existing,{description:metadata.description,brand:metadata.brand,gender:metadata.gender,color:metadata.color,size:metadata.size,unknown:true});row.description=metadata.description;row.brand=metadata.brand;row.gender=metadata.gender;row.color=metadata.color;row.size=metadata.size;row.unknown=true;}
+  row.quantity+=quantity;if(origin==='CÂMERA')current.recentCamera=[{ean:row.ean,description:row.description,brand:row.brand,subgroup:subgroupOf(row),mode,at:row.lastScannedAt},...(current.recentCamera||[])].slice(0,3);listPage[kind]=Math.floor(current[kind].indexOf(row)/PAGE_SIZE);changed({kind,ean});note(row.description);scanSound(true);$('#ean-input').value='';if(!$('#camera-dialog').open)$('#ean-input').focus();return row;
 }
 async function scan(origin='LEITOR / DIGITAÇÃO'){
   if(!editableTeam()||lookingUp)return;
-  const quantity=readScanQuantity();if(quantity===null){note('Informe uma quantidade inteira entre 1 e 1.000.000.',true);$('#large-quantity-input').focus();return;}pendingScanQuantity=quantity;
+  const quantity=readScanQuantity();if(quantity===null){note('Informe uma quantidade inteira entre 1 e 1.000.',true);$('#large-quantity-input').focus();return;}pendingScanQuantity=quantity;
   const ean=$('#ean-input').value.trim();
   if(!new RegExp('^\\d{1,'+MAX_EAN_LENGTH+'}$').test(ean)){note('Confira o EAN informado: use apenas números e até '+MAX_EAN_LENGTH+' caracteres.',true);scanSound(false);$('#ean-input').select();return;}
   if(current.kind==='RECONTAGEM'&&!current.targets.some(t=>t.ean===ean)){note('Este EAN não está na solicitação de recontagem.',true);scanSound(false);$('#ean-input').select();return;}
-  const kind=mode==='count'?'counts':'defects',existingUnknown=[...(current[kind]||[]),...(current.peers?.[kind]||[])].find(r=>r.ean===ean&&r.unknown&&r.description&&r.gender&&r.color&&r.size);
-  if(existingUnknown){addScan(ean,true,origin,{description:existingUnknown.description,gender:existingUnknown.gender,color:existingUnknown.color,size:existingUnknown.size},quantity);return;}
+  const existingUnknown=findUnknownProduct(ean);
+  if(existingUnknown?.description&&existingUnknown?.brand&&existingUnknown?.gender&&existingUnknown?.color&&existingUnknown?.size){addScan(ean,true,origin,{description:existingUnknown.description,brand:existingUnknown.brand,gender:existingUnknown.gender,color:existingUnknown.color,size:existingUnknown.size},quantity);return;}
+  if(existingUnknown){showUnknown(ean,origin,'Este EAN já foi lançado como produto inexistente. Complete ou confirme os dados antes de continuar.');return;}
   if(catalogComplete||catalog.has(ean)||!navigator.onLine){
     if(catalog.get(ean)){addScan(ean,false,origin,null,quantity);return;}
     showUnknown(ean,origin,catalogComplete?'O EAN não foi encontrado no cadastro. Informe os dados para lançamento provisório.':'Sem acesso ao cadastro offline. O lançamento será provisório até a sincronização.');return;
@@ -666,7 +679,7 @@ async function compareDivergence(event){
   let rows=[],leftLabel='',rightLabel='',note='';
   const recount=first.kind==='RECONTAGEM'?first:second?.kind==='RECONTAGEM'?second:null;
   if(recount){
-   if(second&&first.id!==recount.id&&first.id!==recount.sourceId)throw Error('Selecione a contagem original junto com a recontagem.');
+   if(second){const other=first.id===recount.id?second:first;if(other.id!==recount.sourceId)throw Error('Selecione somente a contagem original junto com a recontagem.');}
    const source=sessions.find(s=>s.id===recount.sourceId);
    if(!source)throw Error('A contagem original desta recontagem não está disponível para este acesso.');
    const result=await api('read',{id:recount.id});if(request!==divergenceRequest)return;
@@ -736,9 +749,10 @@ async function cameraDetected(value){
   if(!cameraActive||generation!==cameraGeneration||current?.id!==session)return;
   if(!product){
    if(current.kind==='RECONTAGEM'&&!current.targets.some(t=>t.ean===detected)){$('#camera-status').textContent='Código '+detected+' lido, mas não faz parte desta solicitação de recontagem.';scanSound(false);return;}
-   const kind=mode==='count'?'counts':'defects',already=[...(current[kind]||[]),...(current.peers?.[kind]||[])].find(r=>r.ean===detected&&r.unknown&&r.description&&r.gender&&r.color&&r.size);
-   if(already){const row=addScan(detected,true,'CÂMERA',{description:already.description,gender:already.gender,color:already.color,size:already.size});if(row){renderCameraRecent();$('#camera-status').textContent='Produto já identificado. Quantidade lançada. Aponte para o próximo produto.';}return;}
-   cameraCandidate={ean:detected,session,mode,unknownPending:true};unknownOrigin='CÂMERA';pendingScanQuantity=readScanQuantity()||1;$('#ean-input').value=detected;showUnknown(detected,'CÂMERA','O EAN não foi encontrado no cadastro. Informe os dados para lançamento pela câmera.');return;
+   const already=findUnknownProduct(detected);
+   if(already?.description&&already?.brand&&already?.gender&&already?.color&&already?.size){const row=addScan(detected,true,'CÂMERA',{description:already.description,brand:already.brand,gender:already.gender,color:already.color,size:already.size});if(row){renderCameraRecent();$('#camera-status').textContent='Produto já identificado. Quantidade lançada. Aponte para o próximo produto.';}return;}
+   if(already)pendingScanQuantity=readScanQuantity()||1;
+   cameraCandidate={ean:detected,session,mode,unknownPending:true};unknownOrigin='CÂMERA';if(!already)pendingScanQuantity=readScanQuantity()||1;$('#ean-input').value=detected;showUnknown(detected,'CÂMERA','O EAN não foi encontrado no cadastro. Informe os dados para lançamento pela câmera.');return;
   }
   cameraLastEan=product.ean;
   if(current.kind==='RECONTAGEM'&&!current.targets.some(t=>t.ean===product.ean)){ $('#camera-status').textContent='Código '+product.ean+' lido, mas não faz parte desta solicitação de recontagem.';scanSound(false);return;}
@@ -864,17 +878,19 @@ $('#camera-close').addEventListener('click',()=>stopCamera());$('#camera-dialog'
 for(const [id,max] of [['unknown-description',180],['unknown-color',80]])$('#'+id).addEventListener('input',event=>{event.target.value=cleanUnknownText(event.target.value,max);});
 $('#unknown-size').addEventListener('input',event=>{event.target.value=String(event.target.value||'').toLocaleUpperCase('pt-BR').replace(/[^A-Z0-9]/g,'').slice(0,4);});
 $('#correct-ean').addEventListener('click',()=>{$('#unknown-dialog').close();unknown=null;if(cameraCandidate?.unknownPending){clearCameraCandidate();cameraLastEan='';$('#camera-status').textContent='Aponte a câmera para o código de barras.';}$('#ean-input').focus();$('#ean-input').select();});
-$('#unknown-form').addEventListener('submit',event=>{event.preventDefault();const description=cleanUnknownText($('#unknown-description').value,180),gender=$('#unknown-gender').value,color=cleanUnknownText($('#unknown-color').value,80),size=String($('#unknown-size').value||'').toLocaleUpperCase('pt-BR');$('#unknown-description').value=description;$('#unknown-color').value=color;$('#unknown-size').value=size;if(!validUnknownText(description,180)||!['MASCULINO','FEMININO','UNISSEX','INFANTIL'].includes(gender)||!validUnknownText(color,80)||!/^[A-Z0-9]{1,4}$/.test(size)){$('#unknown-form').reportValidity();return;}const row=addScan(unknown,true,unknownOrigin,{description,gender,color,size},pendingScanQuantity);if(row){$('#unknown-dialog').close();unknown=null;if(unknownOrigin==='CÂMERA'){clearCameraCandidate();renderCameraRecent();$('#camera-status').textContent='Produto identificado e lançado. Aponte para o próximo produto.';}}});
+$('#unknown-form').addEventListener('submit',event=>{event.preventDefault();const description=cleanUnknownText($('#unknown-description').value,180),brand=cleanUnknownText($('#unknown-brand').value,80),gender=$('#unknown-gender').value,color=cleanUnknownText($('#unknown-color').value,80),size=String($('#unknown-size').value||'').toLocaleUpperCase('pt-BR'),quantity=Number($('#unknown-quantity').value);$('#unknown-description').value=description;$('#unknown-brand').value=brand;$('#unknown-color').value=color;$('#unknown-size').value=size;if(!validUnknownText(description,180)||!validUnknownText(brand,80)||!['MASCULINO','FEMININO','UNISSEX','INFANTIL'].includes(gender)||!validUnknownText(color,80)||!/^[A-Z0-9]{1,4}$/.test(size)||!Number.isInteger(quantity)||quantity<1||quantity>MAX_PRODUCT_QUANTITY){$('#unknown-form').reportValidity();return;}const row=addScan(unknown,true,unknownOrigin,{description,brand,gender,color,size},quantity);if(row){$('#unknown-dialog').close();unknown=null;if(unknownOrigin==='CÂMERA'){clearCameraCandidate();renderCameraRecent();$('#camera-status').textContent='Produto identificado e lançado. Aponte para o próximo produto.';}}});
 document.querySelectorAll('.mode-button').forEach(b=>b.addEventListener('click',()=>{mode=b.dataset.mode;render();document.querySelectorAll('.mode-button').forEach(x=>x.classList.toggle('active',x===b));$('#ean-input').focus();}));
 document.querySelectorAll('#count-body,#defect-body').forEach(body=>body.addEventListener('click',event=>{
   const b=event.target.closest('[data-delta],[data-remove]');if(!b||!editableTeam())return;
   const list=current[b.dataset.kind],row=list.find(r=>r.ean===b.dataset.ean);if(!row)return;
-  row.quantity=b.dataset.remove?0:row.quantity+Number(b.dataset.delta);row.origin='AJUSTE MANUAL';row.lastScannedAt=new Date().toISOString();current[b.dataset.kind]=list.filter(r=>r.quantity>0);changed();
+  const next=b.dataset.remove?0:row.quantity+Number(b.dataset.delta),delta=next-row.quantity,totals=countTotals(),productTotal=totals.byEan.get(row.ean)||0;if(next>MAX_PRODUCT_QUANTITY||productTotal+delta>MAX_PRODUCT_QUANTITY||totals.total+delta>MAX_STORE_QUANTITY){note(productTotal+delta>MAX_PRODUCT_QUANTITY?'O EAN ultrapassaria 1.000 unidades.':'A loja atingiu o limite total de 10.000 unidades contadas.',true);return;}
+  row.quantity=next;row.origin='AJUSTE MANUAL';row.lastScannedAt=new Date().toISOString();current[b.dataset.kind]=list.filter(r=>r.quantity>0);changed();
 }));
 document.querySelectorAll('#count-body,#defect-body').forEach(body=>body.addEventListener('change',event=>{
   const input=event.target.closest('[data-quantity]');if(!input||!editableTeam())return;
   const value=Number(input.value),list=current[input.dataset.list],row=list.find(r=>r.ean===input.dataset.ean);if(!row)return;
-  if(!Number.isInteger(value)||value<1||value>1000000){input.value=String(row.quantity);note('Informe uma quantidade inteira entre 1 e 1.000.000.',true);return;}
+  if(!Number.isInteger(value)||value<1||value>MAX_PRODUCT_QUANTITY){input.value=String(row.quantity);note('Informe uma quantidade inteira entre 1 e 1.000.',true);return;}
+  const delta=value-row.quantity,totals=countTotals(),productTotal=totals.byEan.get(row.ean)||0;if(productTotal+delta>MAX_PRODUCT_QUANTITY||totals.total+delta>MAX_STORE_QUANTITY){input.value=String(row.quantity);note(productTotal+delta>MAX_PRODUCT_QUANTITY?'O EAN ultrapassaria 1.000 unidades.':'A loja atingiu o limite total de 10.000 unidades contadas.',true);return;}
   if(value!==row.quantity){row.quantity=value;row.origin='AJUSTE MANUAL';row.lastScannedAt=new Date().toISOString();changed();}
 }));
 $('#finish-count').addEventListener('click',finishCount);$('#reopen-count').addEventListener('click',reopenCount);$('#export-txt').addEventListener('click',exportCsv);
