@@ -31,7 +31,7 @@ assert.match(html,/id="unknown-quantity"[^>]*max="1000"[^>]*required/);
 assert.match(source,/findUnknownProduct\(ean\)/);
 assert.match(source,/validUnknownText\(subgroup,80\)/);
 assert.match(source,/MAX_PRODUCT_QUANTITY=1000,MAX_STORE_QUANTITY=10000/);
-assert.match(exporter,/\['EAN','QNTD','PRODUTO','MARCA','GÊNERO','COR','TAMANHO'/);
+assert.match(exporter,/\['EAN','QNTD','PRODUTO','MARCA','SUBGRUPO'/);
 assert.ok(html.includes('GÊNERO')&&html.includes('TAMANHO'));
 assert.match(html, /id="view-session"[^>]*>VISUALIZAR<\/button>/);
 assert.match(html, /id="reopen-session"[^>]*>REABRIR CONTAGEM<\/button>/);
