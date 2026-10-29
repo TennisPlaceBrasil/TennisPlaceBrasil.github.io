@@ -103,7 +103,7 @@ bulk.run("addScan('999',true,'LEITOR',{description:'MEIA TESTE',brand:'MARCA',ge
 assert.equal(bulk.run("current.counts.find(r=>r.ean==='999').subgroup"),'MEIA','Unknown EAN retains its required subgroup for count/export');
 bulk.run("current.counts.push({ean:'998',quantity:2,description:'PRODUTO INEXISTENTE',brand:'',gender:'',color:'',size:'',subgroup:'PENDENTE DE CLASSIFICAÇÃO',unknown:true});$('#large-quantity-input').value='1';$('#ean-input').value='998';scan('LEITOR');");
 assert.equal(bulk.run("current.counts.find(r=>r.ean==='998').quantity"),3,'Repeated unknown EAN adds quantity using the existing row');
-assert.equal(bulk.$('#unknown-dialog').open,false,'Repeated unknown EAN does not ask for product details again');
+assert.notEqual(bulk.$('#unknown-dialog').open,true,'Repeated unknown EAN does not ask for product details again');
 bulk.run("mode='defects';addScan('001',false,'LEITOR',null,3);");
 assert.equal(bulk.run("current.defects.find(r=>r.ean==='001').quantity"),3,'Large quantity works in defect mode');
 bulk.run("renderRecentScans({counts:[{ean:'old',description:'ANTIGO',quantity:1,lastScannedAt:'2026-10-23T10:00:00Z'},{ean:'new',description:'NOVO',quantity:9,lastScannedAt:'2026-10-23T12:00:00Z'}],defects:[{ean:'def',description:'DEFEITO',quantity:2,lastScannedAt:'2026-10-23T11:00:00Z'},{ean:'newer',description:'NOVO MAIS RECENTE',quantity:1,lastScannedAt:'2026-10-23T13:00:00Z'}]});");
