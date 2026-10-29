@@ -366,7 +366,7 @@ function render(){
 function displayAccount(){
   $('#login-panel').hidden=true;$('#app-main').hidden=false;$('#logout').hidden=false;
   $('#account-label').textContent=user.master?'ACESSO MASTER':user.allStores?'ACESSO ADMINISTRATIVO':user.multiStore?'ACESSO A VÁRIAS LOJAS':user.store;
-  $('#store-code').innerHTML=((user.allStores||user.multiStore)?'<option value="">Selecione a loja</option>':'')+stores.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('');$('#store-code').value=user.store||'';$('#store-code').disabled=!user.allStores&&!user.multiStore;$('#count-date').value=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());$('#tab-analysis').hidden=!user.allStores;$('#tab-divergence').hidden=!user.allStores;
+  $('#store-code').innerHTML=((user.allStores||user.multiStore)?'<option value="">Selecione a loja</option>':'')+stores.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('');$('#store-code').value=user.store||'';$('#store-code').disabled=!user.allStores&&!user.multiStore;$('#count-date').value=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());$('#tab-analysis').hidden=!user.allStores;$('#tab-divergence').hidden=!user.master;
   const today=$('#count-date').value,from=new Date(today+'T12:00:00-03:00');from.setDate(from.getDate()-89);$('#filter-end').value=today;$('#filter-start').value=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(from);
   $('#filter-store').innerHTML='<option value="">Todas as lojas</option>'+stores.map(s=>'<option>'+esc(s)+'</option>').join('');
   $('#history-store-filter').innerHTML='<option value="">Todas as lojas</option>'+stores.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('');
@@ -658,7 +658,7 @@ function divergenceLabel(session){
  return (source?.label||session.label)+' · '+(session.kind==='RECONTAGEM'?'RECONTAGEM':'CONTAGEM')+' · '+date;
 }
 function renderDivergenceOptions(){
- if(!user?.allStores)return;
+ if(!user?.master)return;
  const eligible=sessions.filter(s=>s.status==='FINALIZADA'&&!s.sheetMissing&&s.deleteStatus!=='PENDENTE');
  const optionList='<option value="">Selecione uma contagem</option>'+eligible.slice().sort((a,b)=>String(b.createdAt||b.date).localeCompare(String(a.createdAt||a.date))).map(s=>'<option value="'+esc(s.id)+'">'+esc(s.store)+' · '+esc(divergenceLabel(s))+'</option>').join('');
  for(const id of ['#divergence-first','#divergence-second']){const el=$(id),old=el.value;el.innerHTML=(id==='#divergence-first'?optionList:'<option value="">Comparar com a primeira</option>'+eligible.slice().sort((a,b)=>String(b.createdAt||b.date).localeCompare(String(a.createdAt||a.date))).map(s=>'<option value="'+esc(s.id)+'">'+esc(s.store)+' · '+esc(divergenceLabel(s))+'</option>').join(''));if(eligible.some(s=>s.id===old))el.value=old;}
@@ -669,7 +669,7 @@ function sumRows(state){
  return {quantities,products};
 }
 async function compareDivergence(event){
- event?.preventDefault();if(!user?.allStores)return;
+ event?.preventDefault();if(!user?.master)return;
  const request=++divergenceRequest,first=sessions.find(s=>s.id===$('#divergence-first').value),second=sessions.find(s=>s.id===$('#divergence-second').value)||null;
  const status=$('#divergence-status');$('#divergence-body').innerHTML='';$('#divergence-head').innerHTML='';
  if(!first){status.textContent='Escolha uma contagem ou recontagem.';return;}
@@ -894,7 +894,7 @@ document.querySelectorAll('#count-body,#defect-body').forEach(body=>body.addEven
 $('#finish-count').addEventListener('click',finishCount);$('#reopen-count').addEventListener('click',reopenCount);$('#export-txt').addEventListener('click',exportCsv);
 $('#analysis-filters').addEventListener('submit',analyze);
 $('#filter-brand').addEventListener('change',renderAnalysis);$('#filter-subgroup').addEventListener('change',renderAnalysis);
-function showTab(name){const count=name==='count',analysis=name==='analysis',divergence=name==='divergence',settings=name==='settings';$('#count-view').hidden=!count;$('#analysis-view').hidden=!analysis;$('#divergence-view').hidden=!divergence;$('#settings-view').hidden=!settings;$('#tab-count').classList.toggle('active',count);$('#tab-analysis').classList.toggle('active',analysis);$('#tab-divergence').classList.toggle('active',divergence);$('#tab-settings').classList.toggle('active',settings);render();if(analysis)analyze();if(divergence)renderDivergenceOptions();if(settings)loadAccessSettings();}
+function showTab(name){const count=name==='count',analysis=name==='analysis',divergence=name==='divergence',settings=name==='settings';if((divergence||settings)&&!user?.master){showTab('count');$('#app-error').textContent='Divergência de Contagem e Configurações estão disponíveis somente para usuários MASTER.';return;}$('#count-view').hidden=!count;$('#analysis-view').hidden=!analysis;$('#divergence-view').hidden=!divergence;$('#settings-view').hidden=!settings;$('#tab-count').classList.toggle('active',count);$('#tab-analysis').classList.toggle('active',analysis);$('#tab-divergence').classList.toggle('active',divergence);$('#tab-settings').classList.toggle('active',settings);render();if(analysis)analyze();if(divergence)renderDivergenceOptions();if(settings)loadAccessSettings();}
 $('#tab-count').addEventListener('click',()=>showTab('count'));$('#tab-analysis').addEventListener('click',()=>showTab('analysis'));$('#tab-divergence').addEventListener('click',()=>showTab('divergence'));$('#tab-settings').addEventListener('click',()=>showTab('settings'));
 window.addEventListener('pagehide',()=>stopCamera(false));
 window.addEventListener('beforeunload',event=>{if((localError||localWrites>0)&&current){event.preventDefault();event.returnValue='';}});
