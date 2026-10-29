@@ -161,6 +161,17 @@ assert.equal((a.$('#count-body').innerHTML.match(/<td>/g)||[]).length,6);assert.
 let unauthorizedFetches=0;b.context.fetch=async()=>{unauthorizedFetches++;return Response.json({});};await b.run('analyze()');assert.equal(unauthorizedFetches,0);
 console.log('PASS: subgroup visible in table/mobile/export and analysis remains administrative');
 
+const unknown=device();unknown.run("user={id:'u',store:'APAR',allStores:false};auth={access_token:'test'};catalogComplete=true;catalog=new Map();current={id:'unknown',label:'APAR TESTE',store:'APAR',kind:'CONTAGEM',date:'2026-10-23',collaborative:false,participantId:'p',participantVersion:0,responsible:'Maria',status:'EM ANDAMENTO',counts:[],defects:[],peers:{counts:[],defects:[]},version:0};$('#ean-input').value='1234567890123';");
+await unknown.run("scan('LEITOR')");assert.equal(unknown.$('#unknown-dialog').open,true,'First unknown EAN scan opens the identification form');
+assert.match(html,/<label for="unknown-subgroup">SUBGRUPO<\\/label><input id="unknown-subgroup" required/,'Unknown EAN form requires subgroup');
+unknown.run("addScan(unknown,true,'LEITOR',{description:'MODELO TESTE',brand:'MARCA TESTE',gender:'UNISSEX',color:'PRETO',size:'M',subgroup:'MEIA'},1);$('#unknown-dialog').close();unknown=null;$('#ean-input').value='1234567890123';");
+await unknown.run("scan('LEITOR')");assert.equal(unknown.$('#unknown-dialog').open,false,'Repeat scan does not reopen the identification form');
+assert.equal(unknown.run("current.counts[0].quantity"),2,'Repeat unknown EAN scan adds one unit to the existing EAN');
+assert.equal(unknown.run("current.counts[0].subgroup"),'MEIA','The required subgroup stays on the row');
+unknown.run("mode='defects';$('#ean-input').value='1234567890123';");await unknown.run("scan('LEITOR')");
+assert.equal(unknown.run("current.defects[0].subgroup"),'MEIA','Defect launch reuses the registered unknown EAN subgroup');
+console.log('PASS: unknown EAN requires subgroup once, repeats sum by EAN, and defect rows preserve subgroup');
+
 // A multi-store account sees all authorized history by default and can filter down to one store.
 const history=device();let listPayloads=[];
 history.run("user={id:'multi',store:null,allStores:false,multiStore:true};stores=['APAR','JOIN'];auth={access_token:'test'};current=null;displayAccount();picker();");
